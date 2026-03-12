@@ -1030,11 +1030,26 @@ async function getRegistrationFormDiagnostics(page) {
       .filter((t) => t)
       .slice(0, 5);
 
+    const captchaHints = Array.from(document.querySelectorAll("div, span, p, small"))
+      .map((el) => (el.textContent || "").trim())
+      .filter((t) => /captcha|turnstile|robot|doğrulama|verification/i.test(t))
+      .slice(0, 3);
+
+    const hasTurnstileWidget =
+      !!document.querySelector('iframe[src*="challenges.cloudflare.com"], .cf-turnstile, [name*="turnstile"]');
+
+    const hasCaptchaToken = Array.from(
+      document.querySelectorAll('input[name="cf-turnstile-response"], input[name*="turnstile"], textarea[name="g-recaptcha-response"]')
+    ).some((el) => String(el.value || "").trim().length > 20);
+
     return {
       submitDisabled: !!submitBtn?.disabled,
       submitText: (submitBtn?.textContent || "").trim().slice(0, 30),
       invalidFields,
       validationHints,
+      hasTurnstileWidget,
+      hasCaptchaToken,
+      captchaHints,
     };
   });
 }

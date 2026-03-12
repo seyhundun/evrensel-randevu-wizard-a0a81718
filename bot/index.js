@@ -1624,10 +1624,23 @@ async function registerVfsAccount(account) {
             }
 
             if (afterDiag.hasTurnstileWidget && !afterDiag.hasCaptchaToken) {
-              throw new Error("Devam Et butonu pasif: CAPTCHA doğrulaması tamamlanmadı");
+              console.log("  [REG] ⚠ CAPTCHA token görünmüyor, iframe click + force submit deneniyor...");
+              await tryClickTurnstileCheckbox(page);
+              await delay(1200, 2200);
             }
 
-            throw new Error("Devam Et butonu pasif kaldı (form invalid)");
+            const forceResult = await tryForceRegistrationSubmit(page);
+            console.log(`  [REG] Force submit: clicked=${forceResult.clicked}, forced=${forceResult.forced}, reason=${forceResult.reason}`);
+
+            if (!forceResult.clicked) {
+              if (afterDiag.hasTurnstileWidget && !afterDiag.hasCaptchaToken) {
+                throw new Error("Devam Et butonu pasif: CAPTCHA doğrulaması tamamlanmadı");
+              }
+              throw new Error("Devam Et butonu pasif kaldı (form invalid)");
+            }
+
+            clickedSubmit = true;
+            await delay(1200, 2400);
           }
         }
 

@@ -831,79 +831,155 @@ async function selectTurkeyDialCode(page) {
 }
 
 async function tickAllCheckboxes(page) {
-  console.log("  [REG] Checkbox'lar tıklanıyor...");
+  console.log("  [REG] Onay checkbox'ları işaretleniyor...");
 
-  // Yöntem 1: Doğrudan input click
-  try {
-    const c1 = await page.evaluate(() => {
-      let n = 0;
-      for (const cb of Array.from(document.querySelectorAll('input[type="checkbox"]'))) { if (!cb.checked) { cb.click(); n++; } }
-      return n;
-    });
-    if (c1 > 0) console.log(`  [REG] ✅ ${c1} checkbox doğrudan tıklandı`);
-  } catch {}
-  await delay(300, 500);
+  const result = await page.evaluate(() => {
+    const isVisible = (el) => {
+      if (!el) return false;
+      const rect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+    };
 
-  // Yöntem 2: Label click
-  try {
-    const c2 = await page.evaluate(() => {
-      let n = 0;
-      for (const l of Array.from(document.querySelectorAll('label'))) {
-        const cb = l.querySelector('input[type="checkbox"]');
-        if (cb && !cb.checked) { l.click(); n++; }
+    const keywords = /(gizlilik|privacy|kvkk|koşul|terms|condition|consent|onay|veri transfer|data transfer|kabul|aydınlatma)/i;
+    const submitKeywords = ["devam", "continue", "register", "create", "kayıt", "oluştur", "sign up"];
+
+    const emailInput = Array.from(document.querySelectorAll('input[type="email"], input[name="email"], input[formcontrolname*="email"]')).find(isVisible);
+    const scope = emailInput?.closest("form") || emailInput?.closest("main") || document.body;
+
+    const clickTarget = (el) => {
+      if (!el) return;
+      try {
+        el.scrollIntoView({ block: "center", inline: "nearest" });
+      } catch {}
+      try { el.click(); } catch {}
+    };
+
+    let considered = 0;
+    let checked = 0;
+    let touched = 0;
+
+    const checkboxInputs = Array.from(scope.querySelectorAll('input[type="checkbox"]')).filter((cb) => isVisible(cb));
+
+    for (const cb of checkboxInputs) {
+      const host = cb.closest('label, mat-checkbox, .mat-checkbox, .mat-mdc-checkbox, .mdc-form-field, .form-check, .checkbox-container') || cb.parentElement;
+      const meta = `${cb.name || ""} ${cb.id || ""} ${cb.getAttribute("aria-label") || ""} ${host?.textContent || ""}`.toLowerCase();
+      const shouldCheck = cb.required || cb.getAttribute("aria-required") === "true" || keywords.test(meta);
+      if (!shouldCheck) continue;
+
+      considered++;
+
+      if (!cb.checked) {
+        clickTarget(host || cb);
+        if (!cb.checked) {
+          cb.checked = true;
+          cb.dispatchEvent(new Event("input", { bubbles: true }));
+          cb.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        touched++;
       }
-      return n;
-    });
-    if (c2 > 0) console.log(`  [REG] ✅ ${c2} checkbox label ile tıklandı`);
-  } catch {}
-  await delay(300, 500);
 
-  // Yöntem 3: mat-checkbox
-  try {
-    const c3 = await page.evaluate(() => {
-      let n = 0;
-      for (const mc of Array.from(document.querySelectorAll('mat-checkbox:not(.mat-checkbox-checked), .mat-checkbox:not(.mat-checkbox-checked)'))) { mc.click(); n++; }
-      return n;
-    });
-    if (c3 > 0) console.log(`  [REG] ✅ ${c3} mat-checkbox tıklandı`);
-  } catch {}
-  await delay(300, 500);
+      cb.dispatchEvent(new Event("input", { bubbles: true }));
+      cb.dispatchEvent(new Event("change", { bubbles: true }));
+      if (cb.checked) checked++;
+    }
 
-  // Yöntem 4: Puppeteer click
-  try {
-    const checkboxes = await page.$$('input[type="checkbox"]');
-    let c4 = 0;
-    for (const cb of checkboxes) {
-      const isChecked = await page.evaluate(el => el.checked, cb);
-      if (!isChecked) {
-        try {
-          const parent = await cb.evaluateHandle(el => el.closest('label') || el.parentElement);
-          if (parent && parent.asElement()) await parent.asElement().click();
-          else await cb.click();
-          c4++;
-        } catch {}
-        await delay(200, 400);
+    // Bazı Angular checkbox bileşenleri için host click
+    let matTouched = 0;
+    const matBoxes = Array.from(scope.querySelectorAll('mat-checkbox, .mat-checkbox, .mat-mdc-checkbox')).filter(isVisible);
+    for (const box of matBoxes) {
+      const text = (box.textContent || "").toLowerCase();
+      const hasKeyword = keywords.test(text);
+      if (!hasKeyword) continue;
+
+      const alreadyChecked =
+        box.classList.contains("mat-checkbox-checked") ||
+        box.classList.contains("mat-mdc-checkbox-checked") ||
+        box.getAttribute("aria-checked") === "true" ||
+        !!box.querySelector('input[type="checkbox"]:checked');
+
+      if (!alreadyChecked) {
+        clickTarget(box);
+        matTouched++;
       }
     }
-    if (c4 > 0) console.log(`  [REG] ✅ ${c4} checkbox Puppeteer ile tıklandı`);
-  } catch {}
 
-  // Yöntem 5: mat-checkbox-inner-container
-  try {
-    const c5 = await page.evaluate(() => {
-      let n = 0;
-      for (const el of Array.from(document.querySelectorAll('.mat-checkbox-inner-container, .mat-checkbox-frame, .checkbox-mark, .mat-checkbox-layout'))) { el.click(); n++; }
-      return n;
-    });
-    if (c5 > 0) console.log(`  [REG] ✅ ${c5} inner checkbox tıklandı`);
-  } catch {}
+    const form = emailInput?.closest("form");
+    if (form) {
+      form.dispatchEvent(new Event("input", { bubbles: true }));
+      form.dispatchEvent(new Event("change", { bubbles: true }));
+    }
 
-  const finalCount = await page.evaluate(() => {
-    const all = Array.from(document.querySelectorAll('input[type="checkbox"]'));
-    return { total: all.length, checked: all.filter(c => c.checked).length };
+    const submitBtn = Array.from(scope.querySelectorAll("button")).find((b) => {
+      const txt = (b.textContent || "").toLowerCase().trim();
+      return submitKeywords.some((k) => txt.includes(k));
+    }) || scope.querySelector('button[type="submit"]');
+
+    return {
+      considered,
+      checked,
+      touched,
+      matTouched,
+      submitDisabled: !!submitBtn?.disabled,
+      visibleCheckboxCount: checkboxInputs.length,
+    };
   });
-  console.log(`  [REG] Checkbox durumu: ${finalCount.checked}/${finalCount.total} işaretli`);
-  return finalCount.checked >= finalCount.total;
+
+  console.log(`  [REG] Checkbox sonucu: considered=${result.considered}, checked=${result.checked}, touched=${result.touched}, mat=${result.matTouched}, submitDisabled=${result.submitDisabled}`);
+  return !result.submitDisabled;
+}
+
+async function getRegistrationFormDiagnostics(page) {
+  return await page.evaluate(() => {
+    const isVisible = (el) => {
+      if (!el) return false;
+      const rect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+    };
+
+    const submitKeywords = ["devam", "continue", "register", "create", "kayıt", "oluştur", "sign up"];
+    const buttons = Array.from(document.querySelectorAll("button"));
+    const submitBtn = buttons.find((b) => {
+      const txt = (b.textContent || "").toLowerCase().trim();
+      return submitKeywords.some((k) => txt.includes(k));
+    }) || document.querySelector('button[type="submit"]');
+
+    const visibleInputs = Array.from(document.querySelectorAll("input, select, textarea")).filter(isVisible);
+    const invalidFields = visibleInputs
+      .filter((el) => {
+        const requiredEmpty =
+          (el.required || el.getAttribute("aria-required") === "true") &&
+          ((el.type === "checkbox" && !el.checked) || (el.type !== "checkbox" && String(el.value || "").trim() === ""));
+        const htmlInvalid = typeof el.checkValidity === "function" ? !el.checkValidity() : false;
+        const classInvalid = /ng-invalid|mat-mdc-form-field-invalid|mat-form-field-invalid/i.test(el.className || "");
+        const ariaInvalid = el.getAttribute("aria-invalid") === "true";
+        return requiredEmpty || htmlInvalid || classInvalid || ariaInvalid;
+      })
+      .slice(0, 8)
+      .map((el) => ({
+        type: el.type || el.tagName.toLowerCase(),
+        name: el.name || "",
+        id: el.id || "",
+        placeholder: (el.placeholder || "").slice(0, 40),
+        required: !!el.required || el.getAttribute("aria-required") === "true",
+        valueLength: String(el.value || "").length,
+        checked: typeof el.checked === "boolean" ? el.checked : undefined,
+        className: (el.className || "").slice(0, 80),
+      }));
+
+    const validationHints = Array.from(document.querySelectorAll("small, .error, .invalid-feedback, mat-error, .mat-error, .text-danger"))
+      .map((el) => (el.textContent || "").trim())
+      .filter((t) => t)
+      .slice(0, 5);
+
+    return {
+      submitDisabled: !!submitBtn?.disabled,
+      submitText: (submitBtn?.textContent || "").trim().slice(0, 30),
+      invalidFields,
+      validationHints,
+    };
+  });
 }
 
 async function postRegError(account, page, reason) {

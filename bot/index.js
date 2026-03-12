@@ -546,8 +546,6 @@ async function main() {
     console.log("⚠ CAPTCHA_API_KEY yok, Turnstile çözülemeyecek!");
   }
 
-  let accountIndex = 0;
-
   while (true) {
     try {
       const { configs, accounts } = await fetchActiveConfigs();
@@ -567,29 +565,70 @@ async function main() {
       console.log(`\n📊 ${accounts.length} aktif hesap, ${configs.length} aktif görev`);
 
       for (const config of configs) {
-        // Hesap seç (round-robin)
-        const account = accounts[accountIndex % accounts.length];
-        accountIndex++;
+        // Hesap seç — en uzun süredir kullanılmamış olanı tercih et
+        const now = Date.now();
+        const availableAccounts = accounts.filter(acc => {
+          const lastUsed = accountLastUsed.get(acc.id) || 0;
+          return (now - lastUsed) >= CONFIG.MIN_ACCOUNT_GAP_MS;
+        });
 
+        if (availableAccounts.length === 0) {
+          // Tüm hesaplar yakın zamanda kullanılmış, en eski olanı bul ve bekle
+          const oldestUsed = accounts.reduce((oldest, acc) => {
+            const t = accountLastUsed.get(acc.id) || 0;
+            return t < (accountLastUsed.get(oldest.id) || 0) ? acc : oldest;
+          }, accounts[0]);
+          const lastUsed = accountLastUsed.get(oldestUsed.id) || 0;
+          const waitMs = Math.max(0, CONFIG.MIN_ACCOUNT_GAP_MS - (now - lastUsed));
+          console.log(`\n⏳ Tüm hesaplar yakın zamanda kullanıldı. ${Math.round(waitMs / 1000)}s bekleniyor...`);
+          await new Promise((r) => setTimeout(r, waitMs));
+        }
+
+        // Tekrar kontrol et
+        const readyAccounts = accounts.filter(acc => {
+          const lastUsed = accountLastUsed.get(acc.id) || 0;
+          return (Date.now() - lastUsed) >= CONFIG.MIN_ACCOUNT_GAP_MS;
+        });
+        
+        // En uzun süredir kullanılmamış hesabı seç
+        const account = (readyAccounts.length > 0 ? readyAccounts : accounts).reduce((best, acc) => {
+          const tBest = accountLastUsed.get(best.id) || 0;
+          const tAcc = accountLastUsed.get(acc.id) || 0;
+          return tAcc < tBest ? acc : best;
+        }, (readyAccounts.length > 0 ? readyAccounts : accounts)[0]);
+
+        accountLastUsed.set(account.id, Date.now());
         const result = await checkAppointments(config, account);
 
         if (result.found) {
           console.log("\n🎉 RANDEVU BULUNDU! Dashboard'u kontrol edin!");
+          consecutiveErrors = 0;
+        } else if (result.accountBanned) {
+          console.log(`\n⛔ Hesap banlı: ${account.email}`);
+          consecutiveErrors++;
+        } else {
+          // Başarılı kontrol (randevu yok ama hata da yok)
+          const wasError = result.accountBanned === false && !result.otpRequired;
+          if (wasError) consecutiveErrors = 0;
+          else consecutiveErrors++;
         }
 
-        if (result.accountBanned) {
-          console.log(`\n⛔ Hesap banlı: ${account.email} - sonraki hesaba geçiliyor`);
-        }
-
-        const interval = (config.check_interval || 120) * 1000;
-        const jitter = Math.floor(Math.random() * 30000);
-        const wait = interval + jitter;
-        console.log(`\n⏳ Sonraki: ${Math.round(wait / 1000)}s`);
+        // Exponential backoff hesapla
+        const baseInterval = Math.max(config.check_interval * 1000, CONFIG.BASE_INTERVAL_MS);
+        const backoffMultiplier = Math.min(Math.pow(1.5, consecutiveErrors), 5); // max 5x
+        const interval = Math.min(baseInterval * backoffMultiplier, CONFIG.MAX_BACKOFF_MS);
+        const jitter = Math.floor(Math.random() * 60000) + 15000; // 15-75sn rastgele
+        const wait = Math.round(interval + jitter);
+        
+        console.log(`\n⏳ Sonraki: ${Math.round(wait / 1000)}s (backoff: x${backoffMultiplier.toFixed(1)}, errors: ${consecutiveErrors})`);
         await new Promise((r) => setTimeout(r, wait));
       }
     } catch (err) {
       console.error("Ana döngü hatası:", err.message);
-      await new Promise((r) => setTimeout(r, 30000));
+      consecutiveErrors++;
+      const wait = Math.min(30000 * Math.pow(2, consecutiveErrors), CONFIG.MAX_BACKOFF_MS);
+      console.log(`⏳ Hata sonrası bekleme: ${Math.round(wait / 1000)}s`);
+      await new Promise((r) => setTimeout(r, wait));
     }
   }
 }

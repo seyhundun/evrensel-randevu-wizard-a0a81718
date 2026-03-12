@@ -915,72 +915,105 @@ function normalizePhoneNumber(rawPhone) {
 }
 
 async function selectTurkeyDialCode(page) {
-  // Debug: log all select elements and their options
-  const selectInfo = await page.evaluate(() => {
-    const selects = Array.from(document.querySelectorAll("select"));
-    return selects.map((s, i) => ({
-      index: i,
-      id: s.id,
-      name: s.name,
-      className: s.className.substring(0, 60),
-      optionCount: s.options.length,
-      options: Array.from(s.options).map(o => ({ value: o.value, text: (o.textContent || "").trim() })),
-      currentValue: s.value,
-    }));
-  });
-  console.log("  [REG] Select elements:", JSON.stringify(selectInfo, null, 2));
+  const isTurkeyText = (txt) => /turkey|türkiye|turkiye|\(90\)|\+90|(^|\D)90(\D|$)/i.test(String(txt || "").toLowerCase());
 
-  // Method 1: Find the right select and use Puppeteer's page.select()
-  for (let i = 0; i < selectInfo.length; i++) {
-    const info = selectInfo[i];
-    const turkeyOpt = info.options.find(o => {
-      const combined = `${o.text} ${o.value}`.toLowerCase();
-      return combined.includes("turkey") || combined.includes("türkiye") || combined.includes("(90)") || combined.includes("+90");
-    });
+  for (let attempt = 1; attempt <= 6; attempt++) {
+    const result = await page.evaluate((attemptNo) => {
+      const isVisible = (el) => {
+        if (!el) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+      };
 
-    if (!turkeyOpt) continue;
+      const isTurkey = (txt) => /turkey|türkiye|turkiye|\(90\)|\+90|(^|\D)90(\D|$)/i.test(String(txt || "").toLowerCase());
 
-    // Build a CSS selector for this specific select
-    let selector = "select";
-    if (info.id) selector = `select#${info.id}`;
-    else if (info.name) selector = `select[name="${info.name}"]`;
-    else selector = `select:nth-of-type(${i + 1})`;
+      // 1) Eğer custom dropdown zaten açıksa, option seç
+      const visibleOptions = Array.from(document.querySelectorAll('[role="option"], mat-option, .mat-mdc-option, .mat-option, .ng-option, li[role="option"]'))
+        .filter((el) => isVisible(el));
+      const turkeyOption = visibleOptions.find((opt) => isTurkey(opt.textContent || ""));
+      if (turkeyOption) {
+        turkeyOption.click();
+        return { ok: true, method: "custom-option", detail: (turkeyOption.textContent || "").trim() };
+      }
 
-    console.log(`  [REG] Turkey option bulundu: value="${turkeyOpt.value}", text="${turkeyOpt.text}" → selector: ${selector}`);
+      // 2) Arama kodu alanının trigger'ını aç
+      const labels = Array.from(document.querySelectorAll("label, span, div, p"))
+        .filter((el) => {
+          const t = (el.textContent || "").toLowerCase();
+          return t.includes("arama kodu") || t.includes("dial code") || t.includes("country code");
+        });
 
-    // Click the select first like a human
-    try {
-      await page.click(selector);
-      await delay(300, 700);
-    } catch (e) {
-      console.log("  [REG] Select click hatası, devam ediliyor:", e.message);
-    }
+      for (const label of labels) {
+        const scope =
+          label.closest("mat-form-field, .mat-mdc-form-field, .form-group, .row, .col, .field, div, section") ||
+          label.parentElement;
+        if (!scope) continue;
 
-    // Use page.select() — this properly triggers change events
-    try {
-      await page.select(selector, turkeyOpt.value);
-      console.log(`  [REG] ✅ Dial code seçildi (page.select: ${turkeyOpt.text})`);
-      await delay(400, 900);
+        const trigger = scope.querySelector(
+          'mat-select, [role="combobox"], .mat-mdc-select-trigger, .mat-select-trigger, .ng-select-container, [aria-haspopup="listbox"], [id*="dial" i], [name*="dial" i], [aria-label*="arama" i], [aria-label*="country" i]'
+        );
 
-      // Also manually dispatch Angular-compatible events
-      await page.evaluate((sel, val) => {
-        const selectEl = document.querySelector(sel);
-        if (!selectEl) return;
-        selectEl.value = val;
-        selectEl.dispatchEvent(new Event("input", { bubbles: true }));
-        selectEl.dispatchEvent(new Event("change", { bubbles: true }));
-        // Angular specific
+        if (trigger && isVisible(trigger)) {
+          trigger.click();
+          return { ok: false, method: "custom-open", detail: "trigger-click" };
+        }
+      }
+
+      // 3) Native select fallback (value/text/index ile)
+      const selects = Array.from(document.querySelectorAll("select")).filter((s) => isVisible(s));
+      for (const sel of selects) {
+        const opts = Array.from(sel.options || []);
+        const idx = opts.findIndex((o) => isTurkey(`${o.textContent || ""} ${o.value || ""}`));
+        if (idx === -1) continue;
+
+        const opt = opts[idx];
+        sel.selectedIndex = idx;
+        sel.value = opt.value;
+        opt.selected = true;
+        sel.dispatchEvent(new Event("input", { bubbles: true }));
+        sel.dispatchEvent(new Event("change", { bubbles: true }));
+
+        // Angular/reactive formlar için
         const ngModelEvent = new Event("ngModelChange", { bubbles: true });
-        selectEl.dispatchEvent(ngModelEvent);
-      }, selector, turkeyOpt.value);
+        sel.dispatchEvent(ngModelEvent);
 
-      return true;
-    } catch (e) {
-      console.log("  [REG] page.select hatası:", e.message);
+        return { ok: true, method: "native-select", detail: (opt.textContent || opt.value || "").trim() };
+      }
+
+      return { ok: false, method: "none", detail: `attempt-${attemptNo}` };
+    }, attempt);
+
+    if (result.ok) {
+      console.log(`  [REG] ✅ Dial code seçildi (${result.method}: ${result.detail})`);
+      await delay(350, 900);
+
+      // Son kontrol (seçim ekranda görünüyor mu)
+      const verify = await page.evaluate(() => {
+        const txt = (document.body?.innerText || "").toLowerCase();
+        return txt.includes("turkey(90)") || txt.includes("türkiye") || txt.includes("+90") || txt.includes(" 90 ");
+      });
+      if (verify) return true;
     }
+
+    if (attempt === 1 || attempt === 3) {
+      await humanMove(page);
+    }
+    await delay(300, 800);
   }
 
-  console.log("  [REG] ⚠ Hiçbir select'te Turkey bulunamadı");
+  // Debug log
+  const debug = await page.evaluate(() => {
+    const selects = Array.from(document.querySelectorAll("select")).map((s) => ({
+      id: s.id,
+      name: s.name,
+      value: s.value,
+      options: Array.from(s.options || []).map((o) => `${o.value}|${(o.textContent || "").trim()}`),
+    }));
+    return { selectCount: selects.length, selects };
+  });
+  console.log("  [REG] ❌ Dial code seçilemedi. Debug:", JSON.stringify(debug));
+
   return false;
 }
 

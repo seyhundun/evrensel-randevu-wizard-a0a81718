@@ -43,6 +43,8 @@ const Index = () => {
           personCount={t.personCount}
           setPersonCount={t.setPersonCount}
         />
+
+        <TrackingLogs configId={t.configId} />
       </main>
     </div>
   );

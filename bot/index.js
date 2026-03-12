@@ -123,13 +123,63 @@ const apiHeaders = {
   apikey: CONFIG.API_KEY,
 };
 
+const API_TIMEOUT_MS = Number(process.env.API_TIMEOUT_MS || 20000);
+const API_RETRY_COUNT = Number(process.env.API_RETRY_COUNT || 2);
+const API_RETRY_DELAY_MS = Number(process.env.API_RETRY_DELAY_MS || 1200);
+
+const waitMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function fetchApiJson(init, context = "api") {
+  let lastError;
+
+  for (let attempt = 1; attempt <= API_RETRY_COUNT + 1; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+    try {
+      const res = await fetch(CONFIG.API_URL, { ...init, signal: controller.signal });
+      const raw = await res.text();
+      const data = raw ? JSON.parse(raw) : {};
+
+      if (!res.ok) {
+        const msg = data?.error || raw || `HTTP ${res.status}`;
+        throw new Error(`${context}: HTTP ${res.status} - ${String(msg).slice(0, 180)}`);
+      }
+
+      return data;
+    } catch (err) {
+      lastError = err;
+      const isLast = attempt > API_RETRY_COUNT;
+      if (isLast) break;
+
+      const backoff = API_RETRY_DELAY_MS * attempt + Math.floor(Math.random() * 350);
+      console.log(`  [API] ${context} deneme ${attempt} başarısız (${err.message}), ${backoff}ms sonra tekrar`);
+      await waitMs(backoff);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  throw lastError;
+}
+
+async function apiGet(context) {
+  return fetchApiJson({ method: "GET", headers: apiHeaders }, context);
+}
+
+async function apiPost(payload, context) {
+  return fetchApiJson(
+    { method: "POST", headers: apiHeaders, body: JSON.stringify(payload) },
+    context
+  );
+}
+
 async function reportResult(configId, status, message = "", slotsAvailable = 0, screenshotBase64 = null) {
   try {
     const body = { config_id: configId, status, message, slots_available: slotsAvailable };
     if (screenshotBase64) body.screenshot_base64 = screenshotBase64;
-    const res = await fetch(CONFIG.API_URL, { method: "POST", headers: apiHeaders, body: JSON.stringify(body) });
-    const data = await res.json();
-    console.log(`  [API] ${status}: ${data.message || data.error}`);
+    const data = await apiPost(body, `report_result:${status}`);
+    console.log(`  [API] ${status}: ${data.message || data.error || "ok"}`);
   } catch (err) {
     console.error("  [API] Bildirim hatası:", err.message);
   }
@@ -140,7 +190,7 @@ async function updateAccountStatus(accountId, status, failCount = null) {
     const body = { action: "update_account", account_id: accountId, status };
     if (status === "cooldown") body.banned_until = new Date(Date.now() + CONFIG.COOLDOWN_HOURS * 3600000).toISOString();
     if (failCount !== null) body.fail_count = failCount;
-    await fetch(CONFIG.API_URL, { method: "POST", headers: apiHeaders, body: JSON.stringify(body) });
+    await apiPost(body, `update_account:${status}`);
     console.log(`  [ACCOUNT] ${accountId.substring(0, 8)}... → ${status}`);
   } catch (err) {
     console.error("  [ACCOUNT] Güncelleme hatası:", err.message);
@@ -149,10 +199,9 @@ async function updateAccountStatus(accountId, status, failCount = null) {
 
 async function fetchActiveConfigs() {
   try {
-    const res = await fetch(CONFIG.API_URL, { method: "GET", headers: apiHeaders });
-    const data = await res.json();
+    const data = await apiGet("fetch_active_configs");
     if (data.ok) return { configs: data.configs || [], accounts: data.accounts || [] };
-    console.error("API hatası:", data.error);
+    console.error("API hatası:", data.error || "ok=false");
     return { configs: [], accounts: [] };
   } catch (err) {
     console.error("API bağlantı hatası:", err.message);

@@ -17,6 +17,8 @@ interface VfsAccount {
   last_used_at: string | null;
   fail_count: number;
   notes: string | null;
+  imap_host: string | null;
+  imap_password: string | null;
 }
 
 export default function VfsAccounts() {

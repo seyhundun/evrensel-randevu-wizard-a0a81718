@@ -241,10 +241,8 @@ async function handleOtpVerification(page, account) {
   const pollInterval = CONFIG.OTP_POLL_MS; // 5sn
   
   while (Date.now() - startTime < maxWait) {
-    // Önce manuel OTP kontrol et (SMS durumu)
+    // Dashboard'dan manuel OTP kontrol et
     let otp = await readManualOtp(account.id);
-    // Manuel yoksa IMAP dene
-    if (!otp) otp = await readOtpFromEmail(account.id);
     
     if (otp) {
       // OTP'yi sayfadaki input'a yaz

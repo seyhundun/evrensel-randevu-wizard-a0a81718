@@ -198,6 +198,73 @@ async function waitForLoginFormAfterQueue(page) {
   return { ok: false, reason: `Waiting room timeout (${Math.round(CONFIG.QUEUE_MAX_WAIT_MS / 1000)}s)` };
 }
 
+async function waitForRegistrationFormAfterQueue(page) {
+  const startedAt = Date.now();
+  let attempt = 0;
+
+  while (Date.now() - startedAt < CONFIG.QUEUE_MAX_WAIT_MS) {
+    attempt++;
+
+    const formState = await page.evaluate(() => {
+      const isVisible = (el) => {
+        if (!el) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+      };
+
+      const emailCandidates = Array.from(document.querySelectorAll('input[type="email"], input[name="email"], input[formcontrolname*="email"], input[id*="email"]'));
+      const passwordCandidates = Array.from(document.querySelectorAll('input[type="password"]'));
+
+      const hasVisibleEmail = emailCandidates.some(isVisible);
+      const visiblePasswordCount = passwordCandidates.filter(isVisible).length;
+
+      return {
+        hasVisibleEmail,
+        visiblePasswordCount,
+        title: (document.title || "").toLowerCase(),
+        body: (document.body?.innerText || "").toLowerCase(),
+      };
+    });
+
+    if (formState.hasVisibleEmail && formState.visiblePasswordCount >= 2) {
+      console.log(`  [REG] ✅ Kayıt formu hazır (${attempt}. deneme).`);
+      return { ok: true };
+    }
+
+    const waitingRoom = await isWaitingRoomPage(page);
+    if (waitingRoom) {
+      const waitedSec = Math.round((Date.now() - startedAt) / 1000);
+      console.log(`  [REG] Sırada bekleniyor... ${waitedSec}s`);
+      await solveTurnstile(page);
+      await page.waitForNavigation({ waitUntil: "networkidle2", timeout: CONFIG.QUEUE_POLL_MS + 5000 }).catch(() => {});
+      await delay(CONFIG.QUEUE_POLL_MS, CONFIG.QUEUE_POLL_MS + 3000);
+      continue;
+    }
+
+    if (attempt % 3 === 0) {
+      try {
+        await page.evaluate(() => {
+          const btns = Array.from(document.querySelectorAll("button"));
+          const acceptBtn = btns.find((b) => {
+            const txt = (b.textContent || "").toLowerCase();
+            return txt.includes("accept all") || txt.includes("kabul") || txt.includes("tümünü kabul") || txt.includes("tüm tanımlama");
+          }) || document.getElementById("onetrust-accept-btn-handler");
+          if (acceptBtn) acceptBtn.click();
+        });
+      } catch {}
+    }
+
+    if (attempt % 6 === 0) {
+      await solveTurnstile(page);
+    }
+
+    await delay(3500, 7000);
+  }
+
+  return { ok: false, reason: `Kayıt formu zaman aşımı (${Math.round(CONFIG.QUEUE_MAX_WAIT_MS / 1000)}s)` };
+}
+
 // ==================== OTP HANDLING ====================
 async function readManualOtp(accountId) {
   try {
@@ -898,8 +965,14 @@ async function registerVfsAccount(account) {
 
     // Form yüklenmesini bekle
     console.log("  [REG 4/7] Form bekleniyor...");
-    await page.waitForSelector('input[type="email"], input[name="email"], input[formcontrolname*="email"]', { timeout: 45000 });
-    await delay(3000, 5000);
+    const registrationFormResult = await waitForRegistrationFormAfterQueue(page);
+    if (!registrationFormResult.ok) {
+      const snapshot = await takeScreenshotBase64(page);
+      await postRegError(account, page, registrationFormResult.reason);
+      if (snapshot) console.log("  [REG] 📸 Form timeout screenshot alındı");
+      throw new Error(registrationFormResult.reason);
+    }
+    await delay(1800, 3200);
 
     // ========== FORM DOLDURMA ==========
     console.log("  [REG 5/7] Form dolduruluyor...");

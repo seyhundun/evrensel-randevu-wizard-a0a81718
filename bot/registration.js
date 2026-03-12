@@ -2,6 +2,7 @@ const CONFIG = global.CONFIG;
 const apiHeaders = global.apiHeaders;
 const delay = global.delay;
 const takeScreenshotBase64 = global.takeScreenshotBase64;
+const QUEUE_MAX_WAIT_MS = Number(process.env.QUEUE_MAX_WAIT_MS || 360000);
 
 async function fetchPendingRegistrations() {
   try {
@@ -461,12 +462,60 @@ async function registerVfsAccount(account) {
     await dismissCookieModal(page);
     console.log("  [REG] ✅ Cookie banner kapatıldı");
 
-    console.log("  [REG 3/7] Sayfa yüklenmesi bekleniyor...");
-    // Daha uzun timeout ve daha fazla selector
-    await page.waitForSelector('input[type="email"], input[name="email"], input[formcontrolname*="email"], input[id*="email"]', { timeout: 45000 });
+    console.log("  [REG 3/7] Form bekleniyor...");
+    const formStartedAt = Date.now();
+    let formReady = false;
 
-    // Formun tamamen yüklenmesi için ekstra bekleme
-    await delay(3000, 5000);
+    while (Date.now() - formStartedAt < QUEUE_MAX_WAIT_MS) {
+      const state = await page.evaluate(() => {
+        const isVisible = (el) => {
+          if (!el) return false;
+          const rect = el.getBoundingClientRect();
+          const style = window.getComputedStyle(el);
+          return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+        };
+
+        const emails = Array.from(document.querySelectorAll('input[type="email"], input[name="email"], input[formcontrolname*="email"], input[id*="email"]'));
+        const passwords = Array.from(document.querySelectorAll('input[type="password"]'));
+        const title = (document.title || "").toLowerCase();
+        const body = (document.body?.innerText || "").toLowerCase();
+
+        return {
+          hasVisibleEmail: emails.some(isVisible),
+          visiblePasswords: passwords.filter(isVisible).length,
+          waitingRoom: title.includes("waiting room") || body.includes("şu anda sıradasınız") || body.includes("tahmini bekleme süreniz"),
+        };
+      });
+
+      if (state.hasVisibleEmail && state.visiblePasswords >= 2) {
+        formReady = true;
+        break;
+      }
+
+      if (state.waitingRoom) {
+        const waited = Math.round((Date.now() - formStartedAt) / 1000);
+        console.log(`  [REG] Sırada bekleniyor... ${waited}s`);
+      }
+
+      try {
+        await page.evaluate(() => {
+          const btns = Array.from(document.querySelectorAll("button"));
+          const acceptBtn = btns.find((b) => {
+            const txt = (b.textContent || "").toLowerCase();
+            return txt.includes("accept all") || txt.includes("kabul") || txt.includes("tümünü kabul") || txt.includes("tüm tanımlama");
+          }) || document.getElementById("onetrust-accept-btn-handler");
+          if (acceptBtn) acceptBtn.click();
+        });
+      } catch {}
+
+      await delay(3500, 7000);
+    }
+
+    if (!formReady) {
+      throw new Error(`Kayıt formu yüklenmedi (timeout: ${Math.round(QUEUE_MAX_WAIT_MS / 1000)}s)`);
+    }
+
+    await delay(1500, 2800);
 
     console.log("  [REG 4/7] Form dolduruluyor...");
 
@@ -496,37 +545,65 @@ async function registerVfsAccount(account) {
 
     const dialOk = await selectTurkeyDialCode(page);
     if (!dialOk) {
-      // Screenshot al ve detaylı hata ver
-      const ss = await takeScreenshotBase64(page);
-      const pageHtml = await page.evaluate(() => document.body?.innerHTML?.substring(0, 2000) || '');
-      console.log('  [REG] Page HTML (ilk 500):', pageHtml.substring(0, 500));
-      throw new Error("Dial code Turkey(90) seçilemedi - detaylar loglarda");
+      console.log("  [REG] ⚠ Dial code +90 otomatik seçilemedi, mevcut seçimle devam ediliyor");
+      try {
+        const pageHtml = await page.evaluate(() => document.body?.innerHTML?.substring(0, 1500) || '');
+        console.log('  [REG] Dial code debug (ilk 250):', pageHtml.substring(0, 250));
+      } catch {}
     }
 
     await delay(500, 1000);
 
-    const phoneSelector = [
-      'input[placeholder*="without prefix"]',
-      'input[placeholder*="Mobile Number"]',
-      'input[placeholder*="Ön ek olmadan"]',
-      'input[placeholder*="cep telefonu"]',
-      'input[formcontrolname*="mobile"]',
-      'input[formcontrolname*="phone"]',
-      'input[name*="mobile"]',
-      'input[name*="phone"]',
-      'input[type="tel"]',
-    ].join(", ");
+    const mobileInput = await page.evaluateHandle(() => {
+      const isVisible = (el) => {
+        if (!el) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+      };
 
-    const phoneInput = await page.$(phoneSelector);
-    if (!phoneInput) throw new Error("Telefon input alanı bulunamadı");
-    await phoneInput.click({ clickCount: 3 });
-    await phoneInput.type(phone, { delay: 45 });
+      const scoreInput = (inp) => {
+        const meta = `${inp.name || ""} ${inp.id || ""} ${inp.placeholder || ""} ${inp.getAttribute("aria-label") || ""}`.toLowerCase();
+        if (/otp|code|verify|email|mail|password|şifre/.test(meta)) return -10;
+        let score = 0;
+        if (/mobile|phone|tel|gsm|cep|telefon/.test(meta)) score += 5;
+        if (/ön ek olmadan|without prefix|mobile number|phone number|telefon numarası|cep numarası|cep telefonu/.test((inp.closest("div")?.textContent || "").toLowerCase())) score += 4;
+        if (inp.type === "tel") score += 3;
+        return score;
+      };
 
-    const filledPhone = await page.evaluate((sel) => {
-      const el = document.querySelector(sel);
-      return el ? String(el.value || "").replace(/\D/g, "") : "";
-    }, phoneSelector);
-    if (!filledPhone || filledPhone.length < 9) throw new Error("Telefon alanı doldurulamadı");
+      const candidates = Array.from(document.querySelectorAll('input[type="tel"], input[type="text"], input[type="number"]'))
+        .filter((inp) => isVisible(inp) && !inp.disabled && !inp.readOnly)
+        .map((inp) => ({ inp, score: scoreInput(inp) }))
+        .filter((item) => item.score > 0)
+        .sort((a, b) => b.score - a.score);
+
+      return candidates[0]?.inp || null;
+    });
+
+    if (mobileInput && mobileInput.asElement()) {
+      const phoneInput = mobileInput.asElement();
+      await phoneInput.click({ clickCount: 3 });
+      await phoneInput.type(phone, { delay: 45 });
+    } else {
+      const fallbackPhone = await page.$('input[placeholder*="Ön ek olmadan"], input[placeholder*="without prefix"], input[placeholder*="cep telefonu"], input[type="tel"]');
+      if (fallbackPhone) {
+        await fallbackPhone.click({ clickCount: 3 });
+        await fallbackPhone.type(phone, { delay: 45 });
+      } else {
+        console.log("  [REG] ⚠ Telefon input alanı bulunamadı, devam deneniyor");
+      }
+    }
+
+    const filledPhone = await page.evaluate(() => {
+      const inputs = Array.from(document.querySelectorAll('input[type="tel"], input[type="text"], input[type="number"]'));
+      const values = inputs.map((el) => String(el.value || "").replace(/\D/g, "")).filter(Boolean);
+      return values.find((v) => v.length >= 9) || "";
+    });
+
+    if (!filledPhone || filledPhone.length < 9) {
+      console.log("  [REG] ⚠ Telefon alanı doğrulanamadı, form submit yine deneniyor");
+    }
 
     console.log("  [REG 5/7] Onay kutuları...");
     try {

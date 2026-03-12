@@ -1644,9 +1644,11 @@ async function registerVfsAccount(account) {
           }
         }
 
-        await submitBtn.asElement().click();
-        clickedSubmit = true;
-        console.log("  [REG] ✅ Devam Et tıklandı");
+        if (!clickedSubmit) {
+          await submitBtn.asElement().click();
+          clickedSubmit = true;
+          console.log("  [REG] ✅ Devam Et tıklandı");
+        }
       }
     } catch (e) {
       submitError = e?.message || "Submit click hatası";

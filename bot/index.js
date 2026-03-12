@@ -326,67 +326,44 @@ async function checkAppointments(config) {
     const currentUrl = page.url();
     console.log("  [4/5] Mevcut URL:", currentUrl);
 
-    const isStillOnLogin = currentUrl.includes("/login") || currentUrl.includes("login");
-    
-    if (isStillOnLogin) {
-      console.log("  [4/5] ❌ GİRİŞ BAŞARISIZ! Hala login sayfasında.");
-      
-      // Detaylı teşhis bilgisi topla
-      const diagnostics = await page.evaluate(() => {
-        // Hata mesajları
-        const errEls = document.querySelectorAll(".error, .alert-danger, .text-danger, [role='alert'], .toast-error, .notification-error, .invalid-feedback");
-        const errors = [...errEls].map((e) => e.textContent.trim()).filter(Boolean);
+    // Sayfa içeriğinden hata/ban tespiti
+    const pageCheck = await page.evaluate(() => {
+      const body = (document.body?.innerText || "").toLowerCase();
+      const title = (document.title || "").toLowerCase();
+      const url = window.location.href.toLowerCase();
+      return {
+        title: document.title,
+        url: window.location.href,
+        isNotFound: url.includes("page-not-found") || url.includes("not-found") || url.includes("404"),
+        isSessionExpired: body.includes("oturum süresi doldu") || body.includes("oturum süreniz") || body.includes("session expired") || body.includes("geçersiz"),
+        isBanned: body.includes("engellenmiş") || body.includes("blocked") || body.includes("banned") || body.includes("erişim engellendi"),
+        isWaitingRoom: title.includes("waiting room") || body.includes("şu anda sıradasınız"),
+        isLoginPage: url.includes("/login"),
+        isDashboard: url.includes("/dashboard") || url.includes("/appointment"),
+        hasLoginForm: !!document.querySelector('input[type="email"], input[name="email"], #email'),
+        bodySnippet: (document.body?.innerText || "").substring(0, 300),
+      };
+    });
 
-        // CAPTCHA durumu
-        const turnstileFrame = document.querySelector('iframe[src*="challenges.cloudflare.com"]');
-        const turnstileDiv = document.querySelector(".cf-turnstile");
-        const captchaInput = document.querySelector('input[name="cf-turnstile-response"]');
-        const captchaStatus = {
-          frameExists: !!turnstileFrame,
-          divExists: !!turnstileDiv,
-          inputValue: captchaInput ? (captchaInput.value ? "HAS_TOKEN" : "EMPTY") : "NO_INPUT",
-        };
+    // Hata durumları kontrol
+    const isError = pageCheck.isNotFound || pageCheck.isSessionExpired || pageCheck.isBanned || pageCheck.isWaitingRoom;
+    const isLoginFailed = pageCheck.isLoginPage || pageCheck.hasLoginForm;
 
-        // Submit buton durumu
-        const submitBtn = document.querySelector('button[type="submit"]');
-        const btnStatus = submitBtn ? {
-          disabled: submitBtn.disabled,
-          text: submitBtn.textContent.trim(),
-          classes: submitBtn.className,
-        } : null;
+    if (isError || (isLoginFailed && !pageCheck.isDashboard)) {
+      let errorType = "Bilinmeyen hata";
+      if (pageCheck.isNotFound) errorType = "❌ Sayfa bulunamadı (404) - VFS yönlendirmesi başarısız";
+      else if (pageCheck.isSessionExpired) errorType = "❌ Oturum süresi dolmuş veya geçersiz - hesap banlanmış olabilir";
+      else if (pageCheck.isBanned) errorType = "❌ Hesap engellenmiş!";
+      else if (pageCheck.isWaitingRoom) errorType = "❌ Hala waiting room'da";
+      else if (isLoginFailed) errorType = "❌ Giriş başarısız - hala login sayfasında";
 
-        // Form alanları dolu mu
-        const emailInput = document.querySelector('input[type="email"], #email');
-        const passInput = document.querySelector('input[type="password"]');
-        const formStatus = {
-          emailFilled: emailInput ? !!emailInput.value : false,
-          passFilled: passInput ? !!passInput.value : false,
-        };
-
-        // Sayfa title
-        const title = document.title;
-
-        return { errors, captchaStatus, btnStatus, formStatus, title };
-      });
-
-      console.log("  [DIAG] Sayfa title:", diagnostics.title);
-      console.log("  [DIAG] Form durumu:", JSON.stringify(diagnostics.formStatus));
-      console.log("  [DIAG] CAPTCHA durumu:", JSON.stringify(diagnostics.captchaStatus));
-      console.log("  [DIAG] Submit buton:", JSON.stringify(diagnostics.btnStatus));
-      if (diagnostics.errors.length > 0) {
-        console.log("  [DIAG] Hata mesajları:", diagnostics.errors.join(" | "));
-      }
+      console.log(`  [4/5] ${errorType}`);
+      console.log(`  [DIAG] Title: ${pageCheck.title}`);
+      console.log(`  [DIAG] URL: ${pageCheck.url}`);
+      console.log(`  [DIAG] İçerik: ${pageCheck.bodySnippet.substring(0, 150)}...`);
 
       const ss = await takeScreenshotBase64(page);
-      const diagMsg = [
-        `URL: ${currentUrl}`,
-        diagnostics.errors.length > 0 ? `Hatalar: ${diagnostics.errors.join("; ")}` : null,
-        `CAPTCHA: ${diagnostics.captchaStatus.inputValue}`,
-        `Buton: ${diagnostics.btnStatus ? (diagnostics.btnStatus.disabled ? "DISABLED" : "ENABLED") : "YOK"}`,
-        `Form: email=${diagnostics.formStatus.emailFilled}, şifre=${diagnostics.formStatus.passFilled}`,
-      ].filter(Boolean).join(" | ");
-
-      await reportResult(id, "error", `Giriş başarısız! ${diagMsg}`, 0, ss);
+      await reportResult(id, "error", `${errorType} | URL: ${pageCheck.url}`, 0, ss);
       return false;
     }
 

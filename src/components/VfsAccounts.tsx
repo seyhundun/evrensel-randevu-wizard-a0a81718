@@ -215,6 +215,29 @@ export default function VfsAccounts() {
                     <Mail className="w-3 h-3" /> IMAP yapılandırılmadı
                   </span>
                 )}
+                {acc.otp_requested_at && !acc.manual_otp && (
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <MessageSquare className="w-3.5 h-3.5 text-orange-500 animate-pulse" />
+                    <span className="text-xs font-medium text-orange-600">SMS OTP bekleniyor!</span>
+                    <Input
+                      type="text"
+                      placeholder="Kodu girin"
+                      maxLength={8}
+                      className="h-7 w-24 text-xs font-mono"
+                      value={smsOtpInputs[acc.id] || ""}
+                      onChange={(e) => setSmsOtpInputs((prev) => ({ ...prev, [acc.id]: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && submitManualOtp(acc.id)}
+                    />
+                    <Button size="sm" variant="default" className="h-7 px-2 gap-1" onClick={() => submitManualOtp(acc.id)}>
+                      <Send className="w-3 h-3" /> Gönder
+                    </Button>
+                  </div>
+                )}
+                {acc.manual_otp && (
+                  <span className="text-xs text-emerald-600 flex items-center gap-1 mt-0.5">
+                    <MessageSquare className="w-3 h-3" /> OTP gönderildi: {acc.manual_otp}
+                  </span>
+                )}
                 {acc.fail_count > 0 && (
                   <span className="text-xs text-destructive">Başarısız giriş: {acc.fail_count}</span>
                 )}

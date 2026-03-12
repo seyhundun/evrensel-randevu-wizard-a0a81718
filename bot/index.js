@@ -159,6 +159,43 @@ async function humanMove(page) {
   await delay(100, 300);
 }
 
+async function humanType(page, target, text, options = {}) {
+  const {
+    clearFirst = false,
+    minDelay = 70,
+    maxDelay = 220,
+    pauseChance = 0.14,
+    pauseMin = 220,
+    pauseMax = 950,
+  } = options;
+
+  if (!text && text !== 0) return false;
+  const element = typeof target === "string" ? await page.$(target) : target;
+  if (!element) return false;
+
+  await element.click({ clickCount: 1 });
+  await delay(180, 450);
+
+  if (clearFirst) {
+    await page.keyboard.down("Control");
+    await page.keyboard.press("a");
+    await page.keyboard.up("Control");
+    await page.keyboard.press("Backspace");
+    await delay(120, 300);
+  }
+
+  for (const ch of String(text)) {
+    const keyDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+    await page.keyboard.type(ch, { delay: keyDelay });
+    if (Math.random() < pauseChance) {
+      await delay(pauseMin, pauseMax);
+    }
+  }
+
+  await delay(180, 420);
+  return true;
+}
+
 const apiHeaders = {
   "Content-Type": "application/json",
   Authorization: `Bearer ${CONFIG.API_KEY}`,

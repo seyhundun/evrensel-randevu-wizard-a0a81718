@@ -1,0 +1,13 @@
+{
+  "name": "vfs-appointment-bot",
+  "version": "1.0.0",
+  "description": "VFS Global randevu takip botu",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "puppeteer": "^22.0.0",
+    "dotenv": "^16.4.0"
+  }
+}

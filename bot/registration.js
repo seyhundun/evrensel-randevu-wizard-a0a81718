@@ -2,6 +2,7 @@ const CONFIG = global.CONFIG;
 const apiHeaders = global.apiHeaders;
 const delay = global.delay;
 const takeScreenshotBase64 = global.takeScreenshotBase64;
+const QUEUE_MAX_WAIT_MS = Number(process.env.QUEUE_MAX_WAIT_MS || 360000);
 
 async function fetchPendingRegistrations() {
   try {

@@ -897,6 +897,108 @@ async function waitForRegistrationOtp(accountId, otpType, timeoutMs = 180000) {
   return null;
 }
 
+function normalizePhoneNumber(rawPhone) {
+  const digits = String(rawPhone || "").replace(/\D/g, "");
+  let mobileNumber = digits;
+
+  if (mobileNumber.startsWith("90") && mobileNumber.length > 10) {
+    mobileNumber = mobileNumber.slice(2);
+  }
+  if (mobileNumber.startsWith("0")) {
+    mobileNumber = mobileNumber.slice(1);
+  }
+  if (mobileNumber.length > 10) {
+    mobileNumber = mobileNumber.slice(-10);
+  }
+
+  return { dialCode: "90", mobileNumber };
+}
+
+async function selectTurkeyDialCode(page) {
+  const nativeSelected = await page.evaluate(() => {
+    const selectEls = Array.from(document.querySelectorAll("select"));
+    for (const select of selectEls) {
+      const options = Array.from(select.options || []);
+      const match = options.find((opt) => {
+        const text = `${opt.textContent || ""} ${opt.value || ""}`.toLowerCase();
+        return /turkey|türkiye|turkiye|\(90\)|\+90|(^|\D)90(\D|$)/i.test(text);
+      });
+      if (!match) continue;
+
+      select.value = match.value;
+      select.dispatchEvent(new Event("input", { bubbles: true }));
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      return (match.textContent || match.value || "").trim();
+    }
+    return null;
+  });
+
+  if (nativeSelected) {
+    console.log(`  [REG] ✅ Dial code seçildi (native: ${nativeSelected})`);
+    await delay(300, 700);
+    return true;
+  }
+
+  const triggerClicked = await page.evaluate(() => {
+    const isVisible = (el) => {
+      if (!el) return false;
+      const rect = el.getBoundingClientRect();
+      const style = window.getComputedStyle(el);
+      return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+    };
+
+    const labelCandidates = Array.from(document.querySelectorAll("label, span, div, p")).filter((el) => {
+      const text = (el.textContent || "").toLowerCase();
+      return text.includes("arama kodu") || text.includes("dial code") || text.includes("country code");
+    });
+
+    for (const label of labelCandidates) {
+      const scope = label.closest("mat-form-field, .mat-mdc-form-field, .form-group, .row, .col, .field, div, section") || label.parentElement;
+      if (!scope) continue;
+      const trigger = scope.querySelector('mat-select, [role="combobox"], .mat-mdc-select-trigger, .mat-select-trigger, .ng-select-container, [id*="dial" i], [name*="dial" i], [aria-label*="dial" i], [aria-label*="arama kodu" i]');
+      if (trigger && isVisible(trigger)) {
+        trigger.click();
+        return true;
+      }
+    }
+
+    return false;
+  });
+
+  if (triggerClicked) {
+    await delay(300, 900);
+
+    const customSelected = await page.evaluate(() => {
+      const isVisible = (el) => {
+        if (!el) return false;
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+        return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+      };
+
+      const options = Array.from(document.querySelectorAll('[role="option"], mat-option, .mat-mdc-option, .mat-option, .ng-option, li[role="option"]'))
+        .filter((el) => isVisible(el));
+
+      const match = options.find((opt) => {
+        const text = (opt.textContent || "").toLowerCase();
+        return /turkey|türkiye|turkiye|\(90\)|\+90|(^|\D)90(\D|$)/i.test(text);
+      });
+
+      if (!match) return null;
+      match.click();
+      return (match.textContent || "").trim();
+    });
+
+    if (customSelected) {
+      console.log(`  [REG] ✅ Dial code seçildi (custom: ${customSelected})`);
+      await delay(300, 700);
+      return true;
+    }
+  }
+
+  return false;
+}
+
 async function registerVfsAccount(account) {
   const ts = new Date().toLocaleTimeString("tr-TR");
   console.log(`\n[${ts}] 📝 VFS Kayıt: ${account.email}`);

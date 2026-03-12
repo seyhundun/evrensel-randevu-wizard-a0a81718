@@ -407,7 +407,7 @@ async function checkAppointments(config, account) {
 
     // STEP 5: OTP Doğrulama Kontrolü
     console.log("  [5/6] OTP kontrol...");
-    const otpResult = await handleOtpVerification(page);
+    const otpResult = await handleOtpVerification(page, account);
     if (!otpResult.ok && otpResult.reason === "otp_required") {
       console.log("  [5/6] ❌ OTP doğrulama gerekli - hesap beklemeye alınıyor");
       await reportResult(id, "error", `OTP doğrulama gerekli | Hesap: ${account.email} | Manuel müdahale gerekli`, 0, otpResult.screenshot);

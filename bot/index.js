@@ -1416,6 +1416,14 @@ async function registerVfsAccount(account) {
           if (beforeDiag.validationHints?.length) {
             console.log("  [REG] Validasyon mesajları:", JSON.stringify(beforeDiag.validationHints));
           }
+          if (beforeDiag.captchaHints?.length) {
+            console.log("  [REG] CAPTCHA ipuçları:", JSON.stringify(beforeDiag.captchaHints));
+          }
+
+          const likelyCaptchaBlock =
+            beforeDiag.invalidFields.length === 0 &&
+            beforeDiag.hasTurnstileWidget &&
+            !beforeDiag.hasCaptchaToken;
 
           await tickAllCheckboxes(page);
           await delay(900, 1800);
@@ -1459,6 +1467,12 @@ async function registerVfsAccount(account) {
             }
           }
 
+          if (likelyCaptchaBlock) {
+            console.log("  [REG] ⚠ Form alanları valid görünüyor, CAPTCHA yeniden deneniyor...");
+            await solveTurnstile(page);
+            await delay(2200, 4200);
+          }
+
           await page.evaluate(() => {
             const form = document.querySelector("form");
             if (form) {
@@ -1476,6 +1490,14 @@ async function registerVfsAccount(account) {
             if (afterDiag.validationHints?.length) {
               console.log("  [REG] Validasyon mesajları (son):", JSON.stringify(afterDiag.validationHints));
             }
+            if (afterDiag.captchaHints?.length) {
+              console.log("  [REG] CAPTCHA ipuçları (son):", JSON.stringify(afterDiag.captchaHints));
+            }
+
+            if (afterDiag.hasTurnstileWidget && !afterDiag.hasCaptchaToken) {
+              throw new Error("Devam Et butonu pasif: CAPTCHA doğrulaması tamamlanmadı");
+            }
+
             throw new Error("Devam Et butonu pasif kaldı (form invalid)");
           }
         }

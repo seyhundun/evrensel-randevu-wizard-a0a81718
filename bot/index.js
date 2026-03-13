@@ -2292,21 +2292,16 @@ async function registerVfsAccount(account) {
       throw new Error("Submit butonu bulunamadı");
     }
 
-    await delay(4000, 7000);
+    await delay(3000, 5000);
 
     // OTP DOĞRULAMA
     console.log("  [REG] OTP doğrulama kontrol...");
-    const otpDetected = await page.evaluate(() => {
-      const text = (document.body?.innerText || "").toLowerCase();
-      const hasText = /otp|verification code|doğrulama kodu|one time|sms code|email code|kodu girin|code sent/.test(text);
-      const hasInput = !!document.querySelector('input[autocomplete="one-time-code"], input[name*="otp" i], input[id*="otp" i], input[maxlength="1"], input[maxlength="6"]');
-      return hasText || hasInput;
-    });
+    const otpScreen = await waitForOtpScreenAfterSubmit(page, 45000);
 
-    if (!otpDetected) {
-      const pageText = await page.evaluate(() => (document.body?.innerText || '').substring(0, 300));
+    if (!otpScreen.ok) {
+      const pageText = otpScreen.pageTextPreview || await page.evaluate(() => (document.body?.innerText || '').substring(0, 300));
       console.log("  [REG] Sayfa durumu:", pageText.substring(0, 200));
-      await postRegError(account, page, "OTP ekranı bulunamadı");
+      await postRegError(account, page, "OTP ekranı bulunamadı (submit sonrası)");
       await completeRegistration(account.id, false);
       return false;
     }

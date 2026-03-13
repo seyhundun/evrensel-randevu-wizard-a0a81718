@@ -2470,7 +2470,7 @@ async function registerVfsAccount(account) {
             {
               config_id: configId,
               status: "checking",
-              message: `[REG] Form dolduruldu, Devam Et tıklanacak | ${account.email}`,
+              message: `[REG] Form dolduruldu, Devam Et tıklanacak | ${account.email} | Ülke: ${regCountryLabel}`,
               slots_available: 0,
               screenshot_base64: preSubmitSS,
             },

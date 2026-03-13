@@ -220,19 +220,6 @@ Deno.serve(async (req) => {
             { headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-          const { account_id, success } = body;
-          await supabase
-            .from("idata_accounts")
-            .update({
-              registration_status: success ? "completed" : "failed",
-              status: success ? "active" : "active",
-            })
-            .eq("id", account_id);
-          return new Response(
-            JSON.stringify({ ok: true }),
-            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
 
         // Bot marks registration complete or failed
         if (body.action === "complete_registration") {

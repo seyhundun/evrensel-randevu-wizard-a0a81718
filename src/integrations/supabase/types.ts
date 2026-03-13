@@ -339,6 +339,8 @@ export type Database = {
       vfs_accounts: {
         Row: {
           banned_until: string | null
+          captcha_manual_approved: boolean | null
+          captcha_waiting_at: string | null
           created_at: string
           email: string
           fail_count: number
@@ -359,6 +361,8 @@ export type Database = {
         }
         Insert: {
           banned_until?: string | null
+          captcha_manual_approved?: boolean | null
+          captcha_waiting_at?: string | null
           created_at?: string
           email: string
           fail_count?: number
@@ -379,6 +383,8 @@ export type Database = {
         }
         Update: {
           banned_until?: string | null
+          captcha_manual_approved?: boolean | null
+          captcha_waiting_at?: string | null
           created_at?: string
           email?: string
           fail_count?: number

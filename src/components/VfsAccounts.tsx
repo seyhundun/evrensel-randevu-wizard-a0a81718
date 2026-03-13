@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Plus, Trash2, Eye, EyeOff, UserCheck, Ban, Clock, MessageSquare, Send, UserPlus, Mail, Phone, Loader2, RefreshCw } from "lucide-react";
+import { Plus, Trash2, Eye, EyeOff, UserCheck, Ban, Clock, MessageSquare, Send, UserPlus, Mail, Phone, Loader2, RefreshCw, ShieldAlert, CheckCircle2 } from "lucide-react";
 
 const VFS_PASSWORD_SPECIAL = "$@#!%*?";
 const VFS_PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[$@#!%*?])[A-Za-z\d$@#!%*?]{8,15}$/;
@@ -68,6 +68,8 @@ interface VfsAccount {
   registration_status: string | null;
   registration_otp_type: string | null;
   registration_otp: string | null;
+  captcha_waiting_at: string | null;
+  captcha_manual_approved: boolean;
 }
 
 export default function VfsAccounts() {
@@ -189,6 +191,18 @@ export default function VfsAccounts() {
       .update({ status: "active", fail_count: 0, banned_until: null })
       .eq("id", id);
     toast.success("Hesap tekrar aktif edildi");
+  };
+
+  const approveCaptchaManual = async (id: string) => {
+    const { error } = await supabase
+      .from("vfs_accounts")
+      .update({ captcha_manual_approved: true } as any)
+      .eq("id", id);
+    if (error) {
+      toast.error("Onay gönderilemedi: " + error.message);
+    } else {
+      toast.success("Manuel devralma onayı gönderildi! Bot devam edecek.");
+    }
   };
 
   const togglePassword = (id: string) => {
@@ -362,6 +376,28 @@ export default function VfsAccounts() {
                   </Button>
                 </div>
               </div>
+
+              {/* CAPTCHA Manuel Devral */}
+              {acc.captcha_waiting_at && !acc.captcha_manual_approved && (
+                <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg p-3 animate-pulse">
+                  <ShieldAlert className="w-5 h-5 text-red-500 shrink-0" />
+                  <div className="flex-1">
+                    <span className="text-sm font-semibold text-red-700 dark:text-red-400">CAPTCHA'da takıldı — Manuel devralma bekleniyor!</span>
+                    <p className="text-xs text-red-600/70 dark:text-red-400/70 mt-0.5">
+                      Bot CAPTCHA'yı çözemedi. Onay verirsen zorla devam edecek.
+                      <span className="ml-1 text-muted-foreground">({new Date(acc.captcha_waiting_at).toLocaleTimeString("tr-TR")})</span>
+                    </p>
+                  </div>
+                  <Button size="sm" variant="default" className="gap-1.5 bg-red-600 hover:bg-red-700 text-white shrink-0" onClick={() => approveCaptchaManual(acc.id)}>
+                    <CheckCircle2 className="w-4 h-4" /> Devam Et Onayla
+                  </Button>
+                </div>
+              )}
+              {acc.captcha_waiting_at && acc.captcha_manual_approved && (
+                <span className="text-xs text-emerald-600 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> Manuel devralma onayı gönderildi, bot devam ediyor...
+                </span>
+              )}
 
               {/* Registration OTP input */}
               {isRegistering(acc) && acc.registration_otp_type && !acc.registration_otp && (

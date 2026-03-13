@@ -1766,6 +1766,47 @@ async function waitForRegistrationOtp(accountId, otpType, timeoutMs = 180000) {
   return null;
 }
 
+async function signalCaptchaWaiting(accountId) {
+  try {
+    await supabase.from("vfs_accounts").update({
+      captcha_waiting_at: new Date().toISOString(),
+      captcha_manual_approved: false,
+    }).eq("id", accountId);
+    console.log("  [REG] 🛑 CAPTCHA bekleme sinyali gönderildi — dashboard'dan onay bekleniyor");
+  } catch (e) {
+    console.warn("  [REG] captcha_waiting_at set hatası:", e.message);
+  }
+}
+
+async function clearCaptchaWaiting(accountId) {
+  try {
+    await supabase.from("vfs_accounts").update({
+      captcha_waiting_at: null,
+      captcha_manual_approved: false,
+    }).eq("id", accountId);
+  } catch (e) {}
+}
+
+async function waitForCaptchaManualApproval(accountId, timeoutMs = 120000) {
+  const startTime = Date.now();
+  while (Date.now() - startTime < timeoutMs) {
+    const { data } = await supabase
+      .from("vfs_accounts")
+      .select("captcha_manual_approved")
+      .eq("id", accountId)
+      .single();
+    if (data?.captcha_manual_approved) {
+      console.log("  [REG] ✅ Dashboard'dan manuel devralma onayı alındı!");
+      return true;
+    }
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    console.log(`  [REG] Manuel onay bekleniyor... ${elapsed}s/${Math.round(timeoutMs / 1000)}s`);
+    await delay(4000, 5000);
+  }
+  console.log("  [REG] ❌ Manuel onay zaman aşımı");
+  return false;
+}
+
 function normalizePhoneNumber(rawPhone) {
   const digits = String(rawPhone || "").replace(/\D/g, "");
   let mobileNumber = digits;
@@ -2926,9 +2967,10 @@ async function registerVfsAccount(account) {
 
               if (!solvedAgain || !tokenAfterRetry) {
                 usedCaptchaManualFallback = true;
-                await logStep(regLogConfigId, "reg_captcha", `CAPTCHA otomatik doğrulanamadı, manuel/fallback submit deneniyor | ${account.email} | Ülke: ${regCountryLabel}`);
+                await logStep(regLogConfigId, "reg_captcha", `CAPTCHA otomatik doğrulanamadı, dashboard'dan onay bekleniyor | ${account.email} | Ülke: ${regCountryLabel}`);
                 console.log("  [REG] ⚠ CAPTCHA manuel/fallback moda geçiliyor...");
 
+                // Checkbox fallback denemeleri
                 for (let manualTry = 1; manualTry <= 3; manualTry++) {
                   await tryClickTurnstileCheckbox(page);
                   await delay(1500, 2800);
@@ -2936,6 +2978,19 @@ async function registerVfsAccount(account) {
                   if (tokenAfterRetry) {
                     console.log(`  [REG] ✅ Fallback deneme ${manualTry}/3 ile token alındı`);
                     break;
+                  }
+                }
+
+                // Hala token yoksa dashboard'dan onay bekle
+                if (!tokenAfterRetry) {
+                  await signalCaptchaWaiting(account.id);
+                  await logStep(regLogConfigId, "reg_captcha_wait", `CAPTCHA çözülemedi — dashboard'dan manuel onay bekleniyor | ${account.email}`);
+                  const approved = await waitForCaptchaManualApproval(account.id, 120000);
+                  if (approved) {
+                    await logStep(regLogConfigId, "reg_captcha_approved", `Manuel onay alındı, zorla devam ediliyor | ${account.email}`);
+                  } else {
+                    await clearCaptchaWaiting(account.id);
+                    throw new Error(`CAPTCHA manuel onay zaman aşımı | Ülke: ${regCountryLabel}`);
                   }
                 }
               }
@@ -2952,9 +3007,11 @@ async function registerVfsAccount(account) {
             }
 
             if (!forceResult.clicked) {
+              await clearCaptchaWaiting(account.id);
               throw new Error(`Devam Et butonu pasif kaldı (form invalid/captcha) | Ülke: ${regCountryLabel}`);
             }
 
+            await clearCaptchaWaiting(account.id);
             clickedSubmit = true;
             await delay(1200, 2400);
           }

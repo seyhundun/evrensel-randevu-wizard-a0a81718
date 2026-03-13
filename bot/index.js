@@ -2629,7 +2629,7 @@ async function registerVfsAccount(account) {
               await delay(1200, 2200);
               const tokenAfterRetry = await waitForTurnstileToken(page, 8000);
               if (!solvedAgain || !tokenAfterRetry) {
-                throw new Error("Devam Et butonu pasif: CAPTCHA doğrulaması tamamlanmadı");
+                throw new Error(`Devam Et butonu pasif: CAPTCHA doğrulaması tamamlanmadı | Ülke: ${regCountryLabel}`);
               }
             }
 

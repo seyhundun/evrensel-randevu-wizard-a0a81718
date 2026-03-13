@@ -901,43 +901,90 @@ async function checkAppointments(config, account) {
       await page.waitForSelector('input[type="email"], input[name="email"], #email', { timeout: 20000 });
       await humanMove(page);
       await delay(500, 1500);
-      await page.click('input[type="email"], input[name="email"], #email');
-      await page.keyboard.down("Control");
-      await page.keyboard.press("a");
-      await page.keyboard.up("Control");
-      await delay(100, 300);
-      for (const ch of account.email) {
-        await page.keyboard.type(ch, { delay: Math.random() * 120 + 30 });
-        if (Math.random() < 0.05) await delay(200, 600);
-      }
-      await delay(800, 1500);
-      await page.click('input[type="password"]');
-      await delay(300, 600);
-      for (const ch of account.password) {
-        await page.keyboard.type(ch, { delay: Math.random() * 120 + 30 });
-        if (Math.random() < 0.05) await delay(200, 600);
-      }
-      await delay(800, 1500);
+
+      await humanType(page, 'input[type="email"], input[name="email"], #email', account.email, {
+        clearFirst: true,
+        minDelay: 40,
+        maxDelay: 140,
+      });
+
+      await delay(400, 900);
+      await humanType(page, 'input[type="password"]', account.password, {
+        clearFirst: true,
+        minDelay: 40,
+        maxDelay: 140,
+      });
+
+      await delay(600, 1200);
       await humanMove(page);
 
-      // Turnstile checkbox
-      try {
-        const turnstileFrame = page.frames().find(f => f.url().includes("challenges.cloudflare.com"));
-        if (turnstileFrame) {
-          const checkbox = await turnstileFrame.$('input[type="checkbox"], .cb-i');
-          if (checkbox) { await checkbox.click(); console.log("  [4/6] ✅ Turnstile checkbox tıklandı"); await delay(2000, 4000); }
+      // Login ekranındaki Turnstile çözümü (kuyruktan ayrı doğrulama gerekiyor)
+      let token = await waitForTurnstileToken(page, 2500);
+      for (let i = 0; !token && i < 3; i++) {
+        await solveTurnstile(page);
+        await delay(1000, 1800);
+        token = await waitForTurnstileToken(page, 7000);
+        if (!token) {
+          await tryClickTurnstileCheckbox(page);
+          await delay(1000, 1800);
+          token = await waitForTurnstileToken(page, 5000);
         }
-      } catch (e) {}
+      }
 
-      const submitBtn = await page.evaluateHandle(() => {
-        const btns = [...document.querySelectorAll("button")];
-        return btns.find((b) => {
-          const txt = b.textContent.toLowerCase();
+      if (token) {
+        console.log("  [4/6] ✅ Login Turnstile token alındı");
+      } else {
+        console.log("  [4/6] ⚠ Login Turnstile token alınamadı");
+      }
+
+      const submitAttempt = await page.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll("button"));
+        const submitBtn = btns.find((b) => {
+          const txt = (b.textContent || "").toLowerCase();
           return txt.includes("oturum") || txt.includes("sign in") || txt.includes("login") || txt.includes("giriş");
-        }) || document.querySelector('button[type="submit"]') || null;
+        }) || document.querySelector('button[type="submit"]');
+
+        const form = submitBtn?.closest("form") || document.querySelector("form");
+        if (!submitBtn) {
+          if (form && typeof form.requestSubmit === "function") {
+            form.requestSubmit();
+            return { clicked: true, forced: true, disabled: false };
+          }
+          return { clicked: false, forced: false, disabled: false };
+        }
+
+        const isDisabled =
+          !!submitBtn.disabled ||
+          submitBtn.hasAttribute("disabled") ||
+          submitBtn.getAttribute("aria-disabled") === "true";
+
+        if (isDisabled) {
+          submitBtn.removeAttribute("disabled");
+          submitBtn.setAttribute("aria-disabled", "false");
+          submitBtn.disabled = false;
+        }
+
+        submitBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        submitBtn.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+        submitBtn.click();
+
+        if (form) {
+          form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+          if (typeof form.requestSubmit === "function") {
+            try { form.requestSubmit(); } catch {}
+          }
+        }
+
+        return { clicked: true, forced: isDisabled, disabled: isDisabled };
       });
-      if (submitBtn && submitBtn.asElement()) await submitBtn.asElement().click();
-      else await page.click('button[type="submit"]');
+
+      if (!submitAttempt.clicked) {
+        console.log("  [4/6] ⚠ Submit butonu bulunamadı, Enter ile denenecek");
+        await page.keyboard.press("Enter");
+      } else if (submitAttempt.disabled) {
+        console.log("  [4/6] ⚠ Submit disabled geldi, force submit denendi");
+      }
+
       await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 }).catch(() => {});
       await delay(3000, 5000);
     } catch (loginErr) {

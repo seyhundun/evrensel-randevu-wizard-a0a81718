@@ -364,7 +364,17 @@ export default function IdataAccounts() {
             </div>
             <div>
               <Label className="text-xs">Gidiş Amacı</Label>
-              <Input placeholder="Turizm" value={form.travel_purpose} onChange={e => updateForm("travel_purpose", e.target.value)} />
+              <select
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={form.travel_purpose}
+                onChange={e => updateForm("travel_purpose", e.target.value)}
+              >
+                <option value="">Gidiş amacı seçin</option>
+                <option value="Ticari">Ticari</option>
+                <option value="Eğitim">Eğitim</option>
+                <option value="Lojistik">Lojistik</option>
+                <option value="Diğer">Diğer</option>
+              </select>
             </div>
           </div>
 

@@ -455,7 +455,22 @@ async function selectDropdownOption(page, dropdownSelector, optionText) {
   }
 }
 
-// ==================== REGISTRATION ====================
+// ==================== LOGIN OTP WAIT ====================
+async function waitForLoginOtp(accountId, timeoutMs = 180000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const data = await apiPost({ action: "idata_get_login_otp", account_id: accountId }, "get_login_otp");
+      if (data?.manual_otp) {
+        return data.manual_otp;
+      }
+    } catch (err) {
+      console.log(`  [OTP] Poll hatası: ${err.message}`);
+    }
+    await delay(CONFIG.OTP_POLL_MS, CONFIG.OTP_POLL_MS + 1000);
+  }
+  return null;
+}
 async function registerAccount(page, account) {
   console.log(`\n📝 [iDATA] Kayıt başlıyor: ${account.email}`);
 
@@ -716,6 +731,16 @@ async function loginToIdata(page, account) {
     }).catch(() => {});
     await delay(1000, 2000);
 
+    // Üyelik numarası — login formunda ilk text input
+    if (account.membership_number) {
+      console.log(`  [LOGIN] Üyelik no giriliyor: ${account.membership_number}`);
+      const memberInput = await page.$('input[type="text"]:not([type="email"]):not([type="password"])');
+      if (memberInput) {
+        await humanType(page, memberInput, account.membership_number);
+        await delay(500, 1000);
+      }
+    }
+
     // Email
     await humanType(page, 'input[type="email"], input[name*="email"], input[id*="email"]', account.email);
     await delay(1000, 2000);
@@ -727,7 +752,32 @@ async function loginToIdata(page, account) {
     // CAPTCHA
     const captchaCode = await solveImageCaptcha(page);
     if (captchaCode) {
-      await humanType(page, 'input[name*="captcha"], input[placeholder*="Doğrulama"]', captchaCode);
+      // CAPTCHA input — genellikle label'ı "Doğrulama" olan veya son text input
+      const captchaFilled = await page.evaluate((code) => {
+        const inputs = Array.from(document.querySelectorAll('input[type="text"]'));
+        // Captcha input'u bul — label'da "doğrulama" veya "captcha" geçen
+        const captchaInput = inputs.find(inp => {
+          const parent = inp.closest("div, fieldset, section, .form-group");
+          const parentText = (parent?.innerText || "").toLowerCase();
+          const placeholder = (inp.placeholder || "").toLowerCase();
+          return parentText.includes("doğrulama") || parentText.includes("captcha") || 
+                 placeholder.includes("doğrulama") || placeholder.includes("captcha") ||
+                 placeholder.includes("kod");
+        });
+        if (captchaInput) {
+          captchaInput.focus();
+          captchaInput.value = code;
+          captchaInput.dispatchEvent(new Event("input", { bubbles: true }));
+          captchaInput.dispatchEvent(new Event("change", { bubbles: true }));
+          return true;
+        }
+        return false;
+      }, captchaCode);
+      
+      if (!captchaFilled) {
+        // Fallback — eski yöntem
+        await humanType(page, 'input[name*="captcha"], input[placeholder*="Doğrulama"]', captchaCode);
+      }
       await delay(500, 1000);
     }
 
@@ -742,6 +792,79 @@ async function loginToIdata(page, account) {
     });
 
     await delay(5000, 8000);
+
+    // OTP popup kontrolü — "Mailinize doğrulama kodu gönderildi" mesajı
+    const otpNeeded = await page.evaluate(() => {
+      const body = (document.body?.innerText || "").toLowerCase();
+      return body.includes("doğrulama kodu gönderildi") || 
+             body.includes("mailinize") && body.includes("kod") ||
+             body.includes("e-posta") && body.includes("doğrulama");
+    });
+
+    if (otpNeeded) {
+      console.log("  [LOGIN] 📧 Mail doğrulama kodu gerekiyor!");
+      
+      // "Tamam" butonuna tıkla (popup'ı kapat)
+      await page.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll("button, a"));
+        const okBtn = btns.find(b => {
+          const txt = (b.textContent || "").trim().toLowerCase();
+          return txt === "tamam" || txt === "ok" || txt === "onay";
+        });
+        if (okBtn) okBtn.click();
+      });
+      await delay(1000, 2000);
+
+      // Bot API'ye OTP isteği bildir
+      await apiPost({ action: "idata_set_login_otp_requested", account_id: account.id }, "set_login_otp");
+      await idataLog("login_otp", `📧 Giriş OTP bekleniyor | Hesap: ${account.email}`);
+
+      // Dashboard'dan OTP'yi bekle (max 3 dakika)
+      console.log("  [LOGIN] ⏳ Dashboard'dan OTP bekleniyor (max 180s)...");
+      const otpCode = await waitForLoginOtp(account.id, 180000);
+      
+      if (!otpCode) {
+        console.log("  [LOGIN] ❌ OTP zaman aşımı");
+        await idataLog("login_fail", `OTP zaman aşımı | Hesap: ${account.email}`);
+        return { success: false, reason: "otp_timeout" };
+      }
+
+      console.log(`  [LOGIN] ✅ OTP alındı: ${otpCode}`);
+      
+      // OTP kodunu gir
+      const otpInput = await page.$('input[type="text"], input[name*="otp"], input[name*="code"], input[id*="otp"], input[id*="code"]');
+      if (otpInput) {
+        await humanType(page, otpInput, otpCode);
+        await delay(500, 1000);
+      } else {
+        // Sayfadaki tek/son text input'a gir
+        await page.evaluate((code) => {
+          const inputs = Array.from(document.querySelectorAll('input[type="text"]'));
+          const last = inputs[inputs.length - 1];
+          if (last) {
+            last.focus();
+            last.value = code;
+            last.dispatchEvent(new Event("input", { bubbles: true }));
+            last.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+        }, otpCode);
+      }
+      await delay(1000, 2000);
+
+      // Doğrula/Giriş butonuna tıkla
+      await page.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll("button, input[type='submit']"));
+        const verifyBtn = btns.find(b => {
+          const txt = (b.textContent || b.value || "").toLowerCase();
+          return txt.includes("doğrula") || txt.includes("onayla") || txt.includes("giriş") || txt.includes("verify");
+        }) || document.querySelector('button[type="submit"]');
+        if (verifyBtn) verifyBtn.click();
+      });
+      await delay(5000, 8000);
+
+      // OTP'yi temizle
+      await apiPost({ action: "idata_clear_login_otp", account_id: account.id }, "clear_login_otp");
+    }
 
     const state = await readPageState(page);
     const stillLogin = state.url.includes("/membership/login") || state.body.includes("giriş yap");

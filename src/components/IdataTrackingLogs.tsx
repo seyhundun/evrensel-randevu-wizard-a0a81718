@@ -31,6 +31,7 @@ const statusConfig: Record<string, { icon: React.ReactNode; label: string; color
   login_captcha:  { icon: <ShieldCheck className="w-4 h-4" />, label: "CAPTCHA Çözülüyor", color: "text-amber-500 bg-amber-500/10" },
   login_success:  { icon: <CheckCircle2 className="w-4 h-4" />, label: "Giriş Başarılı", color: "text-green-500 bg-green-500/10" },
   login_fail:     { icon: <AlertCircle className="w-4 h-4" />, label: "Giriş Başarısız", color: "text-destructive bg-destructive/10" },
+  login_otp:      { icon: <KeyRound className="w-4 h-4" />, label: "📧 Giriş OTP Bekleniyor", color: "text-amber-500 bg-amber-500/10 font-bold" },
 
   // --- Registration flow ---
   reg_start:      { icon: <UserPlus className="w-4 h-4" />, label: "Kayıt Başladı", color: "text-violet-500 bg-violet-500/10" },

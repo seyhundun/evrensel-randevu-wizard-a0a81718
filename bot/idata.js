@@ -13,7 +13,7 @@ const CONFIG = {
   CAPTCHA_API_KEY: (process.env.CAPTCHA_API_KEY || process.env.TWOCAPTCHA_API_KEY || "").trim(),
   REGISTER_URL: "https://it-tr-appointment.idata.com.tr/tr/membership/register",
   LOGIN_URL: "https://it-tr-appointment.idata.com.tr/tr/membership/login",
-  APPOINTMENT_URL: "https://it-tr-appointment.idata.com.tr/tr/appointment",
+  APPOINTMENT_URL: "https://it-tr-appointment.idata.com.tr/tr/membership/dashboard/application/availability",
   CHECK_INTERVAL_MS: Number(process.env.IDATA_CHECK_INTERVAL_MS || 120000),
   OTP_WAIT_MS: Number(process.env.OTP_WAIT_MS || 120000),
   OTP_POLL_MS: Number(process.env.OTP_POLL_MS || 5000),
@@ -747,7 +747,7 @@ async function loginToIdata(page, account) {
 }
 
 // ==================== APPOINTMENT CHECK ====================
-async function checkAppointments(page) {
+async function checkAppointments(page, account) {
   console.log("  [CHECK] Randevu kontrol ediliyor...");
 
   try {
@@ -755,25 +755,139 @@ async function checkAppointments(page) {
     await page.goto(CONFIG.APPOINTMENT_URL, { waitUntil: "networkidle2", timeout: 30000 });
     await delay(3000, 5000);
 
+    // Cloudflare kontrolü
+    const cfCheck = await waitCloudflareBypass(page, "randevu sayfası", 20000);
+    if (!cfCheck.ok) {
+      return { found: false, reason: "cloudflare", screenshot: cfCheck.screenshot };
+    }
+
+    // 1) Üyelik numarasını gir ve Ekle butonuna tıkla
+    if (account.membership_number) {
+      console.log(`  [CHECK] Üyelik no giriliyor: ${account.membership_number}`);
+      
+      // Üyelik numarası input alanını bul ve doldur
+      const memberInput = await page.$('input[type="text"]');
+      if (memberInput) {
+        await humanType(page, memberInput, account.membership_number);
+        await delay(500, 1000);
+
+        // "Ekle" butonuna tıkla
+        await page.evaluate(() => {
+          const btns = Array.from(document.querySelectorAll("button, input[type='button'], input[type='submit'], a"));
+          const addBtn = btns.find(b => {
+            const txt = (b.textContent || b.value || "").trim().toLowerCase();
+            return txt === "ekle" || txt.includes("ekle");
+          });
+          if (addBtn) addBtn.click();
+        });
+        await delay(3000, 5000);
+      }
+    }
+
+    // 2) Şehir seçimi (dropdown)
+    if (account.residence_city) {
+      console.log(`  [CHECK] Şehir seçiliyor: ${account.residence_city}`);
+      await page.evaluate((city) => {
+        const selects = Array.from(document.querySelectorAll("select"));
+        // İlk select genelde şehir
+        for (const sel of selects) {
+          const opts = Array.from(sel.options);
+          const match = opts.find(o => o.text.trim().toLowerCase() === city.toLowerCase());
+          if (match) {
+            sel.value = match.value;
+            sel.dispatchEvent(new Event("change", { bubbles: true }));
+            break;
+          }
+        }
+      }, account.residence_city);
+      await delay(2000, 3000);
+    }
+
+    // 3) Ofis seçimi
+    if (account.idata_office) {
+      console.log(`  [CHECK] Ofis seçiliyor: ${account.idata_office}`);
+      await page.evaluate((office) => {
+        const selects = Array.from(document.querySelectorAll("select"));
+        for (const sel of selects) {
+          const opts = Array.from(sel.options);
+          const match = opts.find(o => o.text.trim().toLowerCase().includes(office.toLowerCase()));
+          if (match) {
+            sel.value = match.value;
+            sel.dispatchEvent(new Event("change", { bubbles: true }));
+            break;
+          }
+        }
+      }, account.idata_office);
+      await delay(2000, 3000);
+    }
+
+    // 4) Gidiş amacı seçimi
+    if (account.travel_purpose) {
+      console.log(`  [CHECK] Gidiş amacı seçiliyor: ${account.travel_purpose}`);
+      await page.evaluate((purpose) => {
+        const selects = Array.from(document.querySelectorAll("select"));
+        for (const sel of selects) {
+          const opts = Array.from(sel.options);
+          const match = opts.find(o => o.text.trim().toLowerCase().includes(purpose.toLowerCase()));
+          if (match) {
+            sel.value = match.value;
+            sel.dispatchEvent(new Event("change", { bubbles: true }));
+            break;
+          }
+        }
+      }, account.travel_purpose);
+      await delay(2000, 3000);
+    }
+
+    // 5) Hizmet tipi (STANDART) — genellikle son select
+    await page.evaluate(() => {
+      const selects = Array.from(document.querySelectorAll("select"));
+      for (const sel of selects) {
+        const opts = Array.from(sel.options);
+        const match = opts.find(o => o.text.trim().toUpperCase() === "STANDART");
+        if (match) {
+          sel.value = match.value;
+          sel.dispatchEvent(new Event("change", { bubbles: true }));
+          break;
+        }
+      }
+    });
+    await delay(3000, 5000);
+
+    // 6) Sonucu kontrol et
     const result = await page.evaluate(() => {
       const body = (document.body?.innerText || "");
       const lower = body.toLowerCase();
 
-      // Randevu müsait mi?
-      if (lower.includes("müsait randevu") || lower.includes("available") ||
-          lower.includes("tarih seçin") || lower.includes("select date")) {
-        // Tarihleri bul
+      // Randevu YOK durumu
+      if (lower.includes("uygun randevu tarihi bulunmamaktadır") || 
+          lower.includes("randevu tarihi bulunmamaktadır") ||
+          lower.includes("uygun randevu bulunmamaktadır")) {
+        // Açık olan tarihleri bul
+        const dateMatch = body.match(/(\d{2}\.\d{2}\.\d{4})/g);
+        return { 
+          found: false, 
+          text: "Uygun randevu tarihi bulunmamaktadır",
+          openUntil: dateMatch ? dateMatch[dateMatch.length - 1] : null 
+        };
+      }
+
+      // Randevu VAR durumu — tarih seçimi aktif
+      if (lower.includes("tarih seçin") || lower.includes("select date") || 
+          lower.includes("müsait randevu") || lower.includes("available") ||
+          lower.includes("randevu tarihi seçin")) {
         const dates = [];
-        const dateElements = document.querySelectorAll(".available, .open, td:not(.disabled):not(.past)");
+        const dateElements = document.querySelectorAll(".available, .open, td:not(.disabled):not(.past), .day:not(.disabled)");
         dateElements.forEach(el => {
           if (el.textContent.trim()) dates.push(el.textContent.trim());
         });
         return { found: true, dates, text: body.substring(0, 500) };
       }
 
-      if (lower.includes("randevu bulunamadı") || lower.includes("müsait randevu yok") ||
-          lower.includes("no available") || lower.includes("slot yok")) {
-        return { found: false, text: "Müsait randevu yok" };
+      // Kalıntı kontrol: sayfada takvim varsa
+      const hasCalendar = !!document.querySelector('.calendar, .datepicker, [class*="calendar"], table.month');
+      if (hasCalendar) {
+        return { found: true, dates: [], text: "Takvim tespit edildi: " + body.substring(0, 300) };
       }
 
       return { found: false, text: body.substring(0, 300) };
@@ -786,8 +900,9 @@ async function checkAppointments(page) {
       return { found: true, screenshot: ss, message: result.text };
     }
 
-    console.log("  [CHECK] ❌ Randevu yok");
-    return { found: false, screenshot: ss, message: result.text };
+    const extraInfo = result.openUntil ? ` | Açık tarih: ${result.openUntil}` : "";
+    console.log(`  [CHECK] ❌ Randevu yok${extraInfo}`);
+    return { found: false, screenshot: ss, message: result.text + extraInfo };
 
   } catch (err) {
     console.error(`  [CHECK] Hata: ${err.message}`);
@@ -999,12 +1114,12 @@ async function mainLoop() {
             
             // Randevu kontrol
             await idataLog("appt_check", `Randevu kontrol ediliyor | Hesap: ${account.email}`);
-            const apptResult = await checkAppointments(page);
+            const apptResult = await checkAppointments(page, account);
             
             if (apptResult.found) {
               await idataLog("appt_found", `🎉 RANDEVU BULUNDU! | Hesap: ${account.email}`, apptResult.screenshot);
             } else {
-              await idataLog("appt_none", `Randevu yok | Hesap: ${account.email}`, apptResult.screenshot);
+              await idataLog("appt_none", `Randevu yok | ${apptResult.message || ""} | Hesap: ${account.email}`, apptResult.screenshot);
             }
           } else {
             const reason = loginResult.reason ? ` | Sebep: ${loginResult.reason}` : "";

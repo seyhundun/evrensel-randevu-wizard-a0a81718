@@ -50,6 +50,7 @@ interface IdataAccount {
   invoice_city: string | null;
   invoice_district: string | null;
   invoice_address: string | null;
+  membership_number: string | null;
   status: string;
   registration_status: string | null;
   banned_until: string | null;
@@ -86,6 +87,7 @@ export default function IdataAccounts() {
     phone: "", birth_day: "01", birth_month: "01", birth_year: "1990",
     residence_city: "", idata_office: "", travel_purpose: "",
     invoice_city: "", invoice_district: "", invoice_address: "",
+    membership_number: "",
   });
 
   useEffect(() => {
@@ -155,6 +157,7 @@ export default function IdataAccounts() {
       invoice_city: acc.invoice_city || "",
       invoice_district: acc.invoice_district || "",
       invoice_address: acc.invoice_address || "",
+      membership_number: acc.membership_number || "",
     });
     setEditingId(acc.id);
     setShowForm(true);
@@ -167,6 +170,7 @@ export default function IdataAccounts() {
       phone: "", birth_day: "01", birth_month: "01", birth_year: "1990",
       residence_city: "", idata_office: "", travel_purpose: "",
       invoice_city: "", invoice_district: "", invoice_address: "",
+      membership_number: "",
     });
     setEditingId(null);
     setShowForm(false);
@@ -364,8 +368,13 @@ export default function IdataAccounts() {
             </div>
           </div>
 
-          <h3 className="text-sm font-semibold pt-2">Başvuru Bilgileri</h3>
-          <div className="grid grid-cols-3 gap-3">
+          <h3 className="text-sm font-semibold pt-2">Üyelik & Başvuru Bilgileri</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <Label className="text-xs">Üyelik Numarası</Label>
+              <Input placeholder="IT85461419533" value={form.membership_number} onChange={e => updateForm("membership_number", e.target.value.toUpperCase())} />
+              <p className="text-[10px] text-muted-foreground mt-0.5">Kayıt sonrası iDATA'dan alınan numara</p>
+            </div>
             <div>
               <Label className="text-xs">İkametgah Şehri</Label>
               <select
@@ -458,8 +467,9 @@ export default function IdataAccounts() {
                     <button onClick={() => setShowPasswords(prev => ({ ...prev, [acc.id]: !prev[acc.id] }))} className="text-muted-foreground hover:text-foreground">
                       {showPasswords[acc.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                     </button>
-                    {acc.passport_no && <span className="text-xs text-muted-foreground">🛂 {acc.passport_no}</span>}
-                    {acc.idata_office && <span className="text-xs text-muted-foreground">🏢 {acc.idata_office}</span>}
+                     {acc.passport_no && <span className="text-xs text-muted-foreground">🛂 {acc.passport_no}</span>}
+                     {acc.membership_number && <span className="text-xs text-muted-foreground font-mono">🆔 {acc.membership_number}</span>}
+                     {acc.idata_office && <span className="text-xs text-muted-foreground">🏢 {acc.idata_office}</span>}
                   </div>
                 </div>
                 <div className="flex gap-1.5 shrink-0">

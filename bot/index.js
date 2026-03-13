@@ -626,6 +626,126 @@ async function waitForTurnstileToken(page, timeoutMs = 12000) {
   return "";
 }
 
+async function waitForTurnstileWidget(page, timeoutMs = 12000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const hasWidget = await page.evaluate(() => {
+      const iframe = document.querySelector('iframe[src*="challenges.cloudflare.com"]');
+      const widget = document.querySelector('.cf-turnstile, [name*="turnstile"], [data-sitekey]');
+      return !!iframe || !!widget;
+    }).catch(() => false);
+
+    if (hasWidget) return true;
+    await delay(300, 600);
+  }
+  return false;
+}
+
+async function ensureLoginTurnstileToken(page, maxAttempts = 4) {
+  await waitForTurnstileWidget(page, 10000);
+
+  let token = await waitForTurnstileToken(page, 2000);
+  if (token) return token;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    console.log(`  [CAPTCHA] Login Turnstile deneme ${attempt}/${maxAttempts}`);
+
+    const solved = await solveTurnstile(page);
+    if (!solved) {
+      await tryClickTurnstileCheckbox(page);
+    }
+
+    token = await waitForTurnstileToken(page, 8000);
+    if (token) return token;
+
+    await delay(900, 1800);
+  }
+
+  return "";
+}
+
+async function submitLoginForm(page) {
+  return await page.evaluate(() => {
+    const btns = Array.from(document.querySelectorAll("button"));
+    const submitBtn = btns.find((b) => {
+      const txt = (b.textContent || "").toLowerCase();
+      return txt.includes("oturum") || txt.includes("sign in") || txt.includes("login") || txt.includes("giriş");
+    }) || document.querySelector('button[type="submit"]');
+
+    const form = submitBtn?.closest("form") || document.querySelector("form");
+    if (!submitBtn) {
+      if (form && typeof form.requestSubmit === "function") {
+        form.requestSubmit();
+        return { clicked: true, forced: true, disabled: false };
+      }
+      return { clicked: false, forced: false, disabled: false };
+    }
+
+    const isDisabled =
+      !!submitBtn.disabled ||
+      submitBtn.hasAttribute("disabled") ||
+      submitBtn.getAttribute("aria-disabled") === "true";
+
+    if (isDisabled) {
+      submitBtn.removeAttribute("disabled");
+      submitBtn.setAttribute("aria-disabled", "false");
+      submitBtn.disabled = false;
+    }
+
+    submitBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    submitBtn.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    submitBtn.click();
+
+    if (form) {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      if (typeof form.requestSubmit === "function") {
+        try { form.requestSubmit(); } catch {}
+      }
+    }
+
+    return { clicked: true, forced: isDisabled, disabled: isDisabled };
+  });
+}
+
+async function getLoginCaptchaState(page) {
+  return await page.evaluate(() => {
+    const body = (document.body?.innerText || "").toLowerCase();
+    const url = window.location.href.toLowerCase();
+    const hasLoginForm = !!document.querySelector('input[type="email"], input[name="email"], #email');
+    const hasTurnstileWidget = !!document.querySelector('iframe[src*="challenges.cloudflare.com"], .cf-turnstile, [name*="turnstile"]');
+
+    const fields = Array.from(
+      document.querySelectorAll(
+        'input[name="cf-turnstile-response"], textarea[name="cf-turnstile-response"], input[name*="turnstile"], textarea[name*="turnstile"], textarea[name="g-recaptcha-response"], input[name="g-recaptcha-response"]'
+      )
+    );
+    const hasCaptchaTokenFromField = fields.some((el) => String(el.value || "").trim().length > 20);
+
+    let hasCaptchaTokenFromApi = false;
+    try {
+      if (window.turnstile && typeof window.turnstile.getResponse === "function") {
+        const response = window.turnstile.getResponse();
+        hasCaptchaTokenFromApi = typeof response === "string" && response.trim().length > 20;
+      }
+    } catch {}
+
+    const hasCaptchaError =
+      body.includes("verify you are human") ||
+      body.includes("zorunlu alan boş bırakılamaz") ||
+      body.includes("robot olmadığınızı") ||
+      body.includes("captcha") ||
+      body.includes("doğrulama");
+
+    return {
+      isLoginPage: url.includes("/login"),
+      hasLoginForm,
+      hasTurnstileWidget,
+      hasCaptchaToken: hasCaptchaTokenFromField || hasCaptchaTokenFromApi,
+      hasCaptchaError,
+    };
+  });
+}
+
 async function tryClickTurnstileCheckbox(page) {
   const selectors = [
     'input[type="checkbox"]',
@@ -1092,17 +1212,7 @@ async function checkAppointments(config, account) {
       await humanMove(page);
 
       // Login ekranındaki Turnstile çözümü (kuyruktan ayrı doğrulama gerekiyor)
-      let token = await waitForTurnstileToken(page, 2500);
-      for (let i = 0; !token && i < 3; i++) {
-        await solveTurnstile(page);
-        await delay(1000, 1800);
-        token = await waitForTurnstileToken(page, 7000);
-        if (!token) {
-          await tryClickTurnstileCheckbox(page);
-          await delay(1000, 1800);
-          token = await waitForTurnstileToken(page, 5000);
-        }
-      }
+      let token = await ensureLoginTurnstileToken(page, 4);
 
       if (token) {
         console.log("  [4/6] ✅ Login Turnstile token alındı");
@@ -1110,46 +1220,7 @@ async function checkAppointments(config, account) {
         console.log("  [4/6] ⚠ Login Turnstile token alınamadı");
       }
 
-      const submitAttempt = await page.evaluate(() => {
-        const btns = Array.from(document.querySelectorAll("button"));
-        const submitBtn = btns.find((b) => {
-          const txt = (b.textContent || "").toLowerCase();
-          return txt.includes("oturum") || txt.includes("sign in") || txt.includes("login") || txt.includes("giriş");
-        }) || document.querySelector('button[type="submit"]');
-
-        const form = submitBtn?.closest("form") || document.querySelector("form");
-        if (!submitBtn) {
-          if (form && typeof form.requestSubmit === "function") {
-            form.requestSubmit();
-            return { clicked: true, forced: true, disabled: false };
-          }
-          return { clicked: false, forced: false, disabled: false };
-        }
-
-        const isDisabled =
-          !!submitBtn.disabled ||
-          submitBtn.hasAttribute("disabled") ||
-          submitBtn.getAttribute("aria-disabled") === "true";
-
-        if (isDisabled) {
-          submitBtn.removeAttribute("disabled");
-          submitBtn.setAttribute("aria-disabled", "false");
-          submitBtn.disabled = false;
-        }
-
-        submitBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-        submitBtn.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-        submitBtn.click();
-
-        if (form) {
-          form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-          if (typeof form.requestSubmit === "function") {
-            try { form.requestSubmit(); } catch {}
-          }
-        }
-
-        return { clicked: true, forced: isDisabled, disabled: isDisabled };
-      });
+      let submitAttempt = await submitLoginForm(page);
 
       if (!submitAttempt.clicked) {
         console.log("  [4/6] ⚠ Submit butonu bulunamadı, Enter ile denenecek");
@@ -1160,6 +1231,30 @@ async function checkAppointments(config, account) {
 
       await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 }).catch(() => {});
       await delay(3000, 5000);
+
+      // İlk submit sonrası captcha validasyon hatasında 1 kez daha çöz + submit dene
+      let loginCaptchaState = await getLoginCaptchaState(page);
+      if (
+        loginCaptchaState.isLoginPage &&
+        loginCaptchaState.hasLoginForm &&
+        loginCaptchaState.hasTurnstileWidget &&
+        (!loginCaptchaState.hasCaptchaToken || loginCaptchaState.hasCaptchaError)
+      ) {
+        console.log("  [4/6] 🔁 CAPTCHA validasyon hatası tespit edildi, tekrar deneniyor...");
+        await logStep(id, "login_captcha_retry", `CAPTCHA tekrar çözülüyor | ${account.email}`);
+
+        token = await ensureLoginTurnstileToken(page, 3);
+        if (token) {
+          submitAttempt = await submitLoginForm(page);
+          if (!submitAttempt.clicked) {
+            await page.keyboard.press("Enter");
+          }
+          await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 }).catch(() => {});
+          await delay(2500, 4000);
+        } else {
+          console.log("  [4/6] ❌ Retry sonrası da Turnstile token alınamadı");
+        }
+      }
     } catch (loginErr) {
       console.log("  [4/6] ⚠ Giriş formu hatası:", loginErr.message);
     }
@@ -1185,6 +1280,21 @@ async function checkAppointments(config, account) {
         return txt.includes("oturum") || txt.includes("sign in") || txt.includes("login") || txt.includes("giriş");
       }) || document.querySelector('button[type="submit"]');
 
+      const fields = Array.from(
+        document.querySelectorAll(
+          'input[name="cf-turnstile-response"], textarea[name="cf-turnstile-response"], input[name*="turnstile"], textarea[name*="turnstile"], textarea[name="g-recaptcha-response"], input[name="g-recaptcha-response"]'
+        )
+      );
+      const hasCaptchaTokenFromField = fields.some((el) => String(el.value || "").trim().length > 20);
+
+      let hasCaptchaTokenFromApi = false;
+      try {
+        if (window.turnstile && typeof window.turnstile.getResponse === "function") {
+          const response = window.turnstile.getResponse();
+          hasCaptchaTokenFromApi = typeof response === "string" && response.trim().length > 20;
+        }
+      } catch {}
+
       return {
         url,
         isNotFound: url.includes("page-not-found") || url.includes("404"),
@@ -1195,6 +1305,13 @@ async function checkAppointments(config, account) {
         isDashboard: url.includes("/dashboard") || url.includes("/appointment"),
         hasLoginForm: !!document.querySelector('input[type="email"], input[name="email"], #email'),
         hasTurnstileWidget: !!document.querySelector('iframe[src*="challenges.cloudflare.com"], .cf-turnstile, [name*="turnstile"]'),
+        hasCaptchaToken: hasCaptchaTokenFromField || hasCaptchaTokenFromApi,
+        hasCaptchaError:
+          body.includes("verify you are human") ||
+          body.includes("zorunlu alan boş bırakılamaz") ||
+          body.includes("robot olmadığınızı") ||
+          body.includes("captcha") ||
+          body.includes("doğrulama"),
         loginSubmitDisabled: !!loginBtn && (loginBtn.disabled || loginBtn.hasAttribute("disabled") || loginBtn.getAttribute("aria-disabled") === "true"),
       };
     });
@@ -1208,8 +1325,14 @@ async function checkAppointments(config, account) {
       else if (pageCheck.isNotFound) errorType = "❌ Sayfa bulunamadı (404)";
       else if (pageCheck.isSessionExpired) errorType = "❌ Oturum süresi dolmuş";
       else if (pageCheck.isWaitingRoom) errorType = "❌ Hala waiting room'da";
+      else if (pageCheck.hasTurnstileWidget && !pageCheck.hasCaptchaToken && pageCheck.hasCaptchaError) errorType = "❌ Turnstile doğrulanmadı (captcha token yok)";
       else if (pageCheck.hasTurnstileWidget && pageCheck.loginSubmitDisabled) errorType = "❌ Turnstile doğrulanmadı (submit pasif)";
       else if (isLoginFailed) errorType = "❌ Giriş başarısız";
+
+      if (errorType.includes("Turnstile")) {
+        markIpFail(activeIp);
+      }
+
       console.log(`  [5/6] ${errorType} | Hesap: ${account.email}`);
       const ss = await takeScreenshotBase64(page);
       await reportResult(id, "error", `${errorType} | Hesap: ${account.email}`, 0, ss);

@@ -669,6 +669,12 @@ async function loginToIdata(page, account) {
   try {
     await page.goto(CONFIG.LOGIN_URL, { waitUntil: "networkidle2", timeout: 60000 });
     await delay(3000, 5000);
+
+    const cfAtLoginOpen = await waitCloudflareBypass(page, "login açılışı", 35000);
+    if (!cfAtLoginOpen.ok) {
+      return { success: false, reason: cfAtLoginOpen.reason, screenshot: cfAtLoginOpen.screenshot };
+    }
+
     await humanMove(page);
 
     // Cookie banner
@@ -706,13 +712,24 @@ async function loginToIdata(page, account) {
 
     await delay(5000, 8000);
 
-    const loggedIn = await page.evaluate(() => {
-      const url = window.location.href.toLowerCase();
-      const body = (document.body?.innerText || "").toLowerCase();
-      return url.includes("appointment") || url.includes("randevu") ||
-             body.includes("hoş geldiniz") || body.includes("çıkış") ||
-             !url.includes("login");
-    });
+    const state = await readPageState(page);
+    const stillLogin = state.url.includes("/membership/login") || state.body.includes("giriş yap");
+    const inMemberArea = state.url.includes("/membership") && !state.url.includes("/membership/login");
+    const onAppointment = state.url.includes("appointment") || state.url.includes("randevu");
+    const hasLogout = state.body.includes("çıkış") || state.body.includes("logout");
+    const loggedIn = !state.isCloudflare && !stillLogin && (onAppointment || inMemberArea || hasLogout);
+
+    if (state.isCloudflare) {
+      console.log("  [LOGIN] ❌ Cloudflare doğrulamasında takıldı");
+      const ss = await takeScreenshotBase64(page);
+      return { success: false, reason: "cloudflare_queue", screenshot: ss };
+    }
+
+    if (state.otpRequired) {
+      console.log("  [LOGIN] ⚠ OTP doğrulaması bekleniyor");
+      const ss = await takeScreenshotBase64(page);
+      return { success: false, reason: "otp_required", screenshot: ss };
+    }
 
     if (loggedIn) {
       console.log("  [LOGIN] ✅ Giriş başarılı!");
@@ -721,7 +738,7 @@ async function loginToIdata(page, account) {
 
     console.log("  [LOGIN] ❌ Giriş başarısız");
     const ss = await takeScreenshotBase64(page);
-    return { success: false, screenshot: ss };
+    return { success: false, reason: "login_failed", screenshot: ss };
 
   } catch (err) {
     console.error(`  [LOGIN] Hata: ${err.message}`);

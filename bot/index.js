@@ -589,8 +589,7 @@ async function tryClickTurnstileCheckbox(page) {
             console.log("  [CAPTCHA] ✅ Turnstile checkbox tıklandı ve token alındı");
             return true;
           }
-          console.log("  [CAPTCHA] ✅ Turnstile iframe tıklandı (token bekleniyor)");
-          return true;
+          console.log("  [CAPTCHA] ⚠ Turnstile tıklandı ama token gelmedi");
         } catch {}
       }
     }
@@ -612,8 +611,7 @@ async function tryClickTurnstileCheckbox(page) {
           console.log("  [CAPTCHA] ✅ Turnstile iframe merkez tıklandı ve token alındı");
           return true;
         }
-        console.log("  [CAPTCHA] ✅ Turnstile iframe merkez tıklandı");
-        return true;
+        console.log("  [CAPTCHA] ⚠ Turnstile iframe tıklandı ama token gelmedi");
       }
     }
   } catch {}
@@ -751,14 +749,20 @@ async function solveTurnstile(page) {
     console.log("  [CAPTCHA] API key yok, yalnızca iframe click deneniyor...");
   }
 
-  const clicked = await tryClickTurnstileCheckbox(page);
-  if (!clicked) {
-    console.log("  [CAPTCHA] Turnstile çözülemedi.");
+  const clickedAndSolved = await tryClickTurnstileCheckbox(page);
+  if (!clickedAndSolved) {
+    console.log("  [CAPTCHA] Turnstile çözülemedi (token alınamadı).");
     return false;
   }
 
   const token = await waitForTurnstileToken(page, 9000);
-  return !!token || clicked;
+  if (!token) {
+    console.log("  [CAPTCHA] Turnstile token doğrulanamadı.");
+    return false;
+  }
+
+  console.log("  [CAPTCHA] ✅ Token doğrulandı");
+  return true;
 }
 
 async function _solve(page, context) {
@@ -2056,18 +2060,19 @@ async function registerVfsAccount(account) {
             }
 
             if (afterDiag.hasTurnstileWidget && !afterDiag.hasCaptchaToken) {
-              console.log("  [REG] ⚠ CAPTCHA token görünmüyor, iframe click + force submit deneniyor...");
-              await tryClickTurnstileCheckbox(page);
+              console.log("  [REG] ⚠ CAPTCHA token yok, son kez çözüm deneniyor...");
+              const solvedAgain = await solveTurnstile(page);
               await delay(1200, 2200);
+              const tokenAfterRetry = await waitForTurnstileToken(page, 8000);
+              if (!solvedAgain || !tokenAfterRetry) {
+                throw new Error("Devam Et butonu pasif: CAPTCHA doğrulaması tamamlanmadı");
+              }
             }
 
             const forceResult = await tryForceRegistrationSubmit(page);
             console.log(`  [REG] Force submit: clicked=${forceResult.clicked}, forced=${forceResult.forced}, reason=${forceResult.reason}`);
 
             if (!forceResult.clicked) {
-              if (afterDiag.hasTurnstileWidget && !afterDiag.hasCaptchaToken) {
-                throw new Error("Devam Et butonu pasif: CAPTCHA doğrulaması tamamlanmadı");
-              }
               throw new Error("Devam Et butonu pasif kaldı (form invalid)");
             }
 

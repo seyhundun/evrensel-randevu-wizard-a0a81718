@@ -222,9 +222,33 @@ export default function IdataAccounts() {
     toast.success("Hesap tekrar aktif edildi");
   };
 
+  const isRegistering = (acc: IdataAccount) =>
+    acc.registration_status === "pending" || acc.registration_status === "email_otp" || acc.registration_status === "sms_otp";
+
+  const submitManualOtp = async (id: string) => {
+    const code = otpInputs[id]?.trim();
+    if (!code) { toast.error("OTP kodu girin"); return; }
+    const { error } = await supabase.from("idata_accounts" as any)
+      .update({ manual_otp: code } as any).eq("id", id);
+    if (error) { toast.error("OTP gönderilemedi: " + error.message); }
+    else { toast.success("OTP kodu gönderildi"); setOtpInputs(prev => ({ ...prev, [id]: "" })); }
+  };
+
+  const submitRegOtp = async (id: string) => {
+    const code = regOtpInputs[id]?.trim();
+    if (!code) { toast.error("Doğrulama kodu girin"); return; }
+    const { error } = await supabase.from("idata_accounts" as any)
+      .update({ registration_otp: code } as any).eq("id", id);
+    if (error) { toast.error("Kod gönderilemedi: " + error.message); }
+    else { toast.success("Doğrulama kodu gönderildi"); setRegOtpInputs(prev => ({ ...prev, [id]: "" })); }
+  };
+
   const statusBadge = (acc: IdataAccount) => {
     if (acc.registration_status === "pending") {
       return <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/20"><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Kayıt Bekliyor</Badge>;
+    }
+    if (acc.registration_status === "email_otp" || acc.registration_status === "sms_otp") {
+      return <Badge className="bg-orange-500/10 text-orange-600 border-orange-500/20"><MessageSquare className="w-3 h-3 mr-1 animate-pulse" /> {acc.registration_otp_type === "email" ? "Email" : "SMS"} Doğrulama</Badge>;
     }
     if (acc.registration_status === "failed") {
       return <Badge variant="destructive">Kayıt Başarısız</Badge>;

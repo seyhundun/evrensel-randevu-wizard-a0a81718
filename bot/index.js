@@ -987,7 +987,8 @@ async function checkAppointments(config, account) {
     // STEP 1: Giriş sayfası
     console.log("  [1/6] Giriş sayfası...");
     await page.goto(CONFIG.VFS_URL, { waitUntil: "domcontentloaded", timeout: 90000 });
-    await delay(3000, 6000);
+    await humanIdle(4000, 8000); // Sayfa yüklendikten sonra okuyormuş gibi bekle
+    await humanMove(page);
     
     // IP engel kontrolü
     const pageContent = await page.evaluate(() => document.body?.innerText || "").catch(() => "");
@@ -1001,14 +1002,7 @@ async function checkAppointments(config, account) {
       return { found: false, accountBanned: false, ipBlocked: true };
     }
     markIpSuccess(activeIp);
-    await humanMove(page);
-    await applyFingerprint(page, fp);
-    await humanMove(page);
-
-    // STEP 1: Giriş sayfası
-    console.log("  [1/6] Giriş sayfası...");
-    await page.goto(CONFIG.VFS_URL, { waitUntil: "domcontentloaded", timeout: 90000 });
-    await delay(3000, 6000);
+    await humanScroll(page);
     await humanMove(page);
 
     // STEP 2: Cookie banner

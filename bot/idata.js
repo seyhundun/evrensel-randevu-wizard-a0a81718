@@ -113,6 +113,48 @@ async function humanScroll(page, amount = null) {
   } catch {}
 }
 
+async function readPageState(page) {
+  return await page.evaluate(() => {
+    const url = (window.location.href || "").toLowerCase();
+    const body = (document.body?.innerText || "").toLowerCase();
+    const title = (document.title || "").toLowerCase();
+
+    const isCloudflare =
+      url.includes("/cdn-cgi/challenge-platform") ||
+      body.includes("verifying you are human") ||
+      body.includes("performing security verification") ||
+      body.includes("verify you are human") ||
+      body.includes("cloudflare") ||
+      body.includes("ray id") ||
+      title.includes("just a moment") ||
+      title.includes("attention required");
+
+    const otpFieldExists = !!document.querySelector('input[name*="otp" i], input[id*="otp" i], input[autocomplete="one-time-code"]');
+    const otpHint = body.includes("otp") || body.includes("tek kullanımlık") || body.includes("sms kod") || body.includes("email kod") || body.includes("doğrulama kod");
+
+    return {
+      url,
+      body,
+      isCloudflare,
+      otpRequired: otpFieldExists || otpHint,
+    };
+  });
+}
+
+async function waitCloudflareBypass(page, context = "sayfa", timeoutMs = 30000) {
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    const state = await readPageState(page);
+    if (!state.isCloudflare) return { ok: true, state };
+    await delay(1500, 2500);
+  }
+
+  console.log(`  [CF] ❌ ${context}: Cloudflare doğrulaması aşılamadı`);
+  const screenshot = await takeScreenshotBase64(page);
+  return { ok: false, reason: "cloudflare_queue", screenshot };
+}
+
 // ==================== API ====================
 const apiHeaders = {
   "Content-Type": "application/json",
@@ -627,6 +669,12 @@ async function loginToIdata(page, account) {
   try {
     await page.goto(CONFIG.LOGIN_URL, { waitUntil: "networkidle2", timeout: 60000 });
     await delay(3000, 5000);
+
+    const cfAtLoginOpen = await waitCloudflareBypass(page, "login açılışı", 35000);
+    if (!cfAtLoginOpen.ok) {
+      return { success: false, reason: cfAtLoginOpen.reason, screenshot: cfAtLoginOpen.screenshot };
+    }
+
     await humanMove(page);
 
     // Cookie banner
@@ -664,13 +712,24 @@ async function loginToIdata(page, account) {
 
     await delay(5000, 8000);
 
-    const loggedIn = await page.evaluate(() => {
-      const url = window.location.href.toLowerCase();
-      const body = (document.body?.innerText || "").toLowerCase();
-      return url.includes("appointment") || url.includes("randevu") ||
-             body.includes("hoş geldiniz") || body.includes("çıkış") ||
-             !url.includes("login");
-    });
+    const state = await readPageState(page);
+    const stillLogin = state.url.includes("/membership/login") || state.body.includes("giriş yap");
+    const inMemberArea = state.url.includes("/membership") && !state.url.includes("/membership/login");
+    const onAppointment = state.url.includes("appointment") || state.url.includes("randevu");
+    const hasLogout = state.body.includes("çıkış") || state.body.includes("logout");
+    const loggedIn = !state.isCloudflare && !stillLogin && (onAppointment || inMemberArea || hasLogout);
+
+    if (state.isCloudflare) {
+      console.log("  [LOGIN] ❌ Cloudflare doğrulamasında takıldı");
+      const ss = await takeScreenshotBase64(page);
+      return { success: false, reason: "cloudflare_queue", screenshot: ss };
+    }
+
+    if (state.otpRequired) {
+      console.log("  [LOGIN] ⚠ OTP doğrulaması bekleniyor");
+      const ss = await takeScreenshotBase64(page);
+      return { success: false, reason: "otp_required", screenshot: ss };
+    }
 
     if (loggedIn) {
       console.log("  [LOGIN] ✅ Giriş başarılı!");
@@ -679,7 +738,7 @@ async function loginToIdata(page, account) {
 
     console.log("  [LOGIN] ❌ Giriş başarısız");
     const ss = await takeScreenshotBase64(page);
-    return { success: false, screenshot: ss };
+    return { success: false, reason: "login_failed", screenshot: ss };
 
   } catch (err) {
     console.error(`  [LOGIN] Hata: ${err.message}`);
@@ -791,6 +850,12 @@ async function scrapeCityOffices() {
     await page.goto(CONFIG.REGISTER_URL, { waitUntil: "networkidle2", timeout: 60000 });
     await delay(3000, 5000);
 
+    const cfAtRegisterOpen = await waitCloudflareBypass(page, "kayıt sayfası", 35000);
+    if (!cfAtRegisterOpen.ok) {
+      if (ip) markIpBanned(ip);
+      return false;
+    }
+
     // Cookie banner kapat
     await page.evaluate(() => {
       const btns = Array.from(document.querySelectorAll("button, a"));
@@ -802,7 +867,6 @@ async function scrapeCityOffices() {
     // İkametgah şehri select'ini bul
     const citySelect = await page.$('select[name*="city"], select[name*="sehir"], select[id*="city"], select[id*="residence"]');
     if (!citySelect) {
-      // Tüm select'lerden en uygununu bul
       const allSelects = await page.$$("select");
       console.log(`  [SCRAPE] ${allSelects.length} select bulundu, şehir select'i aranıyor...`);
     }
@@ -810,7 +874,6 @@ async function scrapeCityOffices() {
     // Tüm şehirleri al
     const cities = await page.evaluate(() => {
       const selects = Array.from(document.querySelectorAll("select"));
-      // İkametgah şehri — seçenekleri Türkiye şehirleri olan select
       const citySelect = selects.find(s => {
         const opts = Array.from(s.options).map(o => o.text.toLowerCase());
         return opts.some(t => t.includes("istanbul") || t.includes("ankara") || t.includes("izmir"));
@@ -823,7 +886,9 @@ async function scrapeCityOffices() {
 
     if (cities.length === 0) {
       console.log("  [SCRAPE] ❌ Şehir listesi bulunamadı");
-      return;
+      const state = await readPageState(page);
+      if (state.isCloudflare && ip) markIpBanned(ip);
+      return false;
     }
 
     console.log(`  [SCRAPE] ${cities.length} şehir bulundu`);
@@ -831,7 +896,6 @@ async function scrapeCityOffices() {
 
     for (const city of cities) {
       try {
-        // Şehir seç
         await page.evaluate((cityVal) => {
           const selects = Array.from(document.querySelectorAll("select"));
           const citySelect = selects.find(s => {
@@ -844,12 +908,10 @@ async function scrapeCityOffices() {
           }
         }, city.value);
 
-        await delay(1500, 3000); // Ofis dropdown yüklenmesini bekle
+        await delay(1500, 3000);
 
-        // Ofisleri oku
         const offices = await page.evaluate(() => {
           const selects = Array.from(document.querySelectorAll("select"));
-          // Ofis select'i — "ofis" içeren option'ları olan select
           const officeSelect = selects.find(s => {
             const opts = Array.from(s.options).map(o => o.text.toLowerCase());
             return opts.some(t => t.includes("ofis"));
@@ -863,11 +925,7 @@ async function scrapeCityOffices() {
         if (offices.length > 0) {
           console.log(`  [SCRAPE] ${city.text}: ${offices.map(o => o.text).join(", ")}`);
           for (const office of offices) {
-            allMappings.push({
-              city: city.text,
-              office_name: office.text,
-              office_value: office.value,
-            });
+            allMappings.push({ city: city.text, office_name: office.text, office_value: office.value });
           }
         }
       } catch (err) {
@@ -875,14 +933,17 @@ async function scrapeCityOffices() {
       }
     }
 
-    // DB'ye kaydet
     if (allMappings.length > 0) {
       await apiPost({ action: "sync_idata_city_offices", mappings: allMappings }, "sync_offices");
       console.log(`  [SCRAPE] ✅ ${allMappings.length} şehir-ofis eşleşmesi kaydedildi`);
+      return true;
     }
 
+    return false;
   } catch (err) {
     console.error("  [SCRAPE] Hata:", err.message);
+    if (ip) markIpBanned(ip);
+    return false;
   } finally {
     try { if (browser) await browser.close(); } catch {}
   }
@@ -909,8 +970,7 @@ async function mainLoop() {
       // İlk başta şehir-ofis eşleşmelerini çek
       if (!cityOfficesScraped) {
         await idataLog("info", "Şehir-ofis eşleşmeleri çekiliyor...");
-        await scrapeCityOffices();
-        cityOfficesScraped = true;
+        cityOfficesScraped = await scrapeCityOffices();
       }
 
       // 1. Bekleyen kayıtları işle
@@ -947,7 +1007,11 @@ async function mainLoop() {
               await idataLog("appt_none", `Randevu yok | Hesap: ${account.email}`, apptResult.screenshot);
             }
           } else {
-            await idataLog("login_fail", `Giriş başarısız: ${account.email}`, loginResult.screenshot);
+            const reason = loginResult.reason ? ` | Sebep: ${loginResult.reason}` : "";
+            await idataLog("login_fail", `Giriş başarısız: ${account.email}${reason}`, loginResult.screenshot);
+            if (ip && ["cloudflare_queue", "cloudflare_challenge"].includes(loginResult.reason)) {
+              markIpBanned(ip);
+            }
           }
         } catch (err) {
           await idataLog("error", `Hata: ${err.message} | IP: ${ip || "doğrudan"}`);

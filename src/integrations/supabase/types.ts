@@ -71,6 +71,7 @@ export type Database = {
           is_active: boolean
           keep_alive: boolean
           person_count: number
+          screenshot_requested: boolean
           telegram_chat_id: string | null
           updated_at: string
           visa_category: string | null
@@ -85,6 +86,7 @@ export type Database = {
           is_active?: boolean
           keep_alive?: boolean
           person_count?: number
+          screenshot_requested?: boolean
           telegram_chat_id?: string | null
           updated_at?: string
           visa_category?: string | null
@@ -99,6 +101,7 @@ export type Database = {
           is_active?: boolean
           keep_alive?: boolean
           person_count?: number
+          screenshot_requested?: boolean
           telegram_chat_id?: string | null
           updated_at?: string
           visa_category?: string | null

@@ -190,6 +190,21 @@ Deno.serve(async (req) => {
             { headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
+
+        // Clear screenshot_requested flag after bot takes screenshot
+        if (body.action === "clear_screenshot_requested") {
+          const { config_id: cfgId } = body;
+          if (cfgId) {
+            await supabase
+              .from("tracking_configs")
+              .update({ screenshot_requested: false })
+              .eq("id", cfgId);
+          }
+          return new Response(
+            JSON.stringify({ ok: true }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
         
         // Regular log posting (JSON)
         let config_id = body.config_id;

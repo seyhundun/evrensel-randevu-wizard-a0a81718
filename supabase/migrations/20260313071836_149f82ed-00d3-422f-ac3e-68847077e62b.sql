@@ -1,0 +1,1 @@
+ALTER TABLE public.tracking_configs ADD COLUMN IF NOT EXISTS screenshot_requested boolean NOT NULL DEFAULT false;

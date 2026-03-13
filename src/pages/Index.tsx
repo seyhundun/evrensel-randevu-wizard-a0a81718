@@ -36,6 +36,7 @@ const Index = () => {
           elapsedSeconds={t.elapsedSeconds}
           checksCount={t.checksCount}
           onSimulateFound={t.simulateFound}
+          configId={t.configId}
         />
 
         <ApplicantList

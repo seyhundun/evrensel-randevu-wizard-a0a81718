@@ -170,6 +170,7 @@ export default function IdataAccounts() {
       phone: "", birth_day: "01", birth_month: "01", birth_year: "1990",
       residence_city: "", idata_office: "", travel_purpose: "",
       invoice_city: "", invoice_district: "", invoice_address: "",
+      membership_number: "",
     });
     setEditingId(null);
     setShowForm(false);

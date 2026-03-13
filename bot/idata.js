@@ -113,6 +113,48 @@ async function humanScroll(page, amount = null) {
   } catch {}
 }
 
+async function readPageState(page) {
+  return await page.evaluate(() => {
+    const url = (window.location.href || "").toLowerCase();
+    const body = (document.body?.innerText || "").toLowerCase();
+    const title = (document.title || "").toLowerCase();
+
+    const isCloudflare =
+      url.includes("/cdn-cgi/challenge-platform") ||
+      body.includes("verifying you are human") ||
+      body.includes("performing security verification") ||
+      body.includes("verify you are human") ||
+      body.includes("cloudflare") ||
+      body.includes("ray id") ||
+      title.includes("just a moment") ||
+      title.includes("attention required");
+
+    const otpFieldExists = !!document.querySelector('input[name*="otp" i], input[id*="otp" i], input[autocomplete="one-time-code"]');
+    const otpHint = body.includes("otp") || body.includes("tek kullanımlık") || body.includes("sms kod") || body.includes("email kod") || body.includes("doğrulama kod");
+
+    return {
+      url,
+      body,
+      isCloudflare,
+      otpRequired: otpFieldExists || otpHint,
+    };
+  });
+}
+
+async function waitCloudflareBypass(page, context = "sayfa", timeoutMs = 30000) {
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    const state = await readPageState(page);
+    if (!state.isCloudflare) return { ok: true, state };
+    await delay(1500, 2500);
+  }
+
+  console.log(`  [CF] ❌ ${context}: Cloudflare doğrulaması aşılamadı`);
+  const screenshot = await takeScreenshotBase64(page);
+  return { ok: false, reason: "cloudflare_queue", screenshot };
+}
+
 // ==================== API ====================
 const apiHeaders = {
   "Content-Type": "application/json",

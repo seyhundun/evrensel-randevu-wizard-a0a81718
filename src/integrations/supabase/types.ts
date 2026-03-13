@@ -145,6 +145,30 @@ export type Database = {
         }
         Relationships: []
       }
+      idata_city_offices: {
+        Row: {
+          city: string
+          created_at: string
+          id: string
+          office_name: string
+          office_value: string
+        }
+        Insert: {
+          city: string
+          created_at?: string
+          id?: string
+          office_name: string
+          office_value: string
+        }
+        Update: {
+          city?: string
+          created_at?: string
+          id?: string
+          office_name?: string
+          office_value?: string
+        }
+        Relationships: []
+      }
       tracking_configs: {
         Row: {
           check_interval: number

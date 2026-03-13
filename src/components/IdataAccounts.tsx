@@ -58,13 +58,21 @@ interface IdataAccount {
   notes: string | null;
 }
 
+interface CityOffice {
+  city: string;
+  office_name: string;
+  office_value: string;
+}
+
 export default function IdataAccounts() {
   const [accounts, setAccounts] = useState<IdataAccount[]>([]);
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [cityOffices, setCityOffices] = useState<CityOffice[]>([]);
+  const [availableCities, setAvailableCities] = useState<string[]>([]);
+  const [filteredOffices, setFilteredOffices] = useState<CityOffice[]>([]);
 
-  // Form state
   const [form, setForm] = useState({
     email: "", password: generateSecurePassword(),
     first_name: "", last_name: "", passport_no: "",
@@ -75,12 +83,28 @@ export default function IdataAccounts() {
 
   useEffect(() => {
     loadAccounts();
+    loadCityOffices();
     const channel = supabase
       .channel('idata-accounts-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'idata_accounts' }, () => loadAccounts())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'idata_city_offices' }, () => loadCityOffices())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, []);
+
+  // Update filtered offices when city changes
+  useEffect(() => {
+    if (form.residence_city) {
+      const offices = cityOffices.filter(co => co.city.toLowerCase() === form.residence_city.toLowerCase());
+      setFilteredOffices(offices);
+      // Auto-clear office if not in new list
+      if (offices.length > 0 && !offices.find(o => o.office_name === form.idata_office)) {
+        setForm(prev => ({ ...prev, idata_office: "" }));
+      }
+    } else {
+      setFilteredOffices([]);
+    }
+  }, [form.residence_city, cityOffices]);
 
   const loadAccounts = async () => {
     const { data } = await supabase
@@ -88,6 +112,19 @@ export default function IdataAccounts() {
       .select("*")
       .order("created_at", { ascending: true });
     if (data) setAccounts(data as unknown as IdataAccount[]);
+  };
+
+  const loadCityOffices = async () => {
+    const { data } = await supabase
+      .from("idata_city_offices" as any)
+      .select("*")
+      .order("city", { ascending: true });
+    if (data) {
+      const offices = data as unknown as CityOffice[];
+      setCityOffices(offices);
+      const cities = [...new Set(offices.map(o => o.city))].sort();
+      setAvailableCities(cities);
+    }
   };
 
   const updateForm = (key: string, value: string) => {
@@ -165,7 +202,12 @@ export default function IdataAccounts() {
       </h2>
       <p className="helper-text">iDATA İtalya platformu için hesap yönetimi. Bot otomatik kayıt ve randevu kontrol yapar.</p>
 
-      {/* Toggle form */}
+      {availableCities.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          📍 Bilinen şehirler: {availableCities.join(", ")} — Bot çalıştıkça yeni şehir/ofis verileri otomatik güncellenir.
+        </p>
+      )}
+
       <Button
         size="sm"
         variant={showForm ? "secondary" : "default"}
@@ -239,11 +281,33 @@ export default function IdataAccounts() {
           <div className="grid grid-cols-3 gap-3">
             <div>
               <Label className="text-xs">İkametgah Şehri</Label>
-              <Input placeholder="İstanbul" value={form.residence_city} onChange={e => updateForm("residence_city", e.target.value)} />
+              {availableCities.length > 0 ? (
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={form.residence_city}
+                  onChange={e => updateForm("residence_city", e.target.value)}
+                >
+                  <option value="">Şehir Seçiniz</option>
+                  {availableCities.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              ) : (
+                <Input placeholder="İstanbul" value={form.residence_city} onChange={e => updateForm("residence_city", e.target.value)} />
+              )}
             </div>
             <div>
               <Label className="text-xs">iDATA Ofisi</Label>
-              <Input placeholder="İstanbul" value={form.idata_office} onChange={e => updateForm("idata_office", e.target.value)} />
+              {filteredOffices.length > 0 ? (
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={form.idata_office}
+                  onChange={e => updateForm("idata_office", e.target.value)}
+                >
+                  <option value="">iDATA Ofisi Seçiniz</option>
+                  {filteredOffices.map(o => <option key={o.office_value} value={o.office_name}>{o.office_name}</option>)}
+                </select>
+              ) : (
+                <Input placeholder="İstanbul" value={form.idata_office} onChange={e => updateForm("idata_office", e.target.value)} />
+              )}
             </div>
             <div>
               <Label className="text-xs">Gidiş Amacı</Label>
@@ -297,6 +361,7 @@ export default function IdataAccounts() {
                       {showPasswords[acc.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                     </button>
                     {acc.passport_no && <span className="text-xs text-muted-foreground">🛂 {acc.passport_no}</span>}
+                    {acc.idata_office && <span className="text-xs text-muted-foreground">🏢 {acc.idata_office}</span>}
                   </div>
                 </div>
                 <div className="flex gap-1.5 shrink-0">

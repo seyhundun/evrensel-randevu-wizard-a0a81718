@@ -756,17 +756,133 @@ async function processPendingRegistrations() {
   }
 }
 
+// ==================== SCRAPE CITY→OFFICE MAPPINGS ====================
+async function scrapeCityOffices() {
+  console.log("\n📍 [SCRAPE] Şehir→Ofis eşleşmeleri çekiliyor...");
+  const ip = getNextIp();
+  let browser, page;
+  try {
+    ({ browser, page } = await launchBrowser(ip));
+    await page.goto(CONFIG.REGISTER_URL, { waitUntil: "networkidle2", timeout: 60000 });
+    await delay(3000, 5000);
+
+    // Cookie banner kapat
+    await page.evaluate(() => {
+      const btns = Array.from(document.querySelectorAll("button, a"));
+      const accept = btns.find(b => (b.textContent || "").toLowerCase().includes("anladım") || (b.textContent || "").toLowerCase().includes("kabul"));
+      if (accept) accept.click();
+    }).catch(() => {});
+    await delay(1000, 2000);
+
+    // İkametgah şehri select'ini bul
+    const citySelect = await page.$('select[name*="city"], select[name*="sehir"], select[id*="city"], select[id*="residence"]');
+    if (!citySelect) {
+      // Tüm select'lerden en uygununu bul
+      const allSelects = await page.$$("select");
+      console.log(`  [SCRAPE] ${allSelects.length} select bulundu, şehir select'i aranıyor...`);
+    }
+
+    // Tüm şehirleri al
+    const cities = await page.evaluate(() => {
+      const selects = Array.from(document.querySelectorAll("select"));
+      // İkametgah şehri — seçenekleri Türkiye şehirleri olan select
+      const citySelect = selects.find(s => {
+        const opts = Array.from(s.options).map(o => o.text.toLowerCase());
+        return opts.some(t => t.includes("istanbul") || t.includes("ankara") || t.includes("izmir"));
+      });
+      if (!citySelect) return [];
+      return Array.from(citySelect.options)
+        .filter(o => o.value && o.value !== "" && !o.text.toLowerCase().includes("seçiniz"))
+        .map(o => ({ value: o.value, text: o.text.trim() }));
+    });
+
+    if (cities.length === 0) {
+      console.log("  [SCRAPE] ❌ Şehir listesi bulunamadı");
+      return;
+    }
+
+    console.log(`  [SCRAPE] ${cities.length} şehir bulundu`);
+    const allMappings = [];
+
+    for (const city of cities) {
+      try {
+        // Şehir seç
+        await page.evaluate((cityVal) => {
+          const selects = Array.from(document.querySelectorAll("select"));
+          const citySelect = selects.find(s => {
+            const opts = Array.from(s.options).map(o => o.text.toLowerCase());
+            return opts.some(t => t.includes("istanbul") || t.includes("ankara"));
+          });
+          if (citySelect) {
+            citySelect.value = cityVal;
+            citySelect.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+        }, city.value);
+
+        await delay(1500, 3000); // Ofis dropdown yüklenmesini bekle
+
+        // Ofisleri oku
+        const offices = await page.evaluate(() => {
+          const selects = Array.from(document.querySelectorAll("select"));
+          // Ofis select'i — "ofis" içeren option'ları olan select
+          const officeSelect = selects.find(s => {
+            const opts = Array.from(s.options).map(o => o.text.toLowerCase());
+            return opts.some(t => t.includes("ofis"));
+          });
+          if (!officeSelect) return [];
+          return Array.from(officeSelect.options)
+            .filter(o => o.value && o.value !== "" && !o.text.toLowerCase().includes("seçiniz"))
+            .map(o => ({ value: o.value, text: o.text.trim() }));
+        });
+
+        if (offices.length > 0) {
+          console.log(`  [SCRAPE] ${city.text}: ${offices.map(o => o.text).join(", ")}`);
+          for (const office of offices) {
+            allMappings.push({
+              city: city.text,
+              office_name: office.text,
+              office_value: office.value,
+            });
+          }
+        }
+      } catch (err) {
+        console.log(`  [SCRAPE] ${city.text} hata: ${err.message}`);
+      }
+    }
+
+    // DB'ye kaydet
+    if (allMappings.length > 0) {
+      await apiPost({ action: "sync_idata_city_offices", mappings: allMappings }, "sync_offices");
+      console.log(`  [SCRAPE] ✅ ${allMappings.length} şehir-ofis eşleşmesi kaydedildi`);
+    }
+
+  } catch (err) {
+    console.error("  [SCRAPE] Hata:", err.message);
+  } finally {
+    try { if (browser) await browser.close(); } catch {}
+  }
+}
+
 // ==================== MAIN LOOP ====================
 async function mainLoop() {
   console.log("\n🔄 iDATA Ana döngü başlıyor...");
+
+  // İlk başta şehir-ofis eşleşmelerini çek
+  await scrapeCityOffices();
+
+  let scrapeCounter = 0;
 
   while (true) {
     try {
       // 1. Bekleyen kayıtları işle
       await processPendingRegistrations();
 
-      // 2. Aktif config var mı kontrol et (iDATA için ayrı config gerekecek — şimdilik basit tutuyoruz)
-      // TODO: iDATA tracking_configs entegrasyonu
+      // 2. Her 50 döngüde bir şehir-ofis eşleşmelerini güncelle
+      scrapeCounter++;
+      if (scrapeCounter >= 50) {
+        await scrapeCityOffices();
+        scrapeCounter = 0;
+      }
 
       console.log(`  ⏰ ${CONFIG.CHECK_INTERVAL_MS / 1000}s bekleniyor...`);
       await delay(CONFIG.CHECK_INTERVAL_MS, CONFIG.CHECK_INTERVAL_MS + 10000);

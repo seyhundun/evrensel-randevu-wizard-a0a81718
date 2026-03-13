@@ -1,3 +1,4 @@
+import { useState } from "react";
 import ControlPanel from "@/components/ControlPanel";
 import StatusPanel from "@/components/StatusPanel";
 import ApplicantList from "@/components/ApplicantList";
@@ -5,9 +6,11 @@ import TrackingLogs from "@/components/TrackingLogs";
 import VfsAccounts from "@/components/VfsAccounts";
 import IdataAccounts from "@/components/IdataAccounts";
 import { useTracking } from "@/hooks/useTracking";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const Index = () => {
   const t = useTracking();
+  const [activeTab, setActiveTab] = useState("vfs");
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] min-h-screen">
@@ -30,28 +33,43 @@ const Index = () => {
       />
 
       <main className="p-6 md:p-10 lg:p-12 space-y-8 max-w-4xl">
-        <StatusPanel
-          status={t.status}
-          country={t.country}
-          city={t.city}
-          elapsedSeconds={t.elapsedSeconds}
-          checksCount={t.checksCount}
-          onSimulateFound={t.simulateFound}
-          configId={t.configId}
-        />
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="vfs" className="gap-1.5">
+              🌍 VFS Global
+            </TabsTrigger>
+            <TabsTrigger value="idata" className="gap-1.5">
+              🇮🇹 iDATA İtalya
+            </TabsTrigger>
+          </TabsList>
 
-        <ApplicantList
-          applicants={t.applicants}
-          onUpdate={t.updateApplicant}
-          personCount={t.personCount}
-          setPersonCount={t.setPersonCount}
-        />
+          <TabsContent value="vfs" className="space-y-8 mt-6">
+            <StatusPanel
+              status={t.status}
+              country={t.country}
+              city={t.city}
+              elapsedSeconds={t.elapsedSeconds}
+              checksCount={t.checksCount}
+              onSimulateFound={t.simulateFound}
+              configId={t.configId}
+            />
 
-        <VfsAccounts />
+            <ApplicantList
+              applicants={t.applicants}
+              onUpdate={t.updateApplicant}
+              personCount={t.personCount}
+              setPersonCount={t.setPersonCount}
+            />
 
-        <IdataAccounts />
+            <VfsAccounts />
 
-        <TrackingLogs configId={t.configId} />
+            <TrackingLogs configId={t.configId} />
+          </TabsContent>
+
+          <TabsContent value="idata" className="space-y-8 mt-6">
+            <IdataAccounts />
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   );

@@ -2778,6 +2778,7 @@ async function registerVfsAccount(account) {
     console.log("  [REG 7/7] Devam Et tıklanıyor...");
     let clickedSubmit = false;
     let submitError = null;
+    let usedCaptchaManualFallback = false;
 
     const btnInfo = await page.evaluate(() => {
       const btns = Array.from(document.querySelectorAll('button'));

@@ -1066,6 +1066,7 @@ async function checkAppointments(config, account) {
 
     // STEP 4: Login
     console.log("  [4/6] Giriş yapılıyor...");
+    await logStep(id, "login_form", `Giriş bilgileri dolduruluyor | ${account.email}`);
     try {
       await page.waitForSelector('input[type="email"], input[name="email"], #email', { timeout: 20000 });
       await humanMove(page);

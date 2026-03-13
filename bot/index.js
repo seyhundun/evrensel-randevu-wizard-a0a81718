@@ -1280,6 +1280,21 @@ async function checkAppointments(config, account) {
         return txt.includes("oturum") || txt.includes("sign in") || txt.includes("login") || txt.includes("giriş");
       }) || document.querySelector('button[type="submit"]');
 
+      const fields = Array.from(
+        document.querySelectorAll(
+          'input[name="cf-turnstile-response"], textarea[name="cf-turnstile-response"], input[name*="turnstile"], textarea[name*="turnstile"], textarea[name="g-recaptcha-response"], input[name="g-recaptcha-response"]'
+        )
+      );
+      const hasCaptchaTokenFromField = fields.some((el) => String(el.value || "").trim().length > 20);
+
+      let hasCaptchaTokenFromApi = false;
+      try {
+        if (window.turnstile && typeof window.turnstile.getResponse === "function") {
+          const response = window.turnstile.getResponse();
+          hasCaptchaTokenFromApi = typeof response === "string" && response.trim().length > 20;
+        }
+      } catch {}
+
       return {
         url,
         isNotFound: url.includes("page-not-found") || url.includes("404"),
@@ -1290,6 +1305,13 @@ async function checkAppointments(config, account) {
         isDashboard: url.includes("/dashboard") || url.includes("/appointment"),
         hasLoginForm: !!document.querySelector('input[type="email"], input[name="email"], #email'),
         hasTurnstileWidget: !!document.querySelector('iframe[src*="challenges.cloudflare.com"], .cf-turnstile, [name*="turnstile"]'),
+        hasCaptchaToken: hasCaptchaTokenFromField || hasCaptchaTokenFromApi,
+        hasCaptchaError:
+          body.includes("verify you are human") ||
+          body.includes("zorunlu alan boş bırakılamaz") ||
+          body.includes("robot olmadığınızı") ||
+          body.includes("captcha") ||
+          body.includes("doğrulama"),
         loginSubmitDisabled: !!loginBtn && (loginBtn.disabled || loginBtn.hasAttribute("disabled") || loginBtn.getAttribute("aria-disabled") === "true"),
       };
     });

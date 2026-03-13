@@ -120,7 +120,7 @@ export default function IdataTrackingLogs() {
 
   useEffect(() => {
     fetchLogs();
-
+    fetchConfig();
     const channel = supabase
       .channel("idata-tracking-logs")
       .on(

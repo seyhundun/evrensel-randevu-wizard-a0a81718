@@ -1212,17 +1212,7 @@ async function checkAppointments(config, account) {
       await humanMove(page);
 
       // Login ekranındaki Turnstile çözümü (kuyruktan ayrı doğrulama gerekiyor)
-      let token = await waitForTurnstileToken(page, 2500);
-      for (let i = 0; !token && i < 3; i++) {
-        await solveTurnstile(page);
-        await delay(1000, 1800);
-        token = await waitForTurnstileToken(page, 7000);
-        if (!token) {
-          await tryClickTurnstileCheckbox(page);
-          await delay(1000, 1800);
-          token = await waitForTurnstileToken(page, 5000);
-        }
-      }
+      let token = await ensureLoginTurnstileToken(page, 4);
 
       if (token) {
         console.log("  [4/6] ✅ Login Turnstile token alındı");
@@ -1230,46 +1220,7 @@ async function checkAppointments(config, account) {
         console.log("  [4/6] ⚠ Login Turnstile token alınamadı");
       }
 
-      const submitAttempt = await page.evaluate(() => {
-        const btns = Array.from(document.querySelectorAll("button"));
-        const submitBtn = btns.find((b) => {
-          const txt = (b.textContent || "").toLowerCase();
-          return txt.includes("oturum") || txt.includes("sign in") || txt.includes("login") || txt.includes("giriş");
-        }) || document.querySelector('button[type="submit"]');
-
-        const form = submitBtn?.closest("form") || document.querySelector("form");
-        if (!submitBtn) {
-          if (form && typeof form.requestSubmit === "function") {
-            form.requestSubmit();
-            return { clicked: true, forced: true, disabled: false };
-          }
-          return { clicked: false, forced: false, disabled: false };
-        }
-
-        const isDisabled =
-          !!submitBtn.disabled ||
-          submitBtn.hasAttribute("disabled") ||
-          submitBtn.getAttribute("aria-disabled") === "true";
-
-        if (isDisabled) {
-          submitBtn.removeAttribute("disabled");
-          submitBtn.setAttribute("aria-disabled", "false");
-          submitBtn.disabled = false;
-        }
-
-        submitBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-        submitBtn.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-        submitBtn.click();
-
-        if (form) {
-          form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-          if (typeof form.requestSubmit === "function") {
-            try { form.requestSubmit(); } catch {}
-          }
-        }
-
-        return { clicked: true, forced: isDisabled, disabled: isDisabled };
-      });
+      let submitAttempt = await submitLoginForm(page);
 
       if (!submitAttempt.clicked) {
         console.log("  [4/6] ⚠ Submit butonu bulunamadı, Enter ile denenecek");
@@ -1280,6 +1231,30 @@ async function checkAppointments(config, account) {
 
       await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 }).catch(() => {});
       await delay(3000, 5000);
+
+      // İlk submit sonrası captcha validasyon hatasında 1 kez daha çöz + submit dene
+      let loginCaptchaState = await getLoginCaptchaState(page);
+      if (
+        loginCaptchaState.isLoginPage &&
+        loginCaptchaState.hasLoginForm &&
+        loginCaptchaState.hasTurnstileWidget &&
+        (!loginCaptchaState.hasCaptchaToken || loginCaptchaState.hasCaptchaError)
+      ) {
+        console.log("  [4/6] 🔁 CAPTCHA validasyon hatası tespit edildi, tekrar deneniyor...");
+        await logStep(id, "login_captcha_retry", `CAPTCHA tekrar çözülüyor | ${account.email}`);
+
+        token = await ensureLoginTurnstileToken(page, 3);
+        if (token) {
+          submitAttempt = await submitLoginForm(page);
+          if (!submitAttempt.clicked) {
+            await page.keyboard.press("Enter");
+          }
+          await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 }).catch(() => {});
+          await delay(2500, 4000);
+        } else {
+          console.log("  [4/6] ❌ Retry sonrası da Turnstile token alınamadı");
+        }
+      }
     } catch (loginErr) {
       console.log("  [4/6] ⚠ Giriş formu hatası:", loginErr.message);
     }

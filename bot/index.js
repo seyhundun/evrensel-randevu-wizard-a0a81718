@@ -1384,9 +1384,10 @@ async function checkAppointments(config, account) {
     await delay(1000, 2000);
     const queueResult = await waitForLoginFormAfterQueue(page);
     if (!queueResult.ok) {
+      banIpImmediately(activeIp, "queue_or_login_form_timeout");
       const ss = await takeScreenshotBase64(page);
       await reportResult(id, "error", `${queueResult.reason} | Hesap: ${account.email}`, 0, ss);
-      return { found: false, accountBanned: false, hadError: true };
+      return { found: false, accountBanned: false, ipBlocked: true, hadError: true };
     }
 
     // STEP 4: Login

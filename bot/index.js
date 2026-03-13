@@ -1688,8 +1688,9 @@ async function registerVfsAccount(account) {
     const regUrl = CONFIG.VFS_URL.replace("/login", "/register");
     console.log("  [REG 1/7] Kayıt sayfası...");
     await page.goto(regUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
-    await delay(3000, 6000);
+    await humanIdle(5000, 10000); // Sayfayı okuyormuş gibi bekle
     await humanMove(page);
+    await humanScroll(page);
 
     // Cookie banner
     console.log("  [REG 2/7] Cookie banner...");
@@ -1702,17 +1703,18 @@ async function registerVfsAccount(account) {
         }) || document.getElementById('onetrust-accept-btn-handler') || null;
       });
       if (cookieBtn && cookieBtn.asElement()) {
-        await delay(500, 1500);
+        await humanIdle(1500, 3500); // Cookie uyarısını okuyormuş gibi
         await cookieBtn.asElement().click();
         console.log("  [REG 2/7] ✅ Cookie kabul edildi");
-        await delay(1000, 2000);
+        await delay(2000, 4000);
       }
     } catch (e) {}
 
     // CAPTCHA
     console.log("  [REG 3/7] CAPTCHA...");
+    await humanMove(page);
     await solveTurnstile(page);
-    await delay(2000, 4000);
+    await humanIdle(3000, 6000);
 
     // Form yüklenmesini bekle
     console.log("  [REG 4/7] Form bekleniyor...");
@@ -1723,24 +1725,35 @@ async function registerVfsAccount(account) {
       if (snapshot) console.log("  [REG] 📸 Form timeout screenshot alındı");
       throw new Error(registrationFormResult.reason);
     }
-    await delay(1800, 3200);
+    await humanIdle(3000, 6000); // Formu inceliyormuş gibi
+    await humanScroll(page);
+    await humanMove(page);
 
     // ========== FORM DOLDURMA ==========
     console.log("  [REG 5/7] Form dolduruluyor...");
 
     // Angular uyumlu input doldurma helper
     async function fillAngularInput(page, element, value) {
+      await humanIdle(600, 1500); // Alana tıklamadan önce düşünme süresi
       await element.click({ clickCount: 3 });
-      await delay(200, 400);
+      await delay(400, 800);
       await page.keyboard.press("Backspace");
-      await delay(100, 200);
-
-      // Önce humanType ile yaz
-      for (const ch of String(value)) {
-        await page.keyboard.type(ch, { delay: Math.floor(Math.random() * 150) + 50 });
-        if (Math.random() < 0.1) await delay(150, 400);
-      }
       await delay(200, 500);
+
+      // Daha yavaş ve insansı yazma
+      for (const ch of String(value)) {
+        await page.keyboard.type(ch, { delay: Math.floor(Math.random() * 200) + 80 });
+        if (Math.random() < 0.15) await delay(300, 900);
+        // Typo simülasyonu
+        if (Math.random() < 0.04 && value.length > 5) {
+          const wrongKey = String.fromCharCode(97 + Math.floor(Math.random() * 26));
+          await page.keyboard.type(wrongKey, { delay: 100 });
+          await delay(400, 1000);
+          await page.keyboard.press("Backspace");
+          await delay(200, 500);
+        }
+      }
+      await delay(500, 1200);
 
       // Angular reactive form event dispatch
       await page.evaluate((el, val) => {

@@ -1064,7 +1064,7 @@ async function checkAppointments(config, account) {
     if (!queueResult.ok) {
       const ss = await takeScreenshotBase64(page);
       await reportResult(id, "error", `${queueResult.reason} | Hesap: ${account.email}`, 0, ss);
-      return { found: false, accountBanned: false };
+      return { found: false, accountBanned: false, hadError: true };
     }
 
     // STEP 4: Login

@@ -2560,14 +2560,13 @@ async function registerVfsAccount(account) {
     }
 
     await delay(700, 1200);
-    await page.evaluate(() => {
-      const btns = [...document.querySelectorAll("button")];
-      const btn = btns.find(b => {
-        const txt = b.textContent.toLowerCase();
-        return txt.includes("verify") || txt.includes("doğrula") || txt.includes("onayla") || txt.includes("confirm") || txt.includes("gönder");
-      }) || document.querySelector('button[type="submit"]');
-      if (btn) btn.click();
-    });
+    const verifyClick = await clickOtpVerification(page);
+    if (!verifyClick.clicked) {
+      await page.keyboard.press("Enter").catch(() => {});
+      console.log(`  [REG] OTP doğrulama fallback Enter (${verifyClick.reason})`);
+    } else {
+      console.log(`  [REG] OTP doğrulama tıklandı (${verifyClick.reason})`);
+    }
     await delay(4000, 7000);
 
     // İkinci OTP kontrolü

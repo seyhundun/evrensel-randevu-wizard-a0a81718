@@ -1804,8 +1804,9 @@ async function registerVfsAccount(account) {
     if (!emailInput) throw new Error("Email alanı bulunamadı");
     const emailOk = await fillAngularInput(page, emailInput, account.email);
     console.log(`  [REG] ${emailOk ? "✅" : "⚠"} Email: ${account.email} (set: ${emailOk})`);
-    await delay(500, 1100);
+    await humanIdle(1500, 3500); // Email yazdıktan sonra düşünme
     await humanMove(page);
+    await humanScroll(page);
 
     // ŞİFRE + ONAY
     const passwordInputs = await page.$$('input[type="password"]');

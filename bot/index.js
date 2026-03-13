@@ -155,8 +155,24 @@ function generateFingerprint() {
 const accountLastUsed = new Map();
 let consecutiveErrors = 0;
 
-function delay(min = 1000, max = 3000) {
+function delay(min = 2000, max = 5000) {
   return new Promise((r) => setTimeout(r, Math.floor(Math.random() * (max - min) + min)));
+}
+
+// İnsan benzeri scroll
+async function humanScroll(page) {
+  try {
+    const scrollAmount = Math.floor(Math.random() * 300) + 100;
+    const direction = Math.random() > 0.3 ? 1 : -1;
+    await page.evaluate((amount) => window.scrollBy({ top: amount, behavior: 'smooth' }), scrollAmount * direction);
+    await delay(800, 2000);
+  } catch {}
+}
+
+// İnsan benzeri idle (okuyormuş gibi)
+async function humanIdle(min = 2000, max = 6000) {
+  const wait = Math.floor(Math.random() * (max - min) + min);
+  await new Promise(r => setTimeout(r, wait));
 }
 
 async function humanMove(page) {

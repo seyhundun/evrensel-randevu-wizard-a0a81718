@@ -1822,6 +1822,14 @@ async function postRegError(account, page, reason) {
 async function registerVfsAccount(account) {
   const ts = new Date().toLocaleTimeString("tr-TR");
   console.log(`\n[${ts}] 📝 VFS Kayıt: ${account.email}`);
+  
+  // Dashboard'da göstermek için aktif config ID'yi al
+  let regLogConfigId = null;
+  try {
+    const { configs } = await fetchActiveConfigs();
+    if (configs.length > 0) regLogConfigId = configs[0].id;
+  } catch {}
+  await logStep(regLogConfigId, "reg_start", `Kayıt başlıyor | ${account.email}`);
 
   let browser;
   let page;

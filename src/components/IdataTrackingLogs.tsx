@@ -149,7 +149,7 @@ export default function IdataTrackingLogs() {
   const currentIp = latestIpLog ? extractIp(latestIpLog.message) : null;
   const lastLogTime = logs[0]?.created_at;
   const lastLogAge = lastLogTime ? (Date.now() - new Date(lastLogTime).getTime()) / 1000 : Infinity;
-  const botActive = lastLogAge < 300;
+  const botActive = configActive || lastLogAge < 300;
 
   const filters = [
     { key: "all", label: "Tümü" },

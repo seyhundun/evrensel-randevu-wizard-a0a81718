@@ -132,29 +132,74 @@ export default function IdataAccounts() {
     setForm(prev => ({ ...prev, [key]: value }));
   };
 
-  const addAccount = async () => {
-    if (!form.email || !form.password || !form.first_name || !form.last_name) {
-      toast.error("Email, şifre, isim ve soyisim gerekli");
+  const loadToForm = (acc: IdataAccount) => {
+    setForm({
+      email: acc.email || "",
+      password: acc.password || "",
+      first_name: acc.first_name || "",
+      last_name: acc.last_name || "",
+      passport_no: acc.passport_no || "",
+      phone: acc.phone || "",
+      birth_day: acc.birth_day || "01",
+      birth_month: acc.birth_month || "01",
+      birth_year: acc.birth_year || "1990",
+      residence_city: acc.residence_city || "",
+      idata_office: acc.idata_office || "",
+      travel_purpose: acc.travel_purpose || "",
+      invoice_city: acc.invoice_city || "",
+      invoice_district: acc.invoice_district || "",
+      invoice_address: acc.invoice_address || "",
+    });
+    setEditingId(acc.id);
+    setShowForm(true);
+  };
+
+  const resetForm = () => {
+    setForm({
+      email: "", password: generateSecurePassword(),
+      first_name: "", last_name: "", passport_no: "",
+      phone: "", birth_day: "01", birth_month: "01", birth_year: "1990",
+      residence_city: "", idata_office: "", travel_purpose: "",
+      invoice_city: "", invoice_district: "", invoice_address: "",
+    });
+    setEditingId(null);
+    setShowForm(false);
+  };
+
+  const saveAccount = async () => {
+    if (!form.first_name || !form.last_name) {
+      toast.error("İsim ve soyisim gerekli");
       return;
     }
     setLoading(true);
-    const { error } = await supabase.from("idata_accounts" as any).insert({
-      ...form,
-      registration_status: "pending",
-      status: "active",
-    } as any);
-    if (error) {
-      toast.error("Hesap eklenemedi: " + error.message);
+
+    if (editingId) {
+      const { error } = await supabase.from("idata_accounts" as any)
+        .update(form as any)
+        .eq("id", editingId);
+      if (error) {
+        toast.error("Güncelleme başarısız: " + error.message);
+      } else {
+        toast.success("Hesap güncellendi!");
+        resetForm();
+      }
     } else {
-      toast.success("iDATA kayıt talebi oluşturuldu!");
-      setForm({
-        email: "", password: generateSecurePassword(),
-        first_name: "", last_name: "", passport_no: "",
-        phone: "", birth_day: "01", birth_month: "01", birth_year: "1990",
-        residence_city: "", idata_office: "", travel_purpose: "",
-        invoice_city: "", invoice_district: "", invoice_address: "",
-      });
-      setShowForm(false);
+      if (!form.email || !form.password) {
+        toast.error("Email ve şifre gerekli");
+        setLoading(false);
+        return;
+      }
+      const { error } = await supabase.from("idata_accounts" as any).insert({
+        ...form,
+        registration_status: "pending",
+        status: "active",
+      } as any);
+      if (error) {
+        toast.error("Hesap eklenemedi: " + error.message);
+      } else {
+        toast.success("iDATA kayıt talebi oluşturuldu!");
+        resetForm();
+      }
     }
     setLoading(false);
   };

@@ -422,73 +422,297 @@ async function handleOtpVerification(page, account) {
 }
 
 // ==================== CAPTCHA ====================
-async function tryClickTurnstileCheckbox(page) {
-  try {
-    const frame = page.frames().find((f) => f.url().includes("challenges.cloudflare.com"));
-    if (!frame) return false;
+async function readTurnstileToken(page) {
+  return await page.evaluate(() => {
+    const fields = Array.from(
+      document.querySelectorAll(
+        'input[name="cf-turnstile-response"], textarea[name="cf-turnstile-response"], input[name*="turnstile"], textarea[name*="turnstile"], textarea[name="g-recaptcha-response"]'
+      )
+    );
+    const token = fields.map((el) => String(el.value || "").trim()).find((v) => v.length > 20);
+    return token || "";
+  });
+}
 
-    const checkbox = await frame.$('input[type="checkbox"], [role="checkbox"], .cb-i');
-    if (!checkbox) return false;
-
-    await checkbox.click();
-    await delay(1200, 2400);
-    console.log("  [CAPTCHA] ✅ Turnstile iframe checkbox tıklandı");
-    return true;
-  } catch {
-    return false;
+async function waitForTurnstileToken(page, timeoutMs = 12000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const token = await readTurnstileToken(page);
+    if (token) return token;
+    await delay(350, 700);
   }
+  return "";
+}
+
+async function tryClickTurnstileCheckbox(page) {
+  const selectors = [
+    'input[type="checkbox"]',
+    '[role="checkbox"]',
+    '.cb-i',
+    '.ctp-checkbox-label',
+    'label',
+    '#challenge-stage',
+  ];
+
+  try {
+    const frames = page.frames().filter((f) => f.url().includes("challenges.cloudflare.com"));
+
+    for (const frame of frames) {
+      for (const selector of selectors) {
+        const target = await frame.$(selector);
+        if (!target) continue;
+        try {
+          await target.click({ delay: Math.floor(Math.random() * 90) + 40 });
+          await delay(1200, 2200);
+          const token = await waitForTurnstileToken(page, 5000);
+          if (token) {
+            console.log("  [CAPTCHA] ✅ Turnstile checkbox tıklandı ve token alındı");
+            return true;
+          }
+          console.log("  [CAPTCHA] ✅ Turnstile iframe tıklandı (token bekleniyor)");
+          return true;
+        } catch {}
+      }
+    }
+
+    const iframeHandle = await page.$(
+      'iframe[src*="challenges.cloudflare.com"], iframe[title*="Cloudflare" i], iframe[title*="Widget containing" i]'
+    );
+    if (iframeHandle) {
+      const box = await iframeHandle.boundingBox();
+      if (box) {
+        const clickX = box.x + box.width / 2;
+        const clickY = box.y + Math.min(box.height / 2, 24);
+        await page.mouse.move(clickX, clickY, { steps: 8 });
+        await delay(120, 260);
+        await page.mouse.click(clickX, clickY, { delay: Math.floor(Math.random() * 90) + 30 });
+        await delay(1500, 2600);
+        const token = await waitForTurnstileToken(page, 6000);
+        if (token) {
+          console.log("  [CAPTCHA] ✅ Turnstile iframe merkez tıklandı ve token alındı");
+          return true;
+        }
+        console.log("  [CAPTCHA] ✅ Turnstile iframe merkez tıklandı");
+        return true;
+      }
+    }
+  } catch {}
+
+  return false;
+}
+
+async function getTurnstileContext(page) {
+  return await page.evaluate(() => {
+    const readParam = (url, key) => {
+      try {
+        const u = new URL(url, location.href);
+        return u.searchParams.get(key);
+      } catch {
+        return null;
+      }
+    };
+
+    const widget =
+      document.querySelector('.cf-turnstile, [data-sitekey], [name*="turnstile"]') ||
+      document.querySelector('iframe[src*="challenges.cloudflare.com"]')?.closest("div");
+
+    const iframe = document.querySelector('iframe[src*="challenges.cloudflare.com"]');
+    const iframeSrc = iframe?.getAttribute("src") || "";
+
+    const sitekey =
+      widget?.getAttribute?.("data-sitekey") ||
+      document.querySelector('[data-sitekey]')?.getAttribute?.("data-sitekey") ||
+      readParam(iframeSrc, "k") ||
+      readParam(iframeSrc, "sitekey") ||
+      readParam(iframeSrc, "siteKey") ||
+      null;
+
+    const action =
+      widget?.getAttribute?.("data-action") ||
+      readParam(iframeSrc, "action") ||
+      readParam(iframeSrc, "sa") ||
+      null;
+
+    const cData =
+      widget?.getAttribute?.("data-cdata") ||
+      readParam(iframeSrc, "data") ||
+      readParam(iframeSrc, "cData") ||
+      null;
+
+    const pageData = readParam(iframeSrc, "pagedata") || readParam(iframeSrc, "chlPageData") || null;
+
+    const hasWidget =
+      !!iframe ||
+      !!document.querySelector('.cf-turnstile, [name*="turnstile"]') ||
+      /verify you are human|robot olmadığınızı|doğrulayın|captcha|turnstile/i.test(document.body?.innerText || "");
+
+    return { sitekey, action, cData, pageData, hasWidget };
+  });
+}
+
+function parse2CaptchaResponse(raw) {
+  const text = String(raw || "").trim();
+
+  try {
+    const json = JSON.parse(text);
+    if (json.status === 1 && json.request) return { ok: true, value: json.request };
+    return { ok: false, error: json.request || text || "unknown" };
+  } catch {}
+
+  if (text.startsWith("OK|")) return { ok: true, value: text.slice(3) };
+  return { ok: false, error: text || "unknown" };
+}
+
+async function solveTurnstileWithHttp({ sitekey, pageurl, action, data, pagedata, userAgent }) {
+  if (!CONFIG.CAPTCHA_API_KEY) throw new Error("CAPTCHA_API_KEY yok");
+
+  const body = new URLSearchParams({
+    key: CONFIG.CAPTCHA_API_KEY,
+    method: "turnstile",
+    sitekey,
+    pageurl,
+    json: "1",
+  });
+
+  if (action) body.set("action", action);
+  if (data) body.set("data", data);
+  if (pagedata) body.set("pagedata", pagedata);
+  if (userAgent) body.set("userAgent", userAgent);
+
+  const createRes = await fetch("https://2captcha.com/in.php", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+
+  const createRaw = await createRes.text();
+  const createParsed = parse2CaptchaResponse(createRaw);
+  if (!createParsed.ok) throw new Error(`2captcha in.php: ${createParsed.error}`);
+
+  const captchaId = createParsed.value;
+
+  for (let attempt = 1; attempt <= 24; attempt++) {
+    await delay(4500, 6200);
+    const pollUrl = `https://2captcha.com/res.php?${new URLSearchParams({
+      key: CONFIG.CAPTCHA_API_KEY,
+      action: "get",
+      id: captchaId,
+      json: "1",
+    }).toString()}`;
+
+    const pollRes = await fetch(pollUrl);
+    const pollRaw = await pollRes.text();
+    const pollParsed = parse2CaptchaResponse(pollRaw);
+
+    if (pollParsed.ok) return pollParsed.value;
+    if (/CAPCHA_NOT_READY/i.test(pollParsed.error || "")) continue;
+    throw new Error(`2captcha res.php: ${pollParsed.error}`);
+  }
+
+  throw new Error("2captcha timeout");
 }
 
 async function solveTurnstile(page) {
-  if (!CONFIG.CAPTCHA_API_KEY || !Solver) {
-    console.log("  [CAPTCHA] API key veya 2captcha modülü yok, atlıyorum.");
+  const context = await getTurnstileContext(page);
+
+  if (!context.hasWidget) {
+    console.log("  [CAPTCHA] Turnstile bulunamadı.");
     return false;
   }
 
-  let sitekey = await page.evaluate(() => {
-    const direct = document.querySelector('[data-sitekey]');
-    if (direct) return direct.getAttribute('data-sitekey');
+  if (context.sitekey && CONFIG.CAPTCHA_API_KEY) {
+    const solved = await _solve(page, context);
+    if (solved) return true;
+  }
 
-    const turnstile = document.querySelector('.cf-turnstile, [name*="turnstile"]');
-    if (turnstile?.getAttribute('data-sitekey')) return turnstile.getAttribute('data-sitekey');
+  if (!context.sitekey && CONFIG.CAPTCHA_API_KEY) {
+    console.log("  [CAPTCHA] Sitekey bulunamadı, iframe click fallback deneniyor...");
+  } else if (!CONFIG.CAPTCHA_API_KEY) {
+    console.log("  [CAPTCHA] API key yok, yalnızca iframe click deneniyor...");
+  }
 
-    const iframe = document.querySelector('iframe[src*="challenges.cloudflare.com"]');
-    if (!iframe) return null;
-
-    const container = iframe.closest('div[data-sitekey]') || document.querySelector('[data-sitekey]');
-    if (container) return container.getAttribute('data-sitekey');
-
-    const src = iframe.getAttribute('src') || '';
-    const match = src.match(/[?&]k=([^&]+)/);
-    return match ? decodeURIComponent(match[1]) : null;
-  });
-
-  if (!sitekey) {
-    const clicked = await tryClickTurnstileCheckbox(page);
-    if (clicked) return true;
-    console.log("  [CAPTCHA] Turnstile sitekey bulunamadı.");
+  const clicked = await tryClickTurnstileCheckbox(page);
+  if (!clicked) {
+    console.log("  [CAPTCHA] Turnstile çözülemedi.");
     return false;
   }
 
-  return await _solve(page, sitekey);
+  const token = await waitForTurnstileToken(page, 9000);
+  return !!token || clicked;
 }
 
-async function _solve(page, sitekey) {
+async function _solve(page, context) {
+  const { sitekey, action, cData, pageData } = context;
+  if (!sitekey) return false;
+
   console.log(`  [CAPTCHA] Sitekey: ${sitekey.substring(0, 20)}...`);
+
+  const pageurl = page.url();
+  const userAgent = await page.evaluate(() => navigator.userAgent).catch(() => null);
+  const payload = { pageurl, sitekey };
+  if (action) payload.action = action;
+  if (cData) payload.data = cData;
+  if (pageData) payload.pagedata = pageData;
+  if (userAgent) payload.userAgent = userAgent;
+
   try {
-    const solver = new (Solver.Solver || Solver)(CONFIG.CAPTCHA_API_KEY);
-    const result = await solver.cloudflareTurnstile({ pageurl: page.url(), sitekey });
-    const token = result.data;
+    let token = "";
+
+    if (Solver) {
+      try {
+        const solver = new (Solver.Solver || Solver)(CONFIG.CAPTCHA_API_KEY);
+        const result = await solver.cloudflareTurnstile(payload);
+        token = result?.data || result?.token || result?.request || result?.code || "";
+      } catch (solverErr) {
+        console.log(`  [CAPTCHA] SDK çözümü başarısız, HTTP fallback: ${solverErr.message}`);
+      }
+    }
+
+    if (!token) {
+      token = await solveTurnstileWithHttp(payload);
+    }
+
+    if (!token) throw new Error("Token alınamadı");
+
     console.log("  [CAPTCHA] ✅ Çözüldü!");
+
     await page.evaluate((t) => {
-      document.querySelectorAll('input[name="cf-turnstile-response"], input[name="g-recaptcha-response"], [name*="turnstile"]')
-        .forEach((inp) => { inp.value = t; });
+      const selectors =
+        'input[name="cf-turnstile-response"], textarea[name="cf-turnstile-response"], input[name*="turnstile"], textarea[name*="turnstile"], textarea[name="g-recaptcha-response"], input[name="g-recaptcha-response"]';
+      let targets = Array.from(document.querySelectorAll(selectors));
+
+      if (!targets.length) {
+        const hidden = document.createElement("input");
+        hidden.type = "hidden";
+        hidden.name = "cf-turnstile-response";
+        document.body.appendChild(hidden);
+        targets = [hidden];
+      }
+
+      const inputSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+      const textareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
+
+      for (const el of targets) {
+        if (el.tagName === "TEXTAREA" && textareaSetter) textareaSetter.call(el, t);
+        else if (inputSetter) inputSetter.call(el, t);
+        else el.value = t;
+
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+        el.dispatchEvent(new Event("blur", { bubbles: true }));
+      }
+
       if (typeof window.turnstileCallback === "function") window.turnstileCallback(t);
       if (typeof window.onTurnstileSuccess === "function") window.onTurnstileSuccess(t);
-      if (window.turnstile) { try { window.turnstile.getResponse = () => t; } catch {} }
+      if (window.turnstile) {
+        try {
+          window.turnstile.getResponse = () => t;
+        } catch {}
+      }
     }, token);
-    await delay(1000, 2000);
-    return true;
+
+    const confirmedToken = await waitForTurnstileToken(page, 9000);
+    return !!confirmedToken;
   } catch (err) {
     console.error("  [CAPTCHA] Hata:", err.message);
     return false;

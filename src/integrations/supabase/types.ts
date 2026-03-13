@@ -243,6 +243,9 @@ export type Database = {
       }
       tracking_configs: {
         Row: {
+          cf_blocked_ip: string | null
+          cf_blocked_since: string | null
+          cf_retry_requested: boolean
           check_interval: number
           city: string
           country: string
@@ -258,6 +261,9 @@ export type Database = {
           webhook_url: string | null
         }
         Insert: {
+          cf_blocked_ip?: string | null
+          cf_blocked_since?: string | null
+          cf_retry_requested?: boolean
           check_interval?: number
           city: string
           country: string
@@ -273,6 +279,9 @@ export type Database = {
           webhook_url?: string | null
         }
         Update: {
+          cf_blocked_ip?: string | null
+          cf_blocked_since?: string | null
+          cf_retry_requested?: boolean
           check_interval?: number
           city?: string
           country?: string

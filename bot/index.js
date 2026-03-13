@@ -129,6 +129,62 @@ const CONFIG = {
   MAX_BACKOFF_MS: Number(process.env.MAX_BACKOFF_MS || 900000),
 };
 
+const SUPABASE_REST_URL = "https://ocrpzwrsyiprfuzsyivf.supabase.co/rest/v1";
+const restHeaders = {
+  "Content-Type": "application/json",
+  Authorization: `Bearer ${CONFIG.API_KEY}`,
+  apikey: CONFIG.API_KEY,
+};
+
+// CF blocked durumunu dashboard'a bildir (tracking_configs üzerinden)
+async function vfsSignalCfBlocked(configId, ip) {
+  try {
+    await fetch(`${SUPABASE_REST_URL}/tracking_configs?id=eq.${configId}`, {
+      method: "PATCH",
+      headers: { ...restHeaders, "Prefer": "return=minimal" },
+      body: JSON.stringify({
+        cf_blocked_since: new Date().toISOString(),
+        cf_blocked_ip: ip || "unknown",
+        cf_retry_requested: false,
+      }),
+    });
+    console.log("  [CF] 🚨 Dashboard'a VFS CF engeli bildirildi");
+  } catch (err) {
+    console.error("  [CF] VFS Signal hatası:", err.message);
+  }
+}
+
+// CF retry isteği var mı kontrol et
+async function vfsCheckCfRetryRequested(configId) {
+  try {
+    const res = await fetch(`${SUPABASE_REST_URL}/tracking_configs?id=eq.${configId}&select=cf_retry_requested`, {
+      method: "GET",
+      headers: restHeaders,
+    });
+    const data = await res.json();
+    if (data?.[0]?.cf_retry_requested) {
+      await fetch(`${SUPABASE_REST_URL}/tracking_configs?id=eq.${configId}`, {
+        method: "PATCH",
+        headers: { ...restHeaders, "Prefer": "return=minimal" },
+        body: JSON.stringify({ cf_retry_requested: false, cf_blocked_since: null, cf_blocked_ip: null }),
+      });
+      return true;
+    }
+    return false;
+  } catch { return false; }
+}
+
+// CF blocked durumunu temizle
+async function vfsClearCfBlocked(configId) {
+  try {
+    await fetch(`${SUPABASE_REST_URL}/tracking_configs?id=eq.${configId}`, {
+      method: "PATCH",
+      headers: { ...restHeaders, "Prefer": "return=minimal" },
+      body: JSON.stringify({ cf_blocked_since: null, cf_blocked_ip: null, cf_retry_requested: false }),
+    });
+  } catch {}
+}
+
 console.log(`🔐 CAPTCHA API key: ${CONFIG.CAPTCHA_API_KEY ? `var (${CONFIG.CAPTCHA_API_KEY.length} karakter)` : "yok"}`);
 
 // ==================== FINGERPRINT ====================
@@ -3210,13 +3266,49 @@ async function main() {
         await logStep(config.id, "account_switch", `Hesap: ${account.email} | IP: sıradaki proxy`);
         const result = await checkAppointments(config, account);
 
-        // IP engellendiyse kısa bekleme ile sonraki döngüye geç (IP seçimi checkAppointments içinde round-robin)
+        // IP engellendiyse — CF retry mekanizması
         if (result.ipBlocked) {
-          console.log(`\n🔄 IP engellendi, 10s sonra sıradaki IP ile tekrar deneniyor...`);
           consecutiveErrors++;
-          await logStep(config.id, "ip_change", `IP engeli alındı, sıradaki IP otomatik denenecek`);
+          const ip = getCurrentIp();
+          
+          // 3 ardışık CF hatası → dashboard'a bildir ve bekle
+          if (consecutiveErrors >= 3) {
+            await logStep(config.id, "cloudflare", `🚫 Ardışık CF engeli (${consecutiveErrors}x) | IP: ${ip || "?"}`);
+            await vfsSignalCfBlocked(config.id, ip);
+            console.log(`\n  🚫 [CF] ${consecutiveErrors} ardışık engel! Dashboard'dan retry bekleniyor...`);
+            
+            while (true) {
+              const retryRequested = await vfsCheckCfRetryRequested(config.id);
+              if (retryRequested) {
+                console.log("  ✅ [CF] Dashboard'dan retry isteği alındı!");
+                await logStep(config.id, "cf_retry", "Dashboard'dan retry isteği alındı, yeni IP ile deneniyor");
+                ipBannedUntil.clear();
+                consecutiveErrors = 0;
+                break;
+              }
+              // Config hala aktif mi?
+              try {
+                const freshData = await apiGet("cf_wait_check");
+                const activeConfig = (freshData.configs || []).find(c => c.id === config.id);
+                if (!activeConfig) {
+                  await vfsClearCfBlocked(config.id);
+                  break;
+                }
+              } catch {}
+              await new Promise((r) => setTimeout(r, 5000));
+            }
+            continue;
+          }
+          
+          console.log(`\n🔄 IP engellendi (${consecutiveErrors}/3), 10s sonra sıradaki IP ile deneniyor...`);
+          await logStep(config.id, "ip_change", `CF engeli ${consecutiveErrors}/3 | IP: ${ip || "?"}`);
           await new Promise((r) => setTimeout(r, 10000));
           continue;
+        }
+        
+        // Başarılı kontrol — CF durumunu temizle
+        if (!result.hadError) {
+          await vfsClearCfBlocked(config.id);
         }
 
         if (result.found) {

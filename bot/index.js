@@ -2837,12 +2837,41 @@ async function main() {
 
   while (true) {
     try {
-      // Bekleyen kayıtları kontrol et
+      // Bekleyen kayıtları kontrol et — başarısız olanları IP değiştirerek tekrar dene
       const pendingRegs = await fetchPendingRegistrations();
       if (pendingRegs.length > 0) {
         console.log(`\n📝 ${pendingRegs.length} bekleyen kayıt var`);
         for (const reg of pendingRegs) {
-          await registerVfsAccount(reg);
+          let regSuccess = false;
+          let regAttempt = 0;
+          const MAX_REG_ATTEMPTS = 10;
+          
+          while (!regSuccess && regAttempt < MAX_REG_ATTEMPTS) {
+            regAttempt++;
+            console.log(`\n  [REG] 🔄 Kayıt denemesi ${regAttempt}/${MAX_REG_ATTEMPTS} — ${reg.email}`);
+            
+            // IP değiştir (ilk deneme dahil)
+            if (regAttempt > 1) {
+              const newIp = getNextIp();
+              if (newIp) {
+                console.log(`  [REG] 🌐 IP değiştirildi: ${newIp}`);
+                await logStep(regLogConfigId, "ip_change", `Kayıt retry IP değişimi: ${newIp} | Deneme ${regAttempt} | ${reg.email}`);
+              }
+              await delay(5000, 10000);
+            }
+            
+            regSuccess = await registerVfsAccount(reg);
+            
+            if (!regSuccess) {
+              console.log(`  [REG] ❌ Deneme ${regAttempt} başarısız, IP değiştirip tekrar deneniyor...`);
+              await delay(10000, 20000);
+            }
+          }
+          
+          if (!regSuccess) {
+            console.log(`  [REG] ⛔ ${reg.email} — ${MAX_REG_ATTEMPTS} denemede başarısız, sonraki hesaba geçiliyor`);
+          }
+          
           await delay(10000, 20000);
         }
       }

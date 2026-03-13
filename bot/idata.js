@@ -166,6 +166,31 @@ async function reportLog(configId, status, message = "", screenshotBase64 = null
   }
 }
 
+// iDATA loglarını idata_tracking_logs tablosuna yaz
+async function idataLog(status, message = "", screenshotBase64 = null) {
+  try {
+    const body = { action: "idata_log", status, message };
+    if (screenshotBase64) body.screenshot_url = screenshotBase64; // edge function handles it
+    await apiPost(body, `idata_log:${status}`);
+  } catch (err) {
+    console.error("  [API] iDATA Log hatası:", err.message);
+  }
+}
+
+// iDATA config'i kontrol et (is_active)
+async function isIdataActive() {
+  try {
+    const res = await fetch(CONFIG.API_URL + "/idata", {
+      method: "GET", headers: apiHeaders,
+    });
+    const data = await res.json();
+    return data?.config?.is_active === true;
+  } catch (err) {
+    console.error("  [API] Config kontrol hatası:", err.message);
+    return false;
+  }
+}
+
 // ==================== 2CAPTCHA IMAGE SOLVER ====================
 async function solveImageCaptcha(page) {
   if (!CONFIG.CAPTCHA_API_KEY) {
@@ -866,29 +891,89 @@ async function scrapeCityOffices() {
 // ==================== MAIN LOOP ====================
 async function mainLoop() {
   console.log("\n🔄 iDATA Ana döngü başlıyor...");
-
-  // İlk başta şehir-ofis eşleşmelerini çek
-  await scrapeCityOffices();
+  await idataLog("bot_start", "iDATA botu başlatıldı");
 
   let scrapeCounter = 0;
+  let cityOfficesScraped = false;
 
   while (true) {
     try {
-      // 1. Bekleyen kayıtları işle
-      await processPendingRegistrations();
+      // Config kontrolü — dashboard'dan aktif mi?
+      const active = await isIdataActive();
+      if (!active) {
+        console.log("  ⏸ Bot pasif, bekleniyor...");
+        await delay(10000, 15000);
+        continue;
+      }
 
-      // 2. Her 50 döngüde bir şehir-ofis eşleşmelerini güncelle
+      // İlk başta şehir-ofis eşleşmelerini çek
+      if (!cityOfficesScraped) {
+        await idataLog("info", "Şehir-ofis eşleşmeleri çekiliyor...");
+        await scrapeCityOffices();
+        cityOfficesScraped = true;
+      }
+
+      // 1. Bekleyen kayıtları işle
+      const pendingData = await apiPost({ action: "get_idata_pending_registrations" }, "check_pending");
+      const pendingCount = pendingData?.accounts?.length || 0;
+      if (pendingCount > 0) {
+        await idataLog("reg_start", `${pendingCount} kayıt talebi işleniyor`);
+        await processPendingRegistrations();
+      }
+
+      // 2. Aktif hesaplarla randevu kontrol
+      const idataData = await fetch(CONFIG.API_URL + "/idata", { method: "GET", headers: apiHeaders }).then(r => r.json()).catch(() => null);
+      const accounts = idataData?.accounts || [];
+      
+      if (accounts.length > 0) {
+        const account = accounts[0]; // En az kullanılan hesap
+        const ip = getNextIp();
+        let browser, page;
+        try {
+          await idataLog("login_start", `Giriş: ${account.email} | IP: ${ip || "doğrudan"}`);
+          ({ browser, page } = await launchBrowser(ip));
+          
+          const loginResult = await loginToIdata(page, account);
+          if (loginResult.success) {
+            await idataLog("login_success", `Giriş başarılı: ${account.email}`);
+            
+            // Randevu kontrol
+            await idataLog("appt_check", `Randevu kontrol ediliyor | Hesap: ${account.email}`);
+            const apptResult = await checkAppointments(page);
+            
+            if (apptResult.found) {
+              await idataLog("appt_found", `🎉 RANDEVU BULUNDU! | Hesap: ${account.email}`, apptResult.screenshot);
+            } else {
+              await idataLog("appt_none", `Randevu yok | Hesap: ${account.email}`, apptResult.screenshot);
+            }
+          } else {
+            await idataLog("login_fail", `Giriş başarısız: ${account.email}`, loginResult.screenshot);
+          }
+        } catch (err) {
+          await idataLog("error", `Hata: ${err.message} | IP: ${ip || "doğrudan"}`);
+          if (ip) markIpBanned(ip);
+        } finally {
+          try { if (browser) await browser.close(); } catch {}
+        }
+      } else {
+        await idataLog("info", "Aktif hesap yok, bekleniyor");
+      }
+
+      // 3. Her 50 döngüde bir şehir-ofis eşleşmelerini güncelle
       scrapeCounter++;
       if (scrapeCounter >= 50) {
         await scrapeCityOffices();
         scrapeCounter = 0;
       }
 
-      console.log(`  ⏰ ${CONFIG.CHECK_INTERVAL_MS / 1000}s bekleniyor...`);
+      const waitSec = CONFIG.CHECK_INTERVAL_MS / 1000;
+      await idataLog("bot_idle", `${waitSec}s bekleniyor...`);
+      console.log(`  ⏰ ${waitSec}s bekleniyor...`);
       await delay(CONFIG.CHECK_INTERVAL_MS, CONFIG.CHECK_INTERVAL_MS + 10000);
 
     } catch (err) {
       console.error("  Ana döngü hatası:", err.message);
+      await idataLog("error", `Ana döngü hatası: ${err.message}`);
       await delay(30000, 60000);
     }
   }

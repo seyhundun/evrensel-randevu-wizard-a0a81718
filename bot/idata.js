@@ -970,8 +970,7 @@ async function mainLoop() {
       // İlk başta şehir-ofis eşleşmelerini çek
       if (!cityOfficesScraped) {
         await idataLog("info", "Şehir-ofis eşleşmeleri çekiliyor...");
-        await scrapeCityOffices();
-        cityOfficesScraped = true;
+        cityOfficesScraped = await scrapeCityOffices();
       }
 
       // 1. Bekleyen kayıtları işle
@@ -1008,7 +1007,11 @@ async function mainLoop() {
               await idataLog("appt_none", `Randevu yok | Hesap: ${account.email}`, apptResult.screenshot);
             }
           } else {
-            await idataLog("login_fail", `Giriş başarısız: ${account.email}`, loginResult.screenshot);
+            const reason = loginResult.reason ? ` | Sebep: ${loginResult.reason}` : "";
+            await idataLog("login_fail", `Giriş başarısız: ${account.email}${reason}`, loginResult.screenshot);
+            if (ip && ["cloudflare_queue", "cloudflare_challenge"].includes(loginResult.reason)) {
+              markIpBanned(ip);
+            }
           }
         } catch (err) {
           await idataLog("error", `Hata: ${err.message} | IP: ${ip || "doğrudan"}`);

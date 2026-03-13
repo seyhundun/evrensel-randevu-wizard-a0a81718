@@ -72,6 +72,14 @@ function markIpFail(ip) {
   }
 }
 
+function banIpImmediately(ip, reason = "") {
+  if (!ip) return;
+  ipBannedUntil.set(ip, Date.now() + IP_BAN_DURATION_MS);
+  ipFailCounts.set(ip, 0);
+  const reasonText = reason ? ` | Sebep: ${reason}` : "";
+  console.log(`  [IP] 🚫 ${ip} anında banlandı (${IP_BAN_DURATION_MS / 60000} dk)${reasonText}`);
+}
+
 function isPageBlocked(pageContent) {
   if (!pageContent || pageContent.trim().length < 100) return true; // boş sayfa
   const lower = pageContent.toLowerCase();
@@ -762,6 +770,77 @@ async function getLoginCaptchaState(page) {
   });
 }
 
+async function getTurnstileDiagnostics(page) {
+  return await page.evaluate(() => {
+    const body = (document.body?.innerText || "").toLowerCase();
+    const title = (document.title || "").toLowerCase();
+    const url = (window.location.href || "").toLowerCase();
+
+    const tokenFields = Array.from(
+      document.querySelectorAll(
+        'input[name="cf-turnstile-response"], textarea[name="cf-turnstile-response"], input[name*="turnstile"], textarea[name*="turnstile"], textarea[name="g-recaptcha-response"], input[name="g-recaptcha-response"]'
+      )
+    );
+
+    const tokenFieldLengths = tokenFields.map((el) => String(el.value || "").trim().length);
+    const maxFieldTokenLength = tokenFieldLengths.length ? Math.max(...tokenFieldLengths) : 0;
+
+    let apiTokenLength = 0;
+    try {
+      if (window.turnstile && typeof window.turnstile.getResponse === "function") {
+        const response = window.turnstile.getResponse();
+        apiTokenLength = typeof response === "string" ? response.trim().length : 0;
+      }
+    } catch {}
+
+    const loginBtn =
+      Array.from(document.querySelectorAll("button")).find((b) => {
+        const txt = (b.textContent || "").toLowerCase();
+        return txt.includes("oturum") || txt.includes("sign in") || txt.includes("login") || txt.includes("giriş");
+      }) || document.querySelector('button[type="submit"]');
+
+    const submitDisabled = !!loginBtn && (
+      loginBtn.disabled ||
+      loginBtn.hasAttribute("disabled") ||
+      loginBtn.getAttribute("aria-disabled") === "true"
+    );
+
+    return {
+      url,
+      title,
+      isLoginPage: url.includes("/login"),
+      hasLoginForm: !!document.querySelector('input[type="email"], input[name="email"], #email'),
+      widgetCount: document.querySelectorAll('.cf-turnstile, [name*="turnstile"], [data-sitekey]').length,
+      iframeCount: document.querySelectorAll('iframe[src*="challenges.cloudflare.com"]').length,
+      tokenFieldCount: tokenFields.length,
+      maxFieldTokenLength,
+      apiTokenLength,
+      hasCaptchaHints:
+        body.includes("verify you are human") ||
+        body.includes("robot olmadığınızı") ||
+        body.includes("captcha") ||
+        body.includes("doğrulama"),
+      hasWaitingRoomHints: title.includes("waiting room") || body.includes("şu anda sıradasınız"),
+      submitDisabled,
+    };
+  });
+}
+
+function formatTurnstileDiagnostics(diag) {
+  if (!diag) return "diag=yok";
+  return [
+    `url=${(diag.url || "").slice(0, 80)}`,
+    `widget=${diag.widgetCount}`,
+    `iframe=${diag.iframeCount}`,
+    `fields=${diag.tokenFieldCount}`,
+    `fieldTokenLen=${diag.maxFieldTokenLength}`,
+    `apiTokenLen=${diag.apiTokenLength}`,
+    `submitDisabled=${diag.submitDisabled ? 1 : 0}`,
+    `captchaHint=${diag.hasCaptchaHints ? 1 : 0}`,
+    `waitingHint=${diag.hasWaitingRoomHints ? 1 : 0}`,
+  ].join(" | ");
+}
+
 async function tryClickTurnstileCheckbox(page) {
   const selectors = [
     'input[type="checkbox"]',
@@ -1268,7 +1347,7 @@ async function checkAppointments(config, account) {
     const pageHtml = await page.evaluate(() => document.documentElement?.outerHTML || "").catch(() => "");
     if (isPageBlocked(pageContent) || pageHtml.trim().length < 500) {
       console.log(`  [IP] 🚫 Sayfa yüklenemedi / engellendi! IP: ${activeIp}`);
-      markIpFail(activeIp);
+      banIpImmediately(activeIp, "login_page_blocked_or_empty");
       const ss = await takeScreenshotBase64(page);
       await logStep(id, "network_error", `IP engellendi: ${activeIp || "doğrudan"}`);
       await reportResult(id, "error", `IP engellendi: ${activeIp || "doğrudan"} | Hesap: ${account.email}`, 0, ss);
@@ -1305,9 +1384,10 @@ async function checkAppointments(config, account) {
     await delay(1000, 2000);
     const queueResult = await waitForLoginFormAfterQueue(page);
     if (!queueResult.ok) {
+      banIpImmediately(activeIp, "queue_or_login_form_timeout");
       const ss = await takeScreenshotBase64(page);
       await reportResult(id, "error", `${queueResult.reason} | Hesap: ${account.email}`, 0, ss);
-      return { found: false, accountBanned: false, hadError: true };
+      return { found: false, accountBanned: false, ipBlocked: true, hadError: true };
     }
 
     // STEP 4: Login
@@ -1336,11 +1416,18 @@ async function checkAppointments(config, account) {
 
       // Login ekranındaki Turnstile çözümü (kuyruktan ayrı doğrulama gerekiyor)
       let token = await ensureLoginTurnstileToken(page, 4);
+      const initialDiag = await getTurnstileDiagnostics(page);
+      const initialDiagText = formatTurnstileDiagnostics(initialDiag);
 
       if (token) {
-        console.log("  [4/6] ✅ Login Turnstile token alındı");
+        console.log(`  [4/6] ✅ Login Turnstile token alındı | ${initialDiagText}`);
       } else {
-        console.log("  [4/6] ⚠ Login Turnstile token alınamadı");
+        console.log(`  [4/6] ❌ Login Turnstile token alınamadı | ${initialDiagText}`);
+        await logStep(id, "login_captcha_debug", `İlk token alınamadı | ${account.email} | ${initialDiagText}`);
+        banIpImmediately(activeIp, "login_turnstile_token_missing_initial");
+        const ss = await takeScreenshotBase64(page);
+        await reportResult(id, "error", `❌ Turnstile token alınamadı (ilk deneme) | Hesap: ${account.email} | IP: ${activeIp || "doğrudan"}`, 0, ss);
+        return { found: false, accountBanned: false, ipBlocked: true, hadError: true };
       }
 
       let submitAttempt = await submitLoginForm(page);
@@ -1355,17 +1442,20 @@ async function checkAppointments(config, account) {
       await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 }).catch(() => {});
       await delay(3000, 5000);
 
-      // İlk submit sonrası captcha validasyon hatasında tekrar çöz + submit dene (3 deneme)
+      // İlk submit sonrası captcha validasyon hatasında tekrar çöz + submit dene
       for (let captchaRetry = 1; captchaRetry <= 3; captchaRetry++) {
-        let loginCaptchaState = await getLoginCaptchaState(page);
+        const loginCaptchaState = await getLoginCaptchaState(page);
         if (
           loginCaptchaState.isLoginPage &&
           loginCaptchaState.hasLoginForm &&
           loginCaptchaState.hasTurnstileWidget &&
           (!loginCaptchaState.hasCaptchaToken || loginCaptchaState.hasCaptchaError)
         ) {
-          console.log(`  [4/6] 🔁 CAPTCHA retry ${captchaRetry}/3...`);
+          const retryPreDiag = await getTurnstileDiagnostics(page);
+          const retryPreDiagText = formatTurnstileDiagnostics(retryPreDiag);
+          console.log(`  [4/6] 🔁 CAPTCHA retry ${captchaRetry}/3... | ${retryPreDiagText}`);
           await logStep(id, "login_captcha_retry", `CAPTCHA tekrar çözülüyor (${captchaRetry}/3) | ${account.email}`);
+          await logStep(id, "login_captcha_debug", `Retry ${captchaRetry} öncesi | ${account.email} | ${retryPreDiagText}`);
 
           // Sayfayı yenile ve formu tekrar doldur
           if (captchaRetry >= 2) {
@@ -1386,8 +1476,12 @@ async function checkAppointments(config, account) {
           }
 
           token = await ensureLoginTurnstileToken(page, 4);
+          const retryPostDiag = await getTurnstileDiagnostics(page);
+          const retryPostDiagText = formatTurnstileDiagnostics(retryPostDiag);
+
           if (token) {
-            console.log(`  [4/6] ✅ Retry ${captchaRetry} Turnstile token alındı`);
+            console.log(`  [4/6] ✅ Retry ${captchaRetry} Turnstile token alındı | ${retryPostDiagText}`);
+            await logStep(id, "login_captcha_debug", `Retry ${captchaRetry} token alındı | ${account.email} | ${retryPostDiagText}`);
             submitAttempt = await submitLoginForm(page);
             if (!submitAttempt.clicked) {
               await page.keyboard.press("Enter");
@@ -1395,8 +1489,12 @@ async function checkAppointments(config, account) {
             await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 20000 }).catch(() => {});
             await delay(2500, 4000);
           } else {
-            console.log(`  [4/6] ❌ Retry ${captchaRetry} token alınamadı`);
-            await delay(2000, 4000);
+            console.log(`  [4/6] ❌ Retry ${captchaRetry} token alınamadı | ${retryPostDiagText}`);
+            await logStep(id, "login_captcha_debug", `Retry ${captchaRetry} token yok | ${account.email} | ${retryPostDiagText}`);
+            banIpImmediately(activeIp, `login_turnstile_token_missing_retry_${captchaRetry}`);
+            const ss = await takeScreenshotBase64(page);
+            await reportResult(id, "error", `❌ Turnstile token alınamadı (retry ${captchaRetry}) | Hesap: ${account.email} | IP: ${activeIp || "doğrudan"}`, 0, ss);
+            return { found: false, accountBanned: false, ipBlocked: true, hadError: true };
           }
         } else {
           break; // Token var veya login sayfasından çıkmış
@@ -1476,19 +1574,23 @@ async function checkAppointments(config, account) {
       else if (pageCheck.hasTurnstileWidget && pageCheck.loginSubmitDisabled) errorType = "❌ Turnstile doğrulanmadı (submit pasif)";
       else if (isLoginFailed) errorType = "❌ Giriş başarısız";
 
-      // Session expired veya Turnstile hatalarında IP'yi banla — temiz tarayıcıyla yeni IP denenecek
+      // Session expired veya Turnstile hatalarında IP'yi anında banla — sıradaki IP + temiz profil ile yeniden başlasın
       if (pageCheck.isSessionExpired || errorType.includes("Turnstile") || pageCheck.isWaitingRoom) {
-        markIpFail(activeIp);
+        banIpImmediately(activeIp, "post_login_session_or_turnstile_error");
       }
 
-      console.log(`  [5/6] ${errorType} | Hesap: ${account.email}`);
+      const finalDiag = await getTurnstileDiagnostics(page).catch(() => null);
+      const finalDiagText = formatTurnstileDiagnostics(finalDiag);
+      await logStep(id, "login_captcha_debug", `Login sonrası kontrol | ${account.email} | ${finalDiagText}`);
+
+      console.log(`  [5/6] ${errorType} | Hesap: ${account.email} | ${finalDiagText}`);
       const ss = await takeScreenshotBase64(page);
       await reportResult(id, "error", `${errorType} | Hesap: ${account.email}`, 0, ss);
       if (isBanned) { await updateAccountStatus(account.id, "banned"); return { found: false, accountBanned: true, hadError: true }; }
       
-      // Session expired durumunda hesap fail_count artırma — sorun hesapta değil IP/session'da
-      if (pageCheck.isSessionExpired) {
-        return { found: false, accountBanned: false, hadError: true };
+      // Session/Turnstile/waiting-room durumunda hemen sonraki IP ile devam et
+      if (pageCheck.isSessionExpired || errorType.includes("Turnstile") || pageCheck.isWaitingRoom) {
+        return { found: false, accountBanned: false, ipBlocked: true, hadError: true };
       }
       
       const newFailCount = (account.fail_count || 0) + 1;

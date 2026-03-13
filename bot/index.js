@@ -2240,11 +2240,16 @@ async function registerVfsAccount(account) {
 // ==================== MAIN LOOP ====================
 async function main() {
   console.log("═══════════════════════════════════════════");
-  console.log("  VFS Randevu Takip Botu v7.1");
-  console.log("  Real Browser + Fingerprint + Kayıt");
-  console.log("  Proxy: KAPALI");
+  console.log("  VFS Randevu Takip Botu v8.0");
+  console.log("  Real Browser + Fingerprint + IP Rotasyonu");
   console.log("═══════════════════════════════════════════");
 
+  if (IP_LIST.length > 0) {
+    console.log(`✅ IP Rotasyonu aktif: ${IP_LIST.length} IP`);
+    IP_LIST.forEach((ip, i) => console.log(`   ${i + 1}. ${ip} → socks5://127.0.0.1:${10800 + i}`));
+  } else {
+    console.log("⚠ IP_LIST boş — doğrudan bağlantı kullanılacak");
+  }
   if (CONFIG.CAPTCHA_API_KEY) console.log("✅ CAPTCHA çözücü aktif");
   else console.log("⚠ CAPTCHA_API_KEY yok");
   console.log("✅ Fingerprint randomization aktif");

@@ -2470,9 +2470,15 @@ async function registerVfsAccount(account) {
         }
 
         if (!clickedSubmit) {
-          await submitBtn.asElement().click();
-          clickedSubmit = true;
-          console.log("  [REG] ✅ Devam Et tıklandı");
+          let normalSubmit = await tryForceRegistrationSubmit(page, { forceEnableDisabled: false });
+          if (!normalSubmit.clicked && normalSubmit.reason === "disabled_button") {
+            normalSubmit = await tryForceRegistrationSubmit(page, { forceEnableDisabled: true });
+          }
+
+          if (normalSubmit.clicked) {
+            clickedSubmit = true;
+            console.log(`  [REG] ✅ Devam Et tıklandı (${normalSubmit.reason})`);
+          }
         }
       }
     } catch (e) {

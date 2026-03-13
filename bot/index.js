@@ -2317,12 +2317,46 @@ async function registerVfsAccount(account) {
 
     try {
       const submitBtn = await page.evaluateHandle(() => {
-        const btns = [...document.querySelectorAll("button")];
-        const keywords = ["devam et", "devam", "continue", "register", "kayıt", "create", "oluştur", "sign up"];
-        return btns.find((b) => {
-          const txt = (b.textContent || "").toLowerCase().trim();
-          return keywords.some(k => txt.includes(k));
-        }) || document.querySelector('button[type="submit"]') || null;
+        const isVisible = (el) => {
+          if (!el) return false;
+          const rect = el.getBoundingClientRect();
+          const style = window.getComputedStyle(el);
+          return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+        };
+
+        const keywords = ["devam et", "devam", "continue", "register", "kayıt", "create", "oluştur", "sign up", "next"];
+        const skipKeywords = ["cookie", "tanımlama", "allow all", "accept", "reject", "clear", "apply", "cancel", "filter", "geri", "back"];
+
+        const hasRegisterFields = (root) => {
+          if (!root) return false;
+          const hasEmail = !!root.querySelector('input[type="email"], input[name*="email" i]');
+          const hasPassword = root.querySelectorAll('input[type="password"]').length >= 1;
+          return hasEmail && hasPassword;
+        };
+
+        const candidates = Array.from(document.querySelectorAll('button, input[type="submit"]'));
+        let best = null;
+        let bestScore = -999;
+
+        for (const btn of candidates) {
+          const txt = (btn.textContent || btn.value || "").toLowerCase().trim();
+          let score = 0;
+
+          if (!isVisible(btn)) score -= 120;
+          if (keywords.some((k) => txt.includes(k))) score += 80;
+          if (skipKeywords.some((k) => txt.includes(k))) score -= 120;
+          if ((btn.type || "").toLowerCase() === "submit") score += 60;
+
+          const form = btn.closest("form");
+          if (hasRegisterFields(form)) score += 70;
+
+          if (score > bestScore) {
+            bestScore = score;
+            best = btn;
+          }
+        }
+
+        return bestScore >= 30 ? best : null;
       });
 
       if (submitBtn && submitBtn.asElement()) {

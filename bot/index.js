@@ -1106,14 +1106,38 @@ async function applyFingerprint(page, fp) {
 }
 
 // ==================== BROWSER LAUNCH ====================
+const path = require("path");
+const fs = require("fs");
+const os = require("os");
+
+function createTempUserDataDir() {
+  const dir = path.join(os.tmpdir(), `vfs-chrome-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  fs.mkdirSync(dir, { recursive: true });
+  console.log(`  [BROWSER] 🧹 Temiz profil: ${dir}`);
+  return dir;
+}
+
+function cleanupUserDataDir(dir) {
+  try {
+    if (dir && fs.existsSync(dir)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+      console.log(`  [BROWSER] 🗑 Profil temizlendi: ${dir}`);
+    }
+  } catch (e) {
+    console.warn(`  [BROWSER] Profil temizleme hatası: ${e.message}`);
+  }
+}
+
 async function launchBrowser(proxyIp = null) {
   const { connect } = require("puppeteer-real-browser");
+  const userDataDir = createTempUserDataDir();
   const args = [
     "--no-sandbox",
     "--disable-setuid-sandbox",
     "--disable-dev-shm-usage",
     "--disable-blink-features=AutomationControlled",
     "--window-size=1366,768",
+    `--user-data-dir=${userDataDir}`,
   ];
   
   // IP rotasyonu: her IP için local SOCKS5 proxy kullan
@@ -1127,7 +1151,11 @@ async function launchBrowser(proxyIp = null) {
     headless: false,
     args,
   });
-  console.log(`  [BROWSER] ✅ Real browser başlatıldı ${proxyIp ? `(IP: ${proxyIp})` : "(proxy yok)"}`);
+  
+  // Tarayıcı kapanınca temp klasörü sil
+  browser.on("disconnected", () => cleanupUserDataDir(userDataDir));
+  
+  console.log(`  [BROWSER] ✅ Real browser başlatıldı (temiz profil) ${proxyIp ? `(IP: ${proxyIp})` : "(proxy yok)"}`);
   return { browser, page };
 }
 

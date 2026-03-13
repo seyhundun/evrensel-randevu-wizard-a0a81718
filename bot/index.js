@@ -2131,8 +2131,14 @@ async function registerVfsAccount(account) {
     await applyFingerprint(page, fp);
     await humanMove(page);
 
-    const regUrl = CONFIG.VFS_URL.replace("/login", "/register");
-    console.log("  [REG 1/7] Kayıt sayfası...");
+    // Aktif config'den ülkeyi al ve ona göre kayıt URL'sini belirle
+    let regCountry = "france";
+    try {
+      const { configs } = await fetchActiveConfigs();
+      if (configs.length > 0 && configs[0].country) regCountry = configs[0].country;
+    } catch {}
+    const regUrl = getVfsRegisterUrl(regCountry);
+    console.log(`  [REG 1/7] Kayıt sayfası: ${regUrl}`);
     await page.goto(regUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
     await humanIdle(5000, 10000); // Sayfayı okuyormuş gibi bekle
     await humanMove(page);

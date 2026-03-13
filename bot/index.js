@@ -1445,7 +1445,7 @@ async function checkAppointments(config, account) {
       return {
         url,
         isNotFound: url.includes("page-not-found") || url.includes("404"),
-        isSessionExpired: body.includes("oturum süresi doldu") || body.includes("session expired"),
+        isSessionExpired: body.includes("oturum süresi doldu") || body.includes("oturum süresi dolmuş") || body.includes("session expired") || body.includes("oturumunuzun süresi") || (body.includes("oturum") && body.includes("geçersiz")),
         isBanned: body.includes("engellenmiş") || body.includes("blocked") || body.includes("banned"),
         isWaitingRoom: (document.title || "").toLowerCase().includes("waiting room"),
         isLoginPage: url.includes("/login"),
@@ -1476,7 +1476,8 @@ async function checkAppointments(config, account) {
       else if (pageCheck.hasTurnstileWidget && pageCheck.loginSubmitDisabled) errorType = "❌ Turnstile doğrulanmadı (submit pasif)";
       else if (isLoginFailed) errorType = "❌ Giriş başarısız";
 
-      if (errorType.includes("Turnstile")) {
+      // Session expired veya Turnstile hatalarında IP'yi banla — temiz tarayıcıyla yeni IP denenecek
+      if (pageCheck.isSessionExpired || errorType.includes("Turnstile") || pageCheck.isWaitingRoom) {
         markIpFail(activeIp);
       }
 
@@ -1484,6 +1485,12 @@ async function checkAppointments(config, account) {
       const ss = await takeScreenshotBase64(page);
       await reportResult(id, "error", `${errorType} | Hesap: ${account.email}`, 0, ss);
       if (isBanned) { await updateAccountStatus(account.id, "banned"); return { found: false, accountBanned: true, hadError: true }; }
+      
+      // Session expired durumunda hesap fail_count artırma — sorun hesapta değil IP/session'da
+      if (pageCheck.isSessionExpired) {
+        return { found: false, accountBanned: false, hadError: true };
+      }
+      
       const newFailCount = (account.fail_count || 0) + 1;
       if (newFailCount >= 3) { await updateAccountStatus(account.id, "cooldown", newFailCount); }
       else { await updateAccountStatus(account.id, "active", newFailCount); }

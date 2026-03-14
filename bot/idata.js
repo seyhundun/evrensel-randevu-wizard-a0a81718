@@ -967,52 +967,61 @@ async function loginToIdata(page, account) {
     }).catch(() => {});
     await delay(1000, 2000);
 
-    // Üyelik numarası — login formunda ilk text input
-    if (account.membership_number) {
+    // Form alanlarını pozisyon bazlı doldur (iDATA tüm inputları type="text" kullanıyor)
+    const formInputs = await page.$$('input[type="text"], input[type="email"], input[type="password"]');
+    console.log(`  [LOGIN] Form'da ${formInputs.length} input bulundu`);
+
+    // Alanları sırayla tanımla
+    // iDATA login formu sırası: 1) Üyelik No, 2) E-Posta, 3) Şifre, 4) CAPTCHA Kodu
+    const passwordInputs = await page.$$('input[type="password"]');
+    const textInputs = await page.$$('input[type="text"], input[type="email"]');
+    
+    // 1) Üyelik numarası — ilk text input
+    if (account.membership_number && textInputs[0]) {
       console.log(`  [LOGIN] Üyelik no giriliyor: ${account.membership_number}`);
-      const memberInput = await page.$('input[type="text"]:not([type="email"]):not([type="password"])');
-      if (memberInput) {
-        await humanType(page, memberInput, account.membership_number);
-        await delay(500, 1000);
-      }
+      await textInputs[0].click({ clickCount: 3 });
+      await textInputs[0].type(account.membership_number, { delay: 50 });
+      await delay(500, 1000);
     }
 
-    // Email
-    await humanType(page, 'input[type="email"], input[name*="email"], input[id*="email"]', account.email);
-    await delay(1000, 2000);
+    // 2) E-Posta — ikinci text input
+    if (textInputs[1]) {
+      console.log(`  [LOGIN] E-Posta giriliyor: ${account.email}`);
+      await textInputs[1].click({ clickCount: 3 });
+      await textInputs[1].type(account.email, { delay: 50 });
+      await delay(500, 1000);
+    }
 
-    // Şifre
-    await humanType(page, 'input[type="password"]', account.password);
-    await delay(1000, 2000);
+    // 3) Şifre — password input
+    if (passwordInputs[0]) {
+      console.log(`  [LOGIN] Şifre giriliyor`);
+      await passwordInputs[0].click({ clickCount: 3 });
+      await passwordInputs[0].type(account.password, { delay: 50 });
+      await delay(1000, 2000);
+    }
 
-    // CAPTCHA
+    // 4) CAPTCHA çöz ve son text input'a gir
     const captchaCode = await solveImageCaptcha(page);
     if (captchaCode) {
-      // CAPTCHA input — genellikle label'ı "Doğrulama" olan veya son text input
-      const captchaFilled = await page.evaluate((code) => {
-        const inputs = Array.from(document.querySelectorAll('input[type="text"]'));
-        // Captcha input'u bul — label'da "doğrulama" veya "captcha" geçen
-        const captchaInput = inputs.find(inp => {
-          const parent = inp.closest("div, fieldset, section, .form-group");
-          const parentText = (parent?.innerText || "").toLowerCase();
-          const placeholder = (inp.placeholder || "").toLowerCase();
-          return parentText.includes("doğrulama") || parentText.includes("captcha") || 
-                 placeholder.includes("doğrulama") || placeholder.includes("captcha") ||
-                 placeholder.includes("kod");
-        });
-        if (captchaInput) {
-          captchaInput.focus();
-          captchaInput.value = code;
-          captchaInput.dispatchEvent(new Event("input", { bubbles: true }));
-          captchaInput.dispatchEvent(new Event("change", { bubbles: true }));
-          return true;
-        }
-        return false;
-      }, captchaCode);
-      
-      if (!captchaFilled) {
-        // Fallback — eski yöntem
-        await humanType(page, 'input[name*="captcha"], input[placeholder*="Doğrulama"]', captchaCode);
+      // CAPTCHA input — captcha image'den sonraki son text input
+      const freshTextInputs = await page.$$('input[type="text"], input[type="email"]');
+      const captchaInput = freshTextInputs[freshTextInputs.length - 1]; // Son text input
+      if (captchaInput) {
+        console.log(`  [LOGIN] CAPTCHA kodu giriliyor: ${captchaCode}`);
+        await captchaInput.click({ clickCount: 3 });
+        await captchaInput.type(captchaCode, { delay: 50 });
+      } else {
+        console.log(`  [LOGIN] ⚠ CAPTCHA input bulunamadı, evaluate ile deneniyor`);
+        await page.evaluate((code) => {
+          const inputs = Array.from(document.querySelectorAll('input[type="text"]'));
+          const last = inputs[inputs.length - 1];
+          if (last) {
+            last.focus();
+            last.value = code;
+            last.dispatchEvent(new Event("input", { bubbles: true }));
+            last.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+        }, captchaCode);
       }
       await delay(500, 1000);
     }

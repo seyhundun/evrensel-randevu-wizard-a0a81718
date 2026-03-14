@@ -397,16 +397,12 @@ export default function BotSettingsPanel() {
                         <Check className={`mr-2 h-3 w-3 ${!getDraft("proxy_region") ? "opacity-100" : "opacity-0"}`} />
                         Yok (rastgele)
                       </CommandItem>
-                      {evomiRegions.map((r, i) => {
-                        const val = typeof r === "string" ? r : (r as any).name || (r as any).id || String(i);
-                        const label = typeof r === "string" ? r : (r as any).name || JSON.stringify(r);
-                        return (
-                          <CommandItem key={val + i} value={val} onSelect={() => { setDraftValue("proxy_region", val); setRegionPopoverOpen(false); }}>
-                            <Check className={`mr-2 h-3 w-3 ${getDraft("proxy_region") === val ? "opacity-100" : "opacity-0"}`} />
-                            {label}
+                      {evomiRegions.map((r) => (
+                          <CommandItem key={r.id} value={`${r.id} ${r.name}`} onSelect={() => { setDraftValue("proxy_region", r.id); setRegionPopoverOpen(false); }}>
+                            <Check className={`mr-2 h-3 w-3 ${getDraft("proxy_region") === r.id ? "opacity-100" : "opacity-0"}`} />
+                            {r.name}
                           </CommandItem>
-                        );
-                      })}
+                        ))}
                     </CommandGroup>
                   </CommandList>
                 </Command>

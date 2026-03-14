@@ -26,7 +26,7 @@ const VncViewer = ({ title, defaultHost = "vnc.fipacomputer.online", pathPrefix 
   const mixedContentBlocked = isHttpsApp && scheme === "http";
 
   const wsPath = `${pathPrefix.slice(1)}/websockify`;
-  const vncUrl = `${scheme}://${host}${pathPrefix}/vnc.html?autoconnect=1&resize=remote&scaleViewport=true&quality=6&compression=2&path=${wsPath}&reconnect=true&reconnect_delay=3000`;
+  const vncUrl = `${scheme}://${host}${pathPrefix}/vnc.html?autoconnect=1&resize=scale&path=${wsPath}&reconnect=true&reconnect_delay=3000`;
 
   const handleConnect = useCallback(() => {
     setIsConnected(true);
@@ -166,11 +166,12 @@ const VncViewer = ({ title, defaultHost = "vnc.fipacomputer.online", pathPrefix 
             </Alert>
           </div>
         ) : (
-          <div className={`relative bg-black ${isFullscreen ? "h-screen" : "aspect-[21/9]"}`}>
+          <div className="relative bg-black">
             <iframe
               key={iframeKey}
               src={vncUrl}
-              className="h-full w-full border-0"
+              className="w-full border-0"
+              style={{ height: isFullscreen ? "100vh" : "600px" }}
               allow="clipboard-read; clipboard-write"
               sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
               onError={() => setIsConnected(false)}

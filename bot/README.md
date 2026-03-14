@@ -45,9 +45,16 @@ pm2 save && pm2 startup
 ## Ortam Değişkenleri (.env)
 
 ```
-IP_LIST=1.2.3.4,1.2.3.5,1.2.3.6,1.2.3.7,1.2.3.8,1.2.3.9,1.2.3.10,1.2.3.11,1.2.3.12,1.2.3.13
+IP_LIST=1.2.3.4,1.2.3.5,1.2.3.6
 CAPTCHA_API_KEY=2captcha_api_anahtariniz
+CAPSOLVER_API_KEY=CAP-xxxxxxxxxxxx
+CAPTCHA_PROVIDER=auto
 IP_BAN_DURATION_MS=1800000
 ```
+
+> **CAPTCHA_PROVIDER** seçenekleri:
+> - `auto` (varsayılan): Önce capsolver dener, başarısız olursa 2captcha'ya düşer
+> - `capsolver`: Yalnızca capsolver kullanır
+> - `2captcha`: Yalnızca 2captcha kullanır
 
 > **Not:** `IP_LIST` virgülle ayrılmış VDS IP adresleriniz. Bot engellenince otomatik olarak sonraki IP'ye geçer.

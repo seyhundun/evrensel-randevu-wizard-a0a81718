@@ -605,146 +605,206 @@ async function getCaptchaImageBase64(page) {
   });
 }
 
-async function solveImageCaptcha(page) {
-  // Önce AI ile çöz (Lovable AI - Gemini Vision), başarısızsa 2captcha/capsolver'a düş
+async function refreshCaptchaImage(page) {
   try {
-    const capture = await getCaptchaImageBase64(page);
-    const captchaImgBase64 = capture?.base64;
+    return await page.evaluate(() => {
+      const keyword = /(captcha|doğrulama|dogrulama|verification|security|code|yenile|refresh)/i;
 
-    if (!captchaImgBase64) {
-      console.log(`  [CAPTCHA] ❌ Captcha resmi bulunamadı: ${capture?.reason || "unknown"}`);
-      return null;
-    }
+      const refreshCandidates = Array.from(document.querySelectorAll("button, a, span, i, svg, img"));
+      const refreshEl = refreshCandidates.find((el) => {
+        const meta = [
+          el.textContent,
+          el.getAttribute("title"),
+          el.getAttribute("aria-label"),
+          el.id,
+          el.className,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return keyword.test(meta) && (meta.includes("yenile") || meta.includes("refresh") || meta.includes("captcha") || meta.includes("doğrulama") || meta.includes("dogrulama"));
+      });
 
-    console.log(`  [CAPTCHA] 📸 Captcha resmi bulundu (score=${capture?.meta?.score ?? "?"}), AI ile çözülüyor...`);
-
-    // 1) Lovable AI (Gemini Vision) ile çöz — ücretsiz
-    try {
-      const aiRes = await fetch(
-        "https://ocrpzwrsyiprfuzsyivf.supabase.co/functions/v1/solve-captcha",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: CONFIG.API_KEY,
-          },
-          body: JSON.stringify({ image_base64: captchaImgBase64 }),
-        }
-      );
-      const aiData = await aiRes.json();
-      const aiCode = normalizeCaptchaCode(aiData?.code || aiData?.raw);
-
-      if (aiData.ok && isLikelyCaptchaCode(aiCode)) {
-        console.log(`  [CAPTCHA] ✅ AI çözüldü: ${aiCode} (raw: ${aiData.raw || ""})`);
-        return aiCode;
+      if (refreshEl) {
+        refreshEl.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        return true;
       }
 
-      console.log(`  [CAPTCHA] AI geçersiz çıktı: "${aiData?.code || aiData?.raw || "boş"}" (error: ${aiData?.error || "yok"}), fallback deneniyor...`);
-    } catch (aiErr) {
-      console.log(`  [CAPTCHA] AI hata: ${aiErr.message}, fallback deneniyor...`);
-    }
+      const images = Array.from(document.querySelectorAll("img"));
+      const img = images.find((candidate) => {
+        const src = (candidate.getAttribute("src") || "").toLowerCase();
+        const alt = (candidate.getAttribute("alt") || "").toLowerCase();
+        const meta = `${src} ${alt} ${(candidate.className || "").toLowerCase()}`;
+        return /(captcha|doğrulama|dogrulama|verify|code)/i.test(meta);
+      });
 
-    // 2) Fallback: Capsolver / 2captcha
-    const useCapsolver = CAPSOLVER_API_KEY && (CAPTCHA_PROVIDER === "capsolver" || CAPTCHA_PROVIDER === "auto");
-    const use2captcha = CONFIG.CAPTCHA_API_KEY && (CAPTCHA_PROVIDER === "2captcha" || CAPTCHA_PROVIDER === "auto");
+      if (!img) return false;
 
-    // Capsolver ile dene
-    if (useCapsolver) {
+      const currentSrc = img.getAttribute("src") || "";
+      if (currentSrc) {
+        const separator = currentSrc.includes("?") ? "&" : "?";
+        img.setAttribute("src", `${currentSrc}${separator}r=${Date.now()}`);
+      }
+      img.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      return true;
+    });
+  } catch {
+    return false;
+  }
+}
+
+async function solveImageCaptcha(page, options = {}) {
+  const { maxAttempts = 3 } = options;
+
+  // Önce AI ile çöz (Lovable AI - Gemini Vision), başarısızsa 2captcha/capsolver'a düş
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      if (attempt > 1) {
+        console.log(`  [CAPTCHA] 🔁 Yeni deneme ${attempt}/${maxAttempts}...`);
+        const refreshed = await refreshCaptchaImage(page);
+        if (refreshed) await delay(1800, 2800);
+      } else {
+        await delay(1200, 2200);
+      }
+
+      const capture = await getCaptchaImageBase64(page);
+      const captchaImgBase64 = capture?.base64;
+
+      if (!captchaImgBase64) {
+        console.log(`  [CAPTCHA] ⚠ Captcha resmi bulunamadı (deneme ${attempt}/${maxAttempts}): ${capture?.reason || "unknown"}`);
+        await delay(1200, 2000);
+        continue;
+      }
+
+      console.log(`  [CAPTCHA] 📸 Captcha resmi bulundu (score=${capture?.meta?.score ?? "?"}), AI ile çözülüyor...`);
+
+      // 1) Lovable AI (Gemini Vision) ile çöz — ücretsiz
       try {
-        console.log("  [CAPTCHA] Capsolver ile çözülüyor...");
-        const createRes = await fetch("https://api.capsolver.com/createTask", {
+        const aiRes = await fetch(
+          "https://ocrpzwrsyiprfuzsyivf.supabase.co/functions/v1/solve-captcha",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: CONFIG.API_KEY,
+            },
+            body: JSON.stringify({ image_base64: captchaImgBase64 }),
+          }
+        );
+        const aiData = await aiRes.json();
+        const aiCode = normalizeCaptchaCode(aiData?.code || aiData?.raw);
+
+        if (aiData.ok && isLikelyCaptchaCode(aiCode)) {
+          console.log(`  [CAPTCHA] ✅ AI çözüldü: ${aiCode} (raw: ${aiData.raw || ""})`);
+          return aiCode;
+        }
+
+        console.log(`  [CAPTCHA] AI geçersiz çıktı: "${aiData?.code || aiData?.raw || "boş"}" (error: ${aiData?.error || "yok"}), fallback deneniyor...`);
+      } catch (aiErr) {
+        console.log(`  [CAPTCHA] AI hata: ${aiErr.message}, fallback deneniyor...`);
+      }
+
+      // 2) Fallback: Capsolver / 2captcha
+      const useCapsolver = CAPSOLVER_API_KEY && (CAPTCHA_PROVIDER === "capsolver" || CAPTCHA_PROVIDER === "auto");
+      const use2captcha = CONFIG.CAPTCHA_API_KEY && (CAPTCHA_PROVIDER === "2captcha" || CAPTCHA_PROVIDER === "auto");
+
+      // Capsolver ile dene
+      if (useCapsolver) {
+        try {
+          console.log("  [CAPTCHA] Capsolver ile çözülüyor...");
+          const createRes = await fetch("https://api.capsolver.com/createTask", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              clientKey: CAPSOLVER_API_KEY,
+              task: { type: "ImageToTextTask", body: captchaImgBase64 },
+            }),
+          });
+          const createData = await createRes.json();
+          if (createData.errorId === 0 && createData.taskId) {
+            for (let i = 0; i < 30; i++) {
+              await delay(2000, 4000);
+              const resultRes = await fetch("https://api.capsolver.com/getTaskResult", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ clientKey: CAPSOLVER_API_KEY, taskId: createData.taskId }),
+              });
+              const resultData = await resultRes.json();
+              if (resultData.status === "ready") {
+                const code = normalizeCaptchaCode(resultData.solution?.text);
+                if (isLikelyCaptchaCode(code)) {
+                  console.log(`  [CAPTCHA] ✅ Capsolver çözüldü: ${code}`);
+                  return code;
+                }
+                console.log(`  [CAPTCHA] ⚠ Capsolver geçersiz çıktı: ${resultData.solution?.text || "boş"}`);
+                break;
+              }
+              if (resultData.errorId !== 0) break;
+            }
+          }
+          console.log("  [CAPTCHA] Capsolver başarısız, devam ediliyor...");
+        } catch (err) {
+          console.log(`  [CAPTCHA] Capsolver hata: ${err.message}`);
+        }
+      }
+
+      // 2captcha ile dene
+      if (use2captcha) {
+        console.log("  [CAPTCHA] 2captcha ile çözülüyor...");
+        const createRes = await fetch("https://api.2captcha.com/createTask", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            clientKey: CAPSOLVER_API_KEY,
-            task: { type: "ImageToTextTask", body: captchaImgBase64 },
+            clientKey: CONFIG.CAPTCHA_API_KEY,
+            task: {
+              type: "ImageToTextTask",
+              body: captchaImgBase64,
+              case: false,
+              minLength: 4,
+              maxLength: 6,
+            },
           }),
         });
         const createData = await createRes.json();
-        if (createData.errorId === 0 && createData.taskId) {
-          for (let i = 0; i < 30; i++) {
-            await delay(2000, 4000);
-            const resultRes = await fetch("https://api.capsolver.com/getTaskResult", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ clientKey: CAPSOLVER_API_KEY, taskId: createData.taskId }),
-            });
-            const resultData = await resultRes.json();
-            if (resultData.status === "ready") {
-              const code = normalizeCaptchaCode(resultData.solution?.text);
-              if (isLikelyCaptchaCode(code)) {
-                console.log(`  [CAPTCHA] ✅ Capsolver çözüldü: ${code}`);
-                return code;
-              }
-              console.log(`  [CAPTCHA] ⚠ Capsolver geçersiz çıktı: ${resultData.solution?.text || "boş"}`);
-              break;
+        if (createData.errorId !== 0) {
+          console.log(`  [CAPTCHA] ❌ 2captcha hata: ${createData.errorDescription || createData.errorCode}`);
+          continue;
+        }
+
+        const taskId = createData.taskId;
+        console.log(`  [CAPTCHA] 2captcha task: ${taskId}`);
+
+        for (let i = 0; i < 30; i++) {
+          await delay(3000, 5000);
+          const resultRes = await fetch("https://api.2captcha.com/getTaskResult", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ clientKey: CONFIG.CAPTCHA_API_KEY, taskId }),
+          });
+          const resultData = await resultRes.json();
+
+          if (resultData.status === "ready") {
+            const code = normalizeCaptchaCode(resultData.solution?.text);
+            if (isLikelyCaptchaCode(code)) {
+              console.log(`  [CAPTCHA] ✅ 2captcha çözüldü: ${code}`);
+              return code;
             }
-            if (resultData.errorId !== 0) break;
+            console.log(`  [CAPTCHA] ⚠ 2captcha geçersiz çıktı: ${resultData.solution?.text || "boş"}`);
+            break;
+          }
+          if (resultData.errorId !== 0) {
+            console.log(`  [CAPTCHA] ❌ Sonuç hatası: ${resultData.errorDescription}`);
+            break;
           }
         }
-        console.log("  [CAPTCHA] Capsolver başarısız, devam ediliyor...");
-      } catch (err) {
-        console.log(`  [CAPTCHA] Capsolver hata: ${err.message}`);
       }
+    } catch (err) {
+      console.error(`  [CAPTCHA] Hata (deneme ${attempt}/${maxAttempts}):`, err.message);
     }
-
-    // 2captcha ile dene
-    if (use2captcha) {
-      console.log("  [CAPTCHA] 2captcha ile çözülüyor...");
-      const createRes = await fetch("https://api.2captcha.com/createTask", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientKey: CONFIG.CAPTCHA_API_KEY,
-          task: {
-            type: "ImageToTextTask",
-            body: captchaImgBase64,
-            case: false,
-            minLength: 4,
-            maxLength: 6,
-          },
-        }),
-      });
-      const createData = await createRes.json();
-      if (createData.errorId !== 0) {
-        console.log(`  [CAPTCHA] ❌ 2captcha hata: ${createData.errorDescription || createData.errorCode}`);
-        return null;
-      }
-
-      const taskId = createData.taskId;
-      console.log(`  [CAPTCHA] 2captcha task: ${taskId}`);
-
-      for (let i = 0; i < 30; i++) {
-        await delay(3000, 5000);
-        const resultRes = await fetch("https://api.2captcha.com/getTaskResult", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ clientKey: CONFIG.CAPTCHA_API_KEY, taskId }),
-        });
-        const resultData = await resultRes.json();
-
-        if (resultData.status === "ready") {
-          const code = normalizeCaptchaCode(resultData.solution?.text);
-          if (isLikelyCaptchaCode(code)) {
-            console.log(`  [CAPTCHA] ✅ 2captcha çözüldü: ${code}`);
-            return code;
-          }
-          console.log(`  [CAPTCHA] ⚠ 2captcha geçersiz çıktı: ${resultData.solution?.text || "boş"}`);
-          return null;
-        }
-        if (resultData.errorId !== 0) {
-          console.log(`  [CAPTCHA] ❌ Sonuç hatası: ${resultData.errorDescription}`);
-          return null;
-        }
-      }
-    }
-
-    console.log("  [CAPTCHA] ❌ Zaman aşımı");
-    return null;
-  } catch (err) {
-    console.error("  [CAPTCHA] Hata:", err.message);
-    return null;
   }
+
+  console.log("  [CAPTCHA] ❌ Tüm denemeler başarısız");
+  return null;
 }
 
 // ==================== BROWSER LAUNCH ====================

@@ -1703,10 +1703,12 @@ async function loginToIdata(page, account) {
     console.log(`  [LOGIN] Giriş sonrası URL: ${postLoginState.url}`);
     await idataLog("login_post_click", `Giriş butonuna tıklandı | URL: ${postLoginState.url}`, postLoginShot);
 
-    // OTP popup kontrolü — daha geniş algılama
-    const otpNeeded = await page.evaluate(() => {
+    // OTP kontrolü — metin, modal VEYA "E-Posta Doğrulama Kodu" input varlığı
+    const otpDetection = await page.evaluate(() => {
       const body = (document.body?.innerText || "").toLowerCase();
-      return body.includes("doğrulama kodu gönderildi") || 
+      
+      // 1) Metin bazlı tespit
+      const textMatch = body.includes("doğrulama kodu gönderildi") || 
              body.includes("doğrulama kodunu giriniz") ||
              body.includes("doğrulama kodu") && (body.includes("mail") || body.includes("e-posta") || body.includes("gönder")) ||
              body.includes("mailinize") && body.includes("kod") ||
@@ -1714,21 +1716,30 @@ async function loginToIdata(page, account) {
              body.includes("tek kullanımlık") ||
              body.includes("otp") ||
              body.includes("sms kod");
+      
+      // 2) "E-Posta Doğrulama Kodu" placeholder'lı input var mı?
+      const otpInput = Array.from(document.querySelectorAll('input')).find(inp => {
+        const ph = (inp.placeholder || '').toLowerCase().normalize("NFC");
+        return /e-?posta.*do[gğ]rulama|mail.*do[gğ]rulama|mail.*verification|e-?mail.*code|e-?posta.*kod/i.test(ph);
+      });
+      
+      // 3) Modal/popup
+      const hasModal = document.querySelector('.modal.show, .swal2-container, [role="dialog"], .swal2-popup, .swal2-modal');
+      
+      return {
+        byText: textMatch,
+        byInput: !!otpInput,
+        byModal: !!hasModal,
+        inputPlaceholder: otpInput?.placeholder || null
+      };
     });
 
-    // Ayrıca: hâlâ login sayfasındaysa ama yeni bir input/modal çıktıysa OTP olabilir
-    const otpByNewInput = !otpNeeded && await page.evaluate(() => {
-      // Login formundan farklı bir modal/alert açılmış mı?
-      const modals = document.querySelectorAll('.modal.show, .swal2-container, [role="dialog"], .alert, .notification');
-      if (modals.length > 0) return true;
-      // SweetAlert2 veya benzeri popup
-      const sweetAlert = document.querySelector('.swal2-popup, .swal2-modal');
-      if (sweetAlert) return true;
-      return false;
-    });
+    const otpNeeded = otpDetection.byText || otpDetection.byInput;
+    const otpByNewInput = !otpNeeded && otpDetection.byModal;
 
     if (otpNeeded || otpByNewInput) {
-      console.log(`  [LOGIN] 📧 Mail doğrulama kodu gerekiyor! (tespit: ${otpNeeded ? 'text' : 'modal'})`);
+      const detectMethod = otpDetection.byInput ? `input(${otpDetection.inputPlaceholder})` : otpDetection.byText ? 'text' : 'modal';
+      console.log(`  [LOGIN] 📧 Mail doğrulama kodu gerekiyor! (tespit: ${detectMethod})`);
       
       // "Tamam" / "OK" butonuna tıkla (popup'ı kapat — eğer varsa)
       await page.evaluate(() => {

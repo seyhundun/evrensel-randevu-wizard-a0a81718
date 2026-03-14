@@ -609,6 +609,7 @@ async function launchBrowser(ip = null) {
     headless: false,
     args,
     turnstile: true,
+    disableXvfb: true,
     fingerprint: true,
     connectOption: { defaultViewport: vp },
   };

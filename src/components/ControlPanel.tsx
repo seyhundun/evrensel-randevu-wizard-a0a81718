@@ -29,6 +29,8 @@ interface ControlPanelProps {
   setCity: (v: string) => void;
   visaCategory: string;
   setVisaCategory: (v: string) => void;
+  visaSubcategory: string;
+  setVisaSubcategory: (v: string) => void;
   personCount: number;
   setPersonCount: (v: number) => void;
   interval: number;
@@ -47,6 +49,8 @@ export default function ControlPanel({
   setCity,
   visaCategory,
   setVisaCategory,
+  visaSubcategory,
+  setVisaSubcategory,
   personCount,
   setPersonCount,
   interval,

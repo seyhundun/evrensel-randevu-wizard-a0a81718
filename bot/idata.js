@@ -531,10 +531,10 @@ async function solveImageCaptcha(page) {
 // ==================== BROWSER LAUNCH ====================
 function getResidentialProxyUrl() {
   residentialSessionId++;
-  const sessionPart = `session-${EVOMI_PROXY_COUNTRY.toLowerCase()}_${residentialSessionId}_${Date.now()}`;
-  const user = `${EVOMI_PROXY_USER}-country-${EVOMI_PROXY_COUNTRY.toLowerCase()}-session-${sessionPart}`;
-  console.log(`  [PROXY] 🏠 Residential: ${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT} (session: ${sessionPart})`);
-  return { user, pass: EVOMI_PROXY_PASS, host: EVOMI_PROXY_HOST, port: EVOMI_PROXY_PORT };
+  const sessionId = `${Date.now()}_${residentialSessionId}`;
+  const pass = `${EVOMI_PROXY_PASS}_country-${EVOMI_PROXY_COUNTRY}_session-${sessionId}`;
+  console.log(`  [PROXY] 🏠 Residential: ${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT} (session: ${sessionId}, ülke: ${EVOMI_PROXY_COUNTRY})`);
+  return { user: EVOMI_PROXY_USER, pass, host: EVOMI_PROXY_HOST, port: EVOMI_PROXY_PORT };
 }
 
 async function launchBrowser(ip = null) {

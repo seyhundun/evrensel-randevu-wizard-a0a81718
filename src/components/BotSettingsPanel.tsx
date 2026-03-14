@@ -47,6 +47,8 @@ export default function BotSettingsPanel() {
   const [loadingRegions, setLoadingRegions] = useState(false);
   const [regionPopoverOpen, setRegionPopoverOpen] = useState(false);
   const [countryPopoverOpen, setCountryPopoverOpen] = useState(false);
+  const [idataRegionPopoverOpen, setIdataRegionPopoverOpen] = useState(false);
+  const [idataCountryPopoverOpen, setIdataCountryPopoverOpen] = useState(false);
 
   // Local draft state for editable fields
   const [draft, setDraft] = useState<Record<string, string>>({});

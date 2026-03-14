@@ -41,7 +41,8 @@ async function loadProxySettingsFromDB() {
       if (map.captcha_provider) CAPTCHA_PROVIDER = map.captcha_provider.toLowerCase();
       if (map.capsolver_api_key) CAPSOLVER_API_KEY = map.capsolver_api_key;
       if (map.captcha_api_key) { CAPTCHA_API_KEY_2 = map.captcha_api_key; CONFIG.CAPTCHA_API_KEY = map.captcha_api_key; }
-      console.log(`  [DB] ✅ Ayarlar DB'den yüklendi: proxy=${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT} ülke=${EVOMI_PROXY_COUNTRY} bölge=${EVOMI_PROXY_REGION || 'yok'} captcha=${CAPTCHA_PROVIDER}`);
+      if (map.ip_rotation_interval) IP_ROTATION_INTERVAL_MS = Number(map.ip_rotation_interval) * 60 * 1000;
+      console.log(`  [DB] ✅ Ayarlar DB'den yüklendi: proxy=${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT} ülke=${EVOMI_PROXY_COUNTRY} bölge=${EVOMI_PROXY_REGION || 'yok'} captcha=${CAPTCHA_PROVIDER} ip_rot=${IP_ROTATION_INTERVAL_MS/60000}dk`);
     }
   } catch (e) {
     console.warn(`  [DB] ⚠️ DB'den proxy ayarı okunamadı, .env kullanılıyor: ${e.message}`);
@@ -65,6 +66,8 @@ const IP_MAX_FAILS = 3;
 const IP_BAN_DURATION_MS = Number(process.env.IP_BAN_DURATION_MS || 1800000);
 let ipBannedUntil = new Map();
 let residentialSessionId = 0;
+let IP_ROTATION_INTERVAL_MS = Number(process.env.IP_ROTATION_INTERVAL_MS || 0); // 0 = devre dışı
+let lastIpRotationTime = Date.now();
 
 // ==================== PROXY REGION ROTATION ====================
 const PROXY_REGIONS = ["ankara", "adana", "konya", "istanbul", "izmir", "bursa", "antalya"];
@@ -3543,7 +3546,21 @@ async function main() {
           }
         }
 
+        // Zamanlı IP rotasyonu kontrolü
         const now = Date.now();
+        if (IP_ROTATION_INTERVAL_MS > 0 && (now - lastIpRotationTime) >= IP_ROTATION_INTERVAL_MS) {
+          console.log(`\n🔄 [IP-ROT] Zamanlı IP rotasyonu (${IP_ROTATION_INTERVAL_MS / 60000} dk doldu)`);
+          await logStep(config.id, "ip_change", `⏰ Zamanlı IP rotasyonu (${IP_ROTATION_INTERVAL_MS / 60000} dk)`);
+          if (PROXY_MODE === "residential") {
+            residentialSessionId++;
+            EVOMI_PROXY_REGION = getNextProxyRegion();
+          } else {
+            const newIp = getNextIp();
+            if (newIp) banIpImmediately(getCurrentIp(), "scheduled_rotation");
+          }
+          lastIpRotationTime = now;
+        }
+
         const availableAccounts = accounts.filter(acc => {
           const lastUsed = accountLastUsed.get(acc.id) || 0;
           return (now - lastUsed) >= CONFIG.MIN_ACCOUNT_GAP_MS;

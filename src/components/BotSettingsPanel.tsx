@@ -110,6 +110,7 @@ export default function BotSettingsPanel() {
       { key: "captcha_provider", label: "Captcha Provider" },
       { key: "capsolver_api_key", label: "Capsolver API Key" },
       { key: "captcha_api_key", label: "2Captcha API Key" },
+      { key: "ip_rotation_interval", label: "IP Rotasyon Süresi (dk)" },
     ];
 
     for (const { key, label } of keys) {
@@ -254,6 +255,26 @@ export default function BotSettingsPanel() {
               {showCaptchaKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* IP Rotation Interval */}
+      <div className="space-y-2 border-t border-border pt-4">
+        <Label className="text-[11px] text-muted-foreground">IP Otomatik Yenileme Süresi (dakika)</Label>
+        <div className="flex items-center gap-3">
+          <Input
+            className="h-8 text-xs font-mono w-20"
+            type="number"
+            min={0}
+            value={getDraft("ip_rotation_interval") || "0"}
+            onChange={e => setDraftValue("ip_rotation_interval", e.target.value)}
+            placeholder="0"
+          />
+          <span className="text-[10px] text-muted-foreground">
+            {Number(getDraft("ip_rotation_interval") || 0) === 0
+              ? "Devre dışı — sadece hata/engel durumunda değişir"
+              : `Her ${getDraft("ip_rotation_interval")} dakikada IP otomatik yenilenir`}
+          </span>
         </div>
       </div>
 

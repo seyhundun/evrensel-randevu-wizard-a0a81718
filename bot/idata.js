@@ -672,13 +672,24 @@ async function solveImageCaptcha(page, options = {}) {
         continue;
       }
 
-      console.log(`  [CAPTCHA] 📸 Captcha resmi bulundu (score=${capture?.meta?.score ?? "?"}), Capsolver ile çözülüyor...`);
+      console.log(`  [CAPTCHA] 📸 Captcha resmi bulundu (score=${capture?.meta?.score ?? "?"}), çözüm başlıyor...`);
 
       // Capsolver / 2captcha (AI devre dışı)
-      const useCapsolver = CAPSOLVER_API_KEY && (CAPTCHA_PROVIDER === "capsolver" || CAPTCHA_PROVIDER === "auto");
-      const use2captcha = CONFIG.CAPTCHA_API_KEY && (CAPTCHA_PROVIDER === "2captcha" || CAPTCHA_PROVIDER === "auto");
+      const useCapsolver = !!CAPSOLVER_API_KEY && (CAPTCHA_PROVIDER === "capsolver" || CAPTCHA_PROVIDER === "auto");
+      const use2captcha = !!CONFIG.CAPTCHA_API_KEY && (CAPTCHA_PROVIDER === "2captcha" || CAPTCHA_PROVIDER === "auto");
 
-      // Capsolver ile dene
+      await idataLog(
+        "login_captcha",
+        `CAPTCHA deneme ${attempt}/${maxAttempts} | provider=${CAPTCHA_PROVIDER} | capsolver=${useCapsolver ? "on" : "off"} | 2captcha=${use2captcha ? "on" : "off"}`
+      );
+
+      if (!useCapsolver && !use2captcha) {
+        console.log("  [CAPTCHA] ❌ Aktif çözücü yok (API key/provider kontrol edin)");
+        await idataLog("error", "CAPTCHA çözücü aktif değil: capsolver/2captcha ayarlarını kontrol edin");
+        continue;
+      }
+
+      // 1) Capsolver
       if (useCapsolver) {
         try {
           console.log("  [CAPTCHA] Capsolver ile çözülüyor...");
@@ -690,35 +701,64 @@ async function solveImageCaptcha(page, options = {}) {
               task: { type: "ImageToTextTask", body: captchaImgBase64 },
             }),
           });
-          const createData = await createRes.json();
-          if (createData.errorId === 0 && createData.taskId) {
-            for (let i = 0; i < 30; i++) {
-              await delay(2000, 4000);
+
+          const createText = await createRes.text();
+          let createData = null;
+          try { createData = JSON.parse(createText); } catch {}
+
+          if (!createRes.ok || !createData || createData.errorId !== 0 || !createData.taskId) {
+            const errMsg = createData?.errorDescription || createData?.errorCode || createText || `HTTP ${createRes.status}`;
+            console.log(`  [CAPTCHA] ❌ Capsolver createTask hata: ${errMsg}`);
+            await idataLog("error", `Capsolver createTask hata: ${String(errMsg).slice(0, 180)}`);
+          } else {
+            console.log(`  [CAPTCHA] Capsolver task: ${createData.taskId}`);
+
+            // Uzun beklemeyi azalt: max ~30sn
+            for (let i = 0; i < 12; i++) {
+              await delay(1500, 2500);
+
               const resultRes = await fetch("https://api.capsolver.com/getTaskResult", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ clientKey: CAPSOLVER_API_KEY, taskId: createData.taskId }),
               });
-              const resultData = await resultRes.json();
+
+              const resultText = await resultRes.text();
+              let resultData = null;
+              try { resultData = JSON.parse(resultText); } catch {}
+
+              if (!resultRes.ok || !resultData) {
+                console.log(`  [CAPTCHA] ❌ Capsolver result parse/http hata: ${resultRes.status} ${resultText.slice(0, 120)}`);
+                break;
+              }
+
               if (resultData.status === "ready") {
                 const code = normalizeCaptchaCode(resultData.solution?.text);
                 if (isLikelyCaptchaCode(code)) {
                   console.log(`  [CAPTCHA] ✅ Capsolver çözüldü: ${code}`);
+                  await idataLog("login_captcha", `Capsolver başarılı: ${code}`);
                   return code;
                 }
                 console.log(`  [CAPTCHA] ⚠ Capsolver geçersiz çıktı: ${resultData.solution?.text || "boş"}`);
                 break;
               }
-              if (resultData.errorId !== 0) break;
+
+              if (resultData.status === "failed" || resultData.errorId !== 0) {
+                const errMsg = resultData.errorDescription || resultData.errorCode || "unknown_error";
+                console.log(`  [CAPTCHA] ❌ Capsolver sonuç hatası: ${errMsg}`);
+                break;
+              }
             }
+
+            console.log("  [CAPTCHA] ⚠ Capsolver timeout/başarısız, fallback'e geçiliyor...");
           }
-          console.log("  [CAPTCHA] Capsolver başarısız, devam ediliyor...");
         } catch (err) {
           console.log(`  [CAPTCHA] Capsolver hata: ${err.message}`);
+          await idataLog("error", `Capsolver exception: ${String(err.message).slice(0, 180)}`);
         }
       }
 
-      // 2captcha ile dene
+      // 2) 2captcha fallback
       if (use2captcha) {
         console.log("  [CAPTCHA] 2captcha ile çözülüyor...");
         const createRes = await fetch("https://api.2captcha.com/createTask", {
@@ -738,14 +778,15 @@ async function solveImageCaptcha(page, options = {}) {
         const createData = await createRes.json();
         if (createData.errorId !== 0) {
           console.log(`  [CAPTCHA] ❌ 2captcha hata: ${createData.errorDescription || createData.errorCode}`);
+          await idataLog("error", `2captcha createTask hata: ${(createData.errorDescription || createData.errorCode || "unknown").toString().slice(0, 180)}`);
           continue;
         }
 
         const taskId = createData.taskId;
         console.log(`  [CAPTCHA] 2captcha task: ${taskId}`);
 
-        for (let i = 0; i < 30; i++) {
-          await delay(3000, 5000);
+        for (let i = 0; i < 20; i++) {
+          await delay(2500, 4000);
           const resultRes = await fetch("https://api.2captcha.com/getTaskResult", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -757,6 +798,7 @@ async function solveImageCaptcha(page, options = {}) {
             const code = normalizeCaptchaCode(resultData.solution?.text);
             if (isLikelyCaptchaCode(code)) {
               console.log(`  [CAPTCHA] ✅ 2captcha çözüldü: ${code}`);
+              await idataLog("login_captcha", `2captcha başarılı: ${code}`);
               return code;
             }
             console.log(`  [CAPTCHA] ⚠ 2captcha geçersiz çıktı: ${resultData.solution?.text || "boş"}`);

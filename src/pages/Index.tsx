@@ -33,6 +33,22 @@ function LiveClock() {
   );
 }
 
+function SidebarSection({ icon, title, defaultOpen = false, children }: { icon: React.ReactNode; title: string; defaultOpen?: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger className="flex items-center gap-2 w-full px-2 py-2 rounded-md hover:bg-secondary/60 transition-colors text-left">
+        <span className="text-muted-foreground">{icon}</span>
+        <span className="text-xs font-semibold text-foreground flex-1">{title}</span>
+        <svg className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pt-1">
+        {children}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 const Index = () => {
   const t = useTracking();
   const { signOut } = useAuth();

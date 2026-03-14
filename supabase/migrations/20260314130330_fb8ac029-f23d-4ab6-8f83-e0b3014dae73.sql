@@ -1,0 +1,1 @@
+UPDATE bot_settings SET value = '1000', updated_at = now() WHERE key = 'proxy_port';

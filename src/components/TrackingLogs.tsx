@@ -35,9 +35,12 @@ const statusConfig: Record<string, { icon: React.ReactNode; label: string; color
   login_navigate: { icon: <Globe className="w-4 h-4" />, label: "Sayfa Açılıyor", color: "text-blue-400 bg-blue-400/10" },
   login_form:     { icon: <FormInput className="w-4 h-4" />, label: "Form Dolduruluyor", color: "text-blue-500 bg-blue-500/10" },
   login_captcha:  { icon: <ShieldCheck className="w-4 h-4" />, label: "CAPTCHA Çözülüyor", color: "text-amber-500 bg-amber-500/10" },
+  login_captcha_debug: { icon: <ShieldCheck className="w-4 h-4" />, label: "CAPTCHA Debug", color: "text-amber-400 bg-amber-400/10 text-xs" },
+  login_captcha_retry: { icon: <RefreshCw className="w-4 h-4" />, label: "CAPTCHA Retry", color: "text-amber-500 bg-amber-500/10" },
   login_otp:      { icon: <KeyRound className="w-4 h-4" />, label: "OTP Bekleniyor", color: "text-orange-500 bg-orange-500/10" },
   login_success:  { icon: <CheckCircle2 className="w-4 h-4" />, label: "Giriş Başarılı", color: "text-green-500 bg-green-500/10" },
   login_fail:     { icon: <AlertCircle className="w-4 h-4" />, label: "Giriş Başarısız", color: "text-destructive bg-destructive/10" },
+  login_post_click: { icon: <LogIn className="w-4 h-4" />, label: "Giriş Tıklandı", color: "text-blue-400 bg-blue-400/10" },
 
   // --- Search/check flow ---
   search_start:   { icon: <Search className="w-4 h-4" />, label: "Arama Başladı", color: "text-primary bg-primary/10" },

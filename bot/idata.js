@@ -1501,8 +1501,6 @@ async function mainLoop() {
   console.log("\n🔄 iDATA Ana döngü başlıyor...");
   await idataLog("bot_start", "iDATA botu başlatıldı");
 
-  let scrapeCounter = 0;
-  let cityOfficesScraped = false;
 
   while (true) {
     try {

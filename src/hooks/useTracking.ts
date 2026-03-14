@@ -213,7 +213,7 @@ export function useTracking() {
     }, 1000);
 
     startPolling(id);
-  }, [country, city, interval, visaCategory, personCount, keepAlive, applicants, configId]);
+  }, [country, city, interval, visaCategory, visaSubcategory, personCount, keepAlive, applicants, configId]);
 
   const stopTracking = useCallback(async () => {
     setStatus("idle");

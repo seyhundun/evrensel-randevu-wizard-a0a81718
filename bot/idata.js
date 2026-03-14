@@ -546,6 +546,9 @@ async function launchBrowser(ip = null) {
     "--disable-blink-features=AutomationControlled",
     "--disable-web-security",
     "--lang=tr-TR",
+    "--use-gl=swiftshader",
+    "--enable-unsafe-swiftshader",
+    "--enable-webgl",
   ];
 
   let proxyAuth = null;

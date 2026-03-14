@@ -14,7 +14,7 @@ const CONFIG = {
   REGISTER_URL: "https://it-tr-appointment.idata.com.tr/tr/membership/register",
   LOGIN_URL: "https://it-tr-appointment.idata.com.tr/tr/membership/login",
   APPOINTMENT_URL: "https://it-tr-appointment.idata.com.tr/tr/membership/dashboard/application/availability",
-  CHECK_INTERVAL_MS: Number(process.env.IDATA_CHECK_INTERVAL_MS || 120000),
+  CHECK_INTERVAL_MS: Number(process.env.IDATA_CHECK_INTERVAL_MS || 10000),
   OTP_WAIT_MS: Number(process.env.OTP_WAIT_MS || 120000),
   OTP_POLL_MS: Number(process.env.OTP_POLL_MS || 5000),
 };
@@ -2301,7 +2301,7 @@ async function mainLoop() {
       const waitSec = CONFIG.CHECK_INTERVAL_MS / 1000;
       await idataLog("bot_idle", `${waitSec}s bekleniyor...`);
       console.log(`  ⏰ ${waitSec}s bekleniyor...`);
-      await delay(CONFIG.CHECK_INTERVAL_MS, CONFIG.CHECK_INTERVAL_MS + 10000);
+      await delay(CONFIG.CHECK_INTERVAL_MS, CONFIG.CHECK_INTERVAL_MS + 5000);
 
     } catch (err) {
       console.error("  Ana döngü hatası:", err.message);

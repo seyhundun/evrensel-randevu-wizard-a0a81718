@@ -615,8 +615,6 @@ async function launchBrowser(ip = null) {
     args,
     turnstile: true,
     disableXvfb: true,
-    fingerprint: true,
-    connectOption: { defaultViewport: vp },
   };
   if (proxyConfig) {
     connectOptions.proxy = proxyConfig;

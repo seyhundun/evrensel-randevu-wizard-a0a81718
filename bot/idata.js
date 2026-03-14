@@ -1728,7 +1728,7 @@ async function loginToIdata(page, account) {
       return emptyInput || null;
     });
 
-    if (captchaInput && captchaInput.asElement()) {
+    if (!captchaTyped && captchaInput && captchaInput.asElement()) {
       captchaInput = captchaInput.asElement();
       const inputInfo = await page.evaluate(el => ({
         placeholder: el.placeholder || '',

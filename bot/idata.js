@@ -513,11 +513,50 @@ function isLikelyCaptchaCode(raw) {
   return true;
 }
 
+async function isCaptchaImageLoaded(page) {
+  // CAPTCHA img elementinin gerçekten yüklenip yüklenmediğini kontrol et
+  return await page.evaluate(() => {
+    const images = Array.from(document.querySelectorAll("img"));
+    const captchaImg = images.find((img) => {
+      const meta = [
+        img.getAttribute("src") || "",
+        img.getAttribute("alt") || "",
+        img.className || "",
+        img.id || "",
+        (img.closest("div, fieldset, section, form")?.textContent || ""),
+      ].join(" ").toLowerCase();
+      return /(captcha|doğrulama|dogrulama|verification|code)/i.test(meta);
+    });
+    if (!captchaImg) return { found: false, loaded: false, reason: "no_captcha_img" };
+    
+    const loaded = captchaImg.complete && captchaImg.naturalWidth > 10 && captchaImg.naturalHeight > 10;
+    const src = (captchaImg.getAttribute("src") || "").substring(0, 120);
+    return {
+      found: true,
+      loaded,
+      naturalWidth: captchaImg.naturalWidth,
+      naturalHeight: captchaImg.naturalHeight,
+      complete: captchaImg.complete,
+      src,
+      reason: loaded ? "ok" : "broken_or_loading",
+    };
+  });
+}
+
+async function waitForCaptchaImageLoad(page, maxWaitMs = 8000) {
+  const startTime = Date.now();
+  while (Date.now() - startTime < maxWaitMs) {
+    const status = await isCaptchaImageLoaded(page);
+    if (status.loaded) return status;
+    await delay(600, 1000);
+  }
+  return await isCaptchaImageLoaded(page);
+}
+
 async function getCaptchaImageBase64(page) {
   // 1) Sayfadaki CAPTCHA img elementini bul
   const imgHandle = await page.evaluateHandle(() => {
     const keywordRegex = /(captcha|doğrulama|dogrulama|verification|security|code)/i;
-    // NOT: "idata" burada yasaklı olmamalı; captcha src'si idata domaininden geliyor olabilir
     const denyRegex = /(logo|icon|brand|header|footer|svg)/i;
 
     const inputs = Array.from(document.querySelectorAll("input"));
@@ -549,8 +588,6 @@ async function getCaptchaImageBase64(page) {
       let score = 0;
       if (keywordRegex.test(meta)) score += 60;
       if (denyRegex.test(meta)) score -= 80;
-
-      // iDATA CAPTCHA boyutları için daha geniş tolerans
       if (width >= 60 && width <= 420 && height >= 20 && height <= 180) score += 20;
       else score -= 15;
       if (src.includes("captcha") || src.includes("verify") || src.includes("dogrulama")) score += 30;
@@ -585,7 +622,17 @@ async function getCaptchaImageBase64(page) {
     return { base64: null, reason: "captcha_img_not_found" };
   }
 
-  // 3) Puppeteer element screenshot — cross-origin sorununu atlar
+  // 3) Görselin gerçekten yüklendiğini kontrol et
+  const isLoaded = await page.evaluate((el) => {
+    return el.complete && el.naturalWidth > 10 && el.naturalHeight > 10;
+  }, element);
+
+  if (!isLoaded) {
+    console.log("  [CAPTCHA] ⚠ Captcha img bulundu ama yüklenmemiş (broken image)");
+    return { base64: null, reason: "captcha_img_broken" };
+  }
+
+  // 4) Puppeteer element screenshot — cross-origin sorununu atlar
   try {
     const screenshotBuffer = await element.screenshot({ encoding: "base64" });
     const meta = await page.evaluate((el) => {

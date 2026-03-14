@@ -96,6 +96,26 @@ export default function BotSettingsPanel() {
 
   const getDraft = (key: string) => draft[key] ?? settings.find(s => s.key === key)?.value ?? "";
 
+  const fetchEvomiRegions = async () => {
+    setLoadingRegions(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("evomi-regions", {
+        body: { country: getDraft("proxy_country") || "TR" },
+      });
+      if (error) throw error;
+      if (data?.ok) {
+        setEvomiRegions(data.regions || []);
+        setEvomiCities(data.cities || []);
+        toast.success(`${(data.regions || []).length} bölge, ${(data.cities || []).length} şehir yüklendi`);
+      } else {
+        toast.error(data?.error || "Bölge listesi alınamadı");
+      }
+    } catch (err: any) {
+      toast.error("Evomi API hatası: " + err.message);
+    }
+    setLoadingRegions(false);
+  };
+
   const setDraftValue = (key: string, value: string) => {
     setDraft(prev => ({ ...prev, [key]: value }));
     setDirty(true);

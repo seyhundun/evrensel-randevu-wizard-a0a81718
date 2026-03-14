@@ -676,35 +676,9 @@ async function solveImageCaptcha(page, options = {}) {
         continue;
       }
 
-      console.log(`  [CAPTCHA] 📸 Captcha resmi bulundu (score=${capture?.meta?.score ?? "?"}), AI ile çözülüyor...`);
+      console.log(`  [CAPTCHA] 📸 Captcha resmi bulundu (score=${capture?.meta?.score ?? "?"}), Capsolver ile çözülüyor...`);
 
-      // 1) Lovable AI (Gemini Vision) ile çöz — ücretsiz
-      try {
-        const aiRes = await fetch(
-          "https://ocrpzwrsyiprfuzsyivf.supabase.co/functions/v1/solve-captcha",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              apikey: CONFIG.API_KEY,
-            },
-            body: JSON.stringify({ image_base64: captchaImgBase64 }),
-          }
-        );
-        const aiData = await aiRes.json();
-        const aiCode = normalizeCaptchaCode(aiData?.code || aiData?.raw);
-
-        if (aiData.ok && isLikelyCaptchaCode(aiCode)) {
-          console.log(`  [CAPTCHA] ✅ AI çözüldü: ${aiCode} (raw: ${aiData.raw || ""})`);
-          return aiCode;
-        }
-
-        console.log(`  [CAPTCHA] AI geçersiz çıktı: "${aiData?.code || aiData?.raw || "boş"}" (error: ${aiData?.error || "yok"}), fallback deneniyor...`);
-      } catch (aiErr) {
-        console.log(`  [CAPTCHA] AI hata: ${aiErr.message}, fallback deneniyor...`);
-      }
-
-      // 2) Fallback: Capsolver / 2captcha
+      // Capsolver / 2captcha (AI devre dışı)
       const useCapsolver = CAPSOLVER_API_KEY && (CAPTCHA_PROVIDER === "capsolver" || CAPTCHA_PROVIDER === "auto");
       const use2captcha = CONFIG.CAPTCHA_API_KEY && (CAPTCHA_PROVIDER === "2captcha" || CAPTCHA_PROVIDER === "auto");
 

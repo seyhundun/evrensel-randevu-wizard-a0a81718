@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
 import {
   CheckCircle2, Search, AlertCircle, Clock, Image as ImageIcon, X,
   LogIn, FormInput, ShieldCheck, KeyRound, Globe, Timer, MonitorSmartphone,
-  UserPlus, MousePointer, Wifi, Ban, RefreshCw, Network
+  UserPlus, MousePointer, Wifi, Ban, RefreshCw, Network, Trash2
 } from "lucide-react";
 
 interface LogEntry {
@@ -156,6 +157,12 @@ export default function IdataTrackingLogs() {
     setLoading(false);
   };
 
+  const clearLogs = async () => {
+    if (!confirm("Tüm iDATA loglarını silmek istediğinize emin misiniz?")) return;
+    await supabase.from("idata_tracking_logs" as any).delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    setLogs([]);
+  };
+
   useEffect(() => {
     fetchLogs();
     fetchConfig();
@@ -275,6 +282,10 @@ export default function IdataTrackingLogs() {
           )}
         </div>
         <span className="text-xs text-muted-foreground">{logs.length} kayıt</span>
+        <Button variant="ghost" size="sm" onClick={clearLogs} className="gap-1.5 text-xs text-muted-foreground hover:text-destructive">
+          <Trash2 className="w-3.5 h-3.5" />
+          Temizle
+        </Button>
       </div>
 
       <div className="flex items-center justify-between">

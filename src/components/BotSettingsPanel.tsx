@@ -114,6 +114,7 @@ export default function BotSettingsPanel() {
       { key: "capsolver_api_key", label: "Capsolver API Key" },
       { key: "captcha_api_key", label: "2Captcha API Key" },
       { key: "ip_rotation_interval", label: "IP Rotasyon Süresi (dk)" },
+      { key: "evomi_api_key", label: "Evomi API Key" },
     ];
 
     for (const { key, label } of keys) {

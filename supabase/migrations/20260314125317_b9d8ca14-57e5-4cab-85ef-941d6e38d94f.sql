@@ -1,0 +1,2 @@
+UPDATE bot_settings SET value = '1001', updated_at = now() WHERE key = 'proxy_port';
+INSERT INTO bot_settings (key, value, label) VALUES ('proxy_region', 'ankara', 'Proxy Bölge') ON CONFLICT (key) DO UPDATE SET value = 'ankara', updated_at = now();

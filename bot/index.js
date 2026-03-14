@@ -14,6 +14,7 @@ let EVOMI_PROXY_PORT = Number(process.env.EVOMI_PROXY_PORT || 1000);
 const EVOMI_PROXY_USER = process.env.EVOMI_PROXY_USER || "";
 const EVOMI_PROXY_PASS = process.env.EVOMI_PROXY_PASS || "";
 let EVOMI_PROXY_COUNTRY = process.env.EVOMI_PROXY_COUNTRY || "TR";
+let EVOMI_PROXY_REGION = process.env.EVOMI_PROXY_REGION || "";
 
 // DB'den proxy ayarlarını yükle (dashboard'dan değiştirilebilir)
 async function loadProxySettingsFromDB() {
@@ -34,7 +35,8 @@ async function loadProxySettingsFromDB() {
       if (map.proxy_country) EVOMI_PROXY_COUNTRY = map.proxy_country;
       if (map.proxy_host) EVOMI_PROXY_HOST = map.proxy_host;
       if (map.proxy_port) EVOMI_PROXY_PORT = Number(map.proxy_port);
-      console.log(`  [DB] ✅ Proxy ayarları DB'den yüklendi: ${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT} ülke=${EVOMI_PROXY_COUNTRY}`);
+      if (map.proxy_region !== undefined) EVOMI_PROXY_REGION = map.proxy_region;
+      console.log(`  [DB] ✅ Proxy ayarları DB'den yüklendi: ${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT} ülke=${EVOMI_PROXY_COUNTRY} bölge=${EVOMI_PROXY_REGION || 'yok'}`);
     }
   } catch (e) {
     console.warn(`  [DB] ⚠️ DB'den proxy ayarı okunamadı, .env kullanılıyor: ${e.message}`);
@@ -1510,9 +1512,9 @@ function cleanupUserDataDir(dir) {
 }
 
 function getResidentialProxyUrl() {
-  // Not: Bu hesapta _session/_region/_isp ekleri 400 döndü, sade format kullanıyoruz
-  const pass = `${EVOMI_PROXY_PASS}_country-${EVOMI_PROXY_COUNTRY}`;
-  console.log(`  [PROXY] 🏠 Residential proxy: ${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT} (ülke: ${EVOMI_PROXY_COUNTRY}, auth: simple)`);
+  let pass = `${EVOMI_PROXY_PASS}_country-${EVOMI_PROXY_COUNTRY}`;
+  if (EVOMI_PROXY_REGION) pass += `_region-${EVOMI_PROXY_REGION}`;
+  console.log(`  [PROXY] 🏠 Residential proxy: ${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT} (ülke: ${EVOMI_PROXY_COUNTRY}, bölge: ${EVOMI_PROXY_REGION || 'yok'})`);
   return {
     proxyUrl: `http://${EVOMI_PROXY_USER}:${pass}@${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT}`,
     user: EVOMI_PROXY_USER,

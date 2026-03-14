@@ -1618,7 +1618,7 @@ async function mainLoop() {
               success = true; // CF dışı hata
             }
           } catch (err) {
-            await idataLog("error", `Hata: ${err.message} | IP: ${ip || "doğrudan"} | Deneme: ${attempt}`);
+            await idataLog("error", `Hata: ${err.message} | IP: ${getProxyLabel(ip)} | Deneme: ${attempt}`);
             if (ip) markIpBanned(ip);
           } finally {
             try { if (browser) await browser.close(); } catch {}

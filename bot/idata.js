@@ -590,7 +590,7 @@ async function launchBrowser(ip = null) {
   } else if (PROXY_MODE === "residential" && EVOMI_PROXY_USER) {
     const rp = getResidentialProxyUrl();
     proxyConfig = {
-      host: `http://${rp.host}`,
+      host: rp.host,
       port: rp.port,
       username: rp.user,
       password: rp.pass,

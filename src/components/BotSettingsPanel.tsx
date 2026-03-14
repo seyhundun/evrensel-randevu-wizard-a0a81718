@@ -199,15 +199,16 @@ export default function BotSettingsPanel() {
     toast.info(`${label} silindi`);
   };
 
-  const proxyCountries = [
-    { code: "TR", label: "🇹🇷 Türkiye" },
-    { code: "PL", label: "🇵🇱 Polonya" },
-    { code: "DE", label: "🇩🇪 Almanya" },
-    { code: "NL", label: "🇳🇱 Hollanda" },
-    { code: "FR", label: "🇫🇷 Fransa" },
-    { code: "GB", label: "🇬🇧 İngiltere" },
-    { code: "US", label: "🇺🇸 ABD" },
+  const defaultProxyCountries = [
+    { code: "TR", name: "Türkiye" },
+    { code: "PL", name: "Polonya" },
+    { code: "DE", name: "Almanya" },
+    { code: "NL", name: "Hollanda" },
+    { code: "FR", name: "Fransa" },
+    { code: "GB", name: "İngiltere" },
+    { code: "US", name: "ABD" },
   ];
+  const activeProxyCountries = evomiCountries.length > 0 ? evomiCountries : defaultProxyCountries;
 
   return (
     <Card className="p-4 space-y-5">

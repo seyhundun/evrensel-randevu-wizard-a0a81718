@@ -8,12 +8,38 @@ require("dotenv").config();
 
 // ==================== PROXY CONFIG ====================
 // Proxy modu: "datacenter" (varsayılan, microsocks SOCKS5) veya "residential" (Evomi HTTP)
-const PROXY_MODE = (process.env.PROXY_MODE || "datacenter").toLowerCase();
-const EVOMI_PROXY_HOST = process.env.EVOMI_PROXY_HOST || "rp.evomi.com";
-const EVOMI_PROXY_PORT = Number(process.env.EVOMI_PROXY_PORT || 1000);
+const PROXY_MODE = (process.env.PROXY_MODE || "residential").toLowerCase();
+let EVOMI_PROXY_HOST = process.env.EVOMI_PROXY_HOST || "core-residential.evomi-proxy.com";
+let EVOMI_PROXY_PORT = Number(process.env.EVOMI_PROXY_PORT || 1001);
 const EVOMI_PROXY_USER = process.env.EVOMI_PROXY_USER || "";
 const EVOMI_PROXY_PASS = process.env.EVOMI_PROXY_PASS || "";
-const EVOMI_PROXY_COUNTRY = process.env.EVOMI_PROXY_COUNTRY || "TR"; // Ülke kodu (TR, PL, DE vb.)
+let EVOMI_PROXY_COUNTRY = process.env.EVOMI_PROXY_COUNTRY || "TR";
+
+// DB'den proxy ayarlarını yükle (dashboard'dan değiştirilebilir)
+async function loadProxySettingsFromDB() {
+  try {
+    const fetch = (await import("node-fetch")).default;
+    const res = await fetch(
+      "https://ocrpzwrsyiprfuzsyivf.supabase.co/rest/v1/bot_settings?select=key,value",
+      {
+        headers: {
+          apikey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9jcnB6d3JzeWlwcmZ1enN5aXZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMDQ1NzksImV4cCI6MjA4ODg4MDU3OX0.5MzKGm6byd1zLxjgxaXyQq5VfPFo_CE2MhcXijIRarc",
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    const settings = await res.json();
+    if (Array.isArray(settings)) {
+      const map = Object.fromEntries(settings.map(s => [s.key, s.value]));
+      if (map.proxy_country) EVOMI_PROXY_COUNTRY = map.proxy_country;
+      if (map.proxy_host) EVOMI_PROXY_HOST = map.proxy_host;
+      if (map.proxy_port) EVOMI_PROXY_PORT = Number(map.proxy_port);
+      console.log(`  [DB] ✅ Proxy ayarları DB'den yüklendi: ${EVOMI_PROXY_HOST}:${EVOMI_PROXY_PORT} ülke=${EVOMI_PROXY_COUNTRY}`);
+    }
+  } catch (e) {
+    console.warn(`  [DB] ⚠️ DB'den proxy ayarı okunamadı, .env kullanılıyor: ${e.message}`);
+  }
+}
 
 if (PROXY_MODE === "residential") {
   console.log(`🌐 Proxy modu: RESIDENTIAL (Evomi)`);
@@ -31,7 +57,7 @@ let ipFailCounts = new Map();
 const IP_MAX_FAILS = 3;
 const IP_BAN_DURATION_MS = Number(process.env.IP_BAN_DURATION_MS || 1800000);
 let ipBannedUntil = new Map();
-let residentialSessionId = 0; // Evomi oturum rotasyonu için
+let residentialSessionId = 0;
 
 function getNextIp() {
   if (IP_LIST.length === 0) return null;

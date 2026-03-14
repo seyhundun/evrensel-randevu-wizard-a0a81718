@@ -434,11 +434,7 @@ async function clearCfBlocked() {
 
 
 async function solveImageCaptcha(page) {
-  const hasAnyCaptchaKey = CONFIG.CAPTCHA_API_KEY || CAPSOLVER_API_KEY;
-  if (!hasAnyCaptchaKey) {
-    console.log("  [CAPTCHA] ⚠ API key yok, CAPTCHA çözülemez!");
-    return null;
-  }
+  // Önce AI ile çöz (Lovable AI - Gemini Vision), başarısızsa 2captcha/capsolver'a düş
 
   try {
     // Captcha resmini bul

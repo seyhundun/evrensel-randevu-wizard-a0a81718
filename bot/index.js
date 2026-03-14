@@ -1542,17 +1542,13 @@ function getResidentialProxyUrl() {
 
 async function launchBrowser(proxyIp = null) {
   const { connect } = require("puppeteer-real-browser");
-  const userDataDir = createTempUserDataDir();
+  
+  // Test scriptiyle birebir aynı — minimal args
   const args = [
     "--no-sandbox",
     "--disable-setuid-sandbox",
     "--disable-dev-shm-usage",
-    "--disable-blink-features=AutomationControlled",
-    "--window-size=1366,768",
-    `--user-data-dir=${userDataDir}`,
-    "--use-gl=swiftshader",
-    "--enable-unsafe-swiftshader",
-    "--enable-webgl",
+    "--window-size=1920,1080",
   ];
   
   let proxyConfig = undefined;
@@ -1560,7 +1556,6 @@ async function launchBrowser(proxyIp = null) {
   if (!PROXY_ENABLED) {
     console.log(`  [BROWSER] 🔵 Proxy KAPALI — sunucu kendi IP'si ile çıkıyor`);
   } else if (PROXY_MODE === "residential" && EVOMI_PROXY_USER) {
-    // Evomi residential proxy - connect() proxy parametresi ile auth popup'ı önle
     const rp = getResidentialProxyUrl();
     proxyConfig = {
       host: rp.host,
@@ -1568,9 +1563,8 @@ async function launchBrowser(proxyIp = null) {
       username: rp.user,
       password: rp.pass,
     };
-    console.log(`  [BROWSER] 🏠 Residential proxy config: ${rp.host}:${rp.port}`);
+    console.log(`  [BROWSER] 🏠 Residential proxy: ${rp.host}:${rp.port}`);
   } else if (proxyIp) {
-    // Datacenter microsocks SOCKS5 proxy
     const proxyPort = 10800 + IP_LIST.indexOf(proxyIp);
     args.push(`--proxy-server=socks5://127.0.0.1:${proxyPort}`);
     console.log(`  [BROWSER] 🌐 Proxy: socks5://127.0.0.1:${proxyPort} (IP: ${proxyIp})`);
@@ -1587,15 +1581,12 @@ async function launchBrowser(proxyIp = null) {
   }
 
   const { browser, page } = await connect(connectOptions);
-  console.log(`  [BROWSER] ✅ Tarayıcı başlatıldı (proxy auth: ${proxyConfig ? 'connect() ile' : 'yok'})`);
-
-  // Tarayıcı kapanınca temp klasörü sil
-  browser.on("disconnected", () => cleanupUserDataDir(userDataDir));
+  await page.setViewport({ width: 1920, height: 1080 });
   
   const proxyInfo = PROXY_MODE === "residential" 
     ? "(residential proxy)" 
     : (proxyIp ? `(IP: ${proxyIp})` : "(proxy yok)");
-  console.log(`  [BROWSER] ✅ Real browser başlatıldı (temiz profil) ${proxyInfo}`);
+  console.log(`  [BROWSER] ✅ Tarayıcı başlatıldı ${proxyInfo}`);
   return { browser, page };
 }
 

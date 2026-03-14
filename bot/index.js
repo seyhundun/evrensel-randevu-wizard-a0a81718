@@ -1580,6 +1580,7 @@ async function launchBrowser(proxyIp = null) {
     headless: false,
     args,
     turnstile: true,
+    disableXvfb: true,
   };
   if (proxyConfig) {
     connectOptions.proxy = proxyConfig;

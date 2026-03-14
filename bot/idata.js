@@ -1603,7 +1603,95 @@ async function loginToIdata(page, account) {
       await idataLog("login_fail", `Giriş butonu bulunamadı!`, ss);
     }
 
-    await delay(5000, 8000);
+    await delay(3000, 5000);
+
+    // CAPTCHA hatalı uyarısı kontrolü — yanlış kod girildiğinde sayfa uyarı veriyor
+    const captchaError = await page.evaluate(() => {
+      const body = (document.body?.innerText || "").toLowerCase();
+      const alerts = document.querySelectorAll('.alert, .swal2-popup, .swal2-container, [role="alert"], .notification, .toast, .error-message');
+      const alertText = Array.from(alerts).map(a => (a.textContent || "").toLowerCase()).join(" ");
+      const allText = body + " " + alertText;
+      return /do[gğ]rulama.*hatal[ıi]|captcha.*wrong|captcha.*hatal|kod.*hatal|yanlış.*kod|geçersiz.*kod|invalid.*captcha|incorrect.*code|hatalı.*giriş/i.test(allText);
+    });
+
+    if (captchaError) {
+      console.log("  [LOGIN] ⚠ CAPTCHA kodu hatalı! Uyarı kapatılıp tekrar denenecek...");
+      await idataLog("login_captcha", `CAPTCHA kodu hatalı — tekrar çözülecek`);
+
+      // Uyarı popup'ını kapat (Tamam/OK butonu)
+      await page.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll("button, a, .swal2-confirm, [role='button']"));
+        const okBtn = btns.find(b => {
+          const txt = (b.textContent || "").trim().toLowerCase();
+          return txt === "tamam" || txt === "ok" || txt === "kapat" || txt === "anladım";
+        });
+        if (okBtn) okBtn.click();
+      });
+      await delay(1500, 2500);
+
+      // CAPTCHA input'unu temizle
+      await page.evaluate(() => {
+        const inputs = Array.from(document.querySelectorAll('input')).filter(inp => {
+          const t = (inp.type || 'text').toLowerCase();
+          return !['hidden','submit','button','checkbox','radio','file','password'].includes(t) && !inp.readOnly && !inp.disabled;
+        });
+        // Placeholder veya pozisyon bazlı CAPTCHA input'unu bul
+        const captchaInp = inputs.find(inp => /do[gğ]rulama|captcha|verification|kod/i.test(inp.placeholder || ''));
+        const target = captchaInp || inputs[inputs.length - 1];
+        if (target) {
+          target.focus();
+          target.value = '';
+          target.dispatchEvent(new Event("input", { bubbles: true }));
+          target.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      });
+      await delay(500, 1000);
+
+      // CAPTCHA'yı tekrar çöz
+      const retryCaptchaCode = await solveImageCaptcha(page, { maxAttempts: 3 });
+      if (retryCaptchaCode) {
+        // Tekrar gir
+        const retryTyped = await page.evaluate((code) => {
+          const inputs = Array.from(document.querySelectorAll('input')).filter(inp => {
+            const t = (inp.type || 'text').toLowerCase();
+            return !['hidden','submit','button','checkbox','radio','file','password'].includes(t) && !inp.readOnly && !inp.disabled;
+          });
+          const captchaInp = inputs.find(inp => /do[gğ]rulama|captcha|verification|kod/i.test(inp.placeholder || ''));
+          const target = captchaInp || inputs[inputs.length - 1];
+          if (target) {
+            target.focus();
+            target.value = '';
+            for (const ch of code) {
+              target.value += ch;
+              target.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+            target.dispatchEvent(new Event("change", { bubbles: true }));
+            return true;
+          }
+          return false;
+        }, retryCaptchaCode);
+
+        if (retryTyped) {
+          await delay(800, 1200);
+          // Tekrar Giriş'e tıkla
+          await page.evaluate(() => {
+            const candidates = Array.from(document.querySelectorAll("button, input[type='submit'], input[type='button'], a, [role='button']"));
+            const loginBtn = candidates.find(b => {
+              const txt = (b.textContent || b.value || "").trim().toLowerCase().normalize("NFC");
+              return /^giri[sş]$/i.test(txt) || txt === "login";
+            }) || document.querySelector('button[type="submit"], input[type="submit"]');
+            if (loginBtn) loginBtn.click();
+            else { const f = document.querySelector("form"); if (f) f.submit(); }
+          });
+          await idataLog("login_captcha", `CAPTCHA tekrar çözüldü: ${retryCaptchaCode} — Giriş tıklandı`);
+          await delay(3000, 5000);
+        }
+      } else {
+        await idataLog("login_fail", `CAPTCHA tekrar çözülemedi`);
+        const ss = await takeScreenshotBase64(page);
+        return { success: false, reason: "captcha_retry_failed", screenshot: ss };
+      }
+    }
 
     // Giriş sonrası sayfa durumunu logla
     const postLoginShot = await takeScreenshotBase64(page);

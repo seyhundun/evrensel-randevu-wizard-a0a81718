@@ -166,12 +166,11 @@ const VncViewer = ({ title, defaultHost = "vnc.fipacomputer.online", pathPrefix 
             </Alert>
           </div>
         ) : (
-          <div className="relative bg-black">
+          <div className={`relative bg-black ${isFullscreen ? "h-screen" : "aspect-[21/9]"}`}>
             <iframe
               key={iframeKey}
               src={vncUrl}
-              className="w-full border-0"
-              style={{ height: isFullscreen ? "100vh" : "600px" }}
+              className="h-full w-full border-0"
               allow="clipboard-read; clipboard-write"
               sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
               onError={() => setIsConnected(false)}

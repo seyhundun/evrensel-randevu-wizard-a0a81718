@@ -1563,7 +1563,7 @@ async function launchBrowser(proxyIp = null) {
     // Evomi residential proxy - connect() proxy parametresi ile auth popup'ı önle
     const rp = getResidentialProxyUrl();
     proxyConfig = {
-      host: `http://${rp.host}`,
+      host: rp.host,
       port: rp.port,
       username: rp.user,
       password: rp.pass,

@@ -21,10 +21,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 function LiveClock() {
   const [time, setTime] = useState(new Date());
-  useState(() => {
+  useEffect(() => {
     const interval = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(interval);
-  });
+  }, []);
   return (
     <span className="font-mono text-sm tabular-nums text-muted-foreground flex items-center gap-1.5">
       <Clock className="w-3.5 h-3.5" />

@@ -514,8 +514,10 @@ function isLikelyCaptchaCode(raw) {
 }
 
 async function isCaptchaImageLoaded(page) {
-  // CAPTCHA img elementinin gerçekten yüklenip yüklenmediğini kontrol et
+  // CAPTCHA img/canvas elementinin gerçekten yüklenip yüklenmediğini kontrol et
   return await page.evaluate(() => {
+    const keywordRegex = /(captcha|doğrulama|dogrulama|verification|security|code)/i;
+
     const images = Array.from(document.querySelectorAll("img"));
     const captchaImg = images.find((img) => {
       const meta = [
@@ -525,10 +527,31 @@ async function isCaptchaImageLoaded(page) {
         img.id || "",
         (img.closest("div, fieldset, section, form")?.textContent || ""),
       ].join(" ").toLowerCase();
-      return /(captcha|doğrulama|dogrulama|verification|code)/i.test(meta);
+      return keywordRegex.test(meta);
     });
-    if (!captchaImg) return { found: false, loaded: false, reason: "no_captcha_img" };
-    
+
+    const canvases = Array.from(document.querySelectorAll("canvas"));
+    const captchaCanvas = canvases.find((cv) => {
+      const meta = [
+        cv.getAttribute("aria-label") || "",
+        cv.className || "",
+        cv.id || "",
+        (cv.closest("div, fieldset, section, form")?.textContent || ""),
+      ].join(" ").toLowerCase();
+      const w = cv.width || cv.clientWidth || 0;
+      const h = cv.height || cv.clientHeight || 0;
+      return keywordRegex.test(meta) || (w >= 60 && w <= 500 && h >= 20 && h <= 220);
+    });
+
+    if (captchaCanvas) {
+      const w = captchaCanvas.width || captchaCanvas.clientWidth || 0;
+      const h = captchaCanvas.height || captchaCanvas.clientHeight || 0;
+      const loaded = w > 10 && h > 10;
+      return { found: true, loaded, naturalWidth: w, naturalHeight: h, complete: true, src: "canvas", reason: loaded ? "canvas_ready" : "canvas_empty" };
+    }
+
+    if (!captchaImg) return { found: false, loaded: false, reason: "no_captcha_element" };
+
     const loaded = captchaImg.complete && captchaImg.naturalWidth > 10 && captchaImg.naturalHeight > 10;
     const src = (captchaImg.getAttribute("src") || "").substring(0, 120);
     return {

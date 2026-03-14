@@ -169,6 +169,8 @@ export default function BotSettingsPanel() {
 
   const updateProxyCountry = (code: string) => {
     setDraftValue("proxy_country", code);
+    // Ülke değiştiğinde bölgeyi sıfırla (eski ülkenin bölgesi kalmasın)
+    setDraftValue("proxy_region", "");
   };
 
   const addCountry = async () => {

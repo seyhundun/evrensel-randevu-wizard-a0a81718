@@ -1553,35 +1553,90 @@ async function loginToIdata(page, account) {
     }).catch(() => {});
     await delay(1000, 2000);
 
-    // Form alanlarını pozisyon bazlı doldur (iDATA tüm inputları type="text" kullanıyor)
-    const formInputs = await page.$$('input[type="text"], input[type="email"], input[type="password"]');
-    console.log(`  [LOGIN] Form'da ${formInputs.length} input bulundu`);
+    // Form inputlarını görünür/editable filtreyle eşleştir (gizli input karışmasın)
+    const allInputs = await page.$$("input");
+    const textCandidates = [];
+    const passwordCandidates = [];
 
-    // Alanları sırayla tanımla
-    // iDATA login formu sırası: 1) Üyelik No, 2) E-Posta, 3) Şifre, 4) CAPTCHA Kodu
-    const passwordInputs = await page.$$('input[type="password"]');
-    const textInputs = await page.$$('input[type="text"], input[type="email"]');
-    
-    // 1) Üyelik numarası — ilk text input
-    if (account.membership_number && textInputs[0]) {
+    for (const input of allInputs) {
+      const meta = await page.evaluate((el) => {
+        const type = (el.type || "text").toLowerCase();
+        const rect = el.getBoundingClientRect();
+        const st = window.getComputedStyle(el);
+        const visible = rect.width > 8 && rect.height > 8 && st.display !== "none" && st.visibility !== "hidden";
+        const editable = !el.disabled && !el.readOnly;
+        const textLike = !["hidden", "submit", "button", "checkbox", "radio", "file"].includes(type);
+        const norm = (value) => String(value || "").toLowerCase().normalize("NFC");
+        const metaText = norm([
+          el.name,
+          el.id,
+          el.placeholder,
+          el.getAttribute("aria-label"),
+          el.getAttribute("autocomplete"),
+        ].filter(Boolean).join(" "));
+
+        return {
+          type,
+          visible,
+          editable,
+          textLike,
+          metaText,
+          isCaptcha: /captcha|mailconfirm|do[gğ]rulama|verification/.test(metaText),
+          isMembership: /üyelik|uyelik|membership|member/.test(metaText),
+          isEmail: /e-?posta|email|mail/.test(metaText),
+        };
+      }, input);
+
+      if (!meta.visible || !meta.editable) continue;
+      if (meta.type === "password") {
+        passwordCandidates.push({ el: input, meta });
+        continue;
+      }
+      if (!meta.textLike) continue;
+      textCandidates.push({ el: input, meta });
+    }
+
+    const nonCaptchaTextInputs = textCandidates.filter((item) => !item.meta.isCaptcha);
+    let preDetectedCaptchaInput = textCandidates.find((item) => item.meta.isCaptcha)?.el || null;
+
+    const membershipInput = nonCaptchaTextInputs.find((item) => item.meta.isMembership)?.el || null;
+    const emailInput = nonCaptchaTextInputs.find((item) => item.meta.isEmail && item.el !== membershipInput)?.el || null;
+    const primaryAuthInput = membershipInput || emailInput || nonCaptchaTextInputs[0]?.el || null;
+    const secondaryAuthInput = nonCaptchaTextInputs.find((item) => item.el !== primaryAuthInput)?.el || null;
+
+    console.log(`  [LOGIN] Görünür input: text=${textCandidates.length}, auth=${nonCaptchaTextInputs.length}, password=${passwordCandidates.length}`);
+    await idataLog("login_form", `Input eşleştirme: auth=${nonCaptchaTextInputs.length}, pass=${passwordCandidates.length}, captcha=${preDetectedCaptchaInput ? "var" : "yok"}`);
+
+    // 1) Üyelik/kimlik alanı
+    if (account.membership_number && primaryAuthInput) {
       console.log(`  [LOGIN] Üyelik no giriliyor: ${account.membership_number}`);
-      const typed = await humanType(page, textInputs[0], account.membership_number, { minDelay: 140, maxDelay: 300, retries: 3 });
+      const typed = await humanType(page, primaryAuthInput, account.membership_number, { minDelay: 140, maxDelay: 300, retries: 3 });
       if (!typed) console.log("  [LOGIN] ⚠ Üyelik no tam yazılamadı");
       await delay(700, 1200);
     }
 
-    // 2) E-Posta — ikinci text input
-    if (textInputs[1]) {
+    // 2) E-posta alanı (ayrı input varsa oraya, yoksa gerektiğinde secondary'e)
+    if (emailInput) {
       console.log(`  [LOGIN] E-Posta giriliyor: ${account.email}`);
-      const typed = await humanType(page, textInputs[1], account.email, { minDelay: 130, maxDelay: 280, retries: 3 });
+      const typed = await humanType(page, emailInput, account.email, { minDelay: 130, maxDelay: 280, retries: 3 });
       if (!typed) console.log("  [LOGIN] ⚠ E-posta tam yazılamadı");
+      await delay(700, 1200);
+    } else if (!account.membership_number && primaryAuthInput) {
+      console.log(`  [LOGIN] E-Posta (fallback) giriliyor: ${account.email}`);
+      const typed = await humanType(page, primaryAuthInput, account.email, { minDelay: 130, maxDelay: 280, retries: 3 });
+      if (!typed) console.log("  [LOGIN] ⚠ E-posta fallback tam yazılamadı");
+      await delay(700, 1200);
+    } else if (account.membership_number && secondaryAuthInput) {
+      console.log(`  [LOGIN] E-Posta (secondary) giriliyor: ${account.email}`);
+      const typed = await humanType(page, secondaryAuthInput, account.email, { minDelay: 130, maxDelay: 280, retries: 3 });
+      if (!typed) console.log("  [LOGIN] ⚠ E-posta secondary tam yazılamadı");
       await delay(700, 1200);
     }
 
-    // 3) Şifre — password input
-    if (passwordInputs[0]) {
+    // 3) Şifre
+    if (passwordCandidates[0]?.el) {
       console.log(`  [LOGIN] Şifre giriliyor`);
-      const typed = await humanType(page, passwordInputs[0], account.password, { minDelay: 120, maxDelay: 260, retries: 3 });
+      const typed = await humanType(page, passwordCandidates[0].el, account.password, { minDelay: 120, maxDelay: 260, retries: 3 });
       if (!typed) console.log("  [LOGIN] ⚠ Şifre tam yazılamadı");
       await delay(1000, 1800);
     }

@@ -216,7 +216,7 @@ export default function BotSettingsPanel() {
         </div>
 
         <div className="space-y-1">
-          <Label className="text-[11px] text-muted-foreground">Captcha Solver Token</Label>
+          <Label className="text-[11px] text-muted-foreground">Capsolver API Key</Label>
           <div className="relative">
             <Input
               className="h-8 text-xs font-mono pr-8"
@@ -224,6 +224,26 @@ export default function BotSettingsPanel() {
               value={getDraft("capsolver_api_key")}
               onChange={e => setDraftValue("capsolver_api_key", e.target.value)}
               placeholder="CAP-XXXX..."
+            />
+            <button
+              type="button"
+              onClick={() => setShowCaptchaKey(!showCaptchaKey)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              {showCaptchaKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-[11px] text-muted-foreground">2Captcha API Key</Label>
+          <div className="relative">
+            <Input
+              className="h-8 text-xs font-mono pr-8"
+              type={showCaptchaKey ? "text" : "password"}
+              value={getDraft("captcha_api_key")}
+              onChange={e => setDraftValue("captcha_api_key", e.target.value)}
+              placeholder="2captcha key..."
             />
             <button
               type="button"

@@ -61,6 +61,30 @@ export type Database = {
           },
         ]
       }
+      bot_settings: {
+        Row: {
+          id: string
+          key: string
+          label: string | null
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          id?: string
+          key: string
+          label?: string | null
+          updated_at?: string
+          value?: string
+        }
+        Update: {
+          id?: string
+          key?: string
+          label?: string | null
+          updated_at?: string
+          value?: string
+        }
+        Relationships: []
+      }
       idata_accounts: {
         Row: {
           banned_until: string | null
@@ -402,6 +426,39 @@ export type Database = {
           registration_status?: string | null
           status?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      vfs_countries: {
+        Row: {
+          code: string
+          created_at: string
+          flag: string
+          id: string
+          is_active: boolean
+          label: string
+          sort_order: number
+          value: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          flag?: string
+          id?: string
+          is_active?: boolean
+          label: string
+          sort_order?: number
+          value: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          flag?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          sort_order?: number
+          value?: string
         }
         Relationships: []
       }

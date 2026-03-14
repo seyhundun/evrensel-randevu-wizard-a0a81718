@@ -1,4 +1,6 @@
-import { COUNTRIES, CITIES, VISA_CATEGORIES } from "@/lib/constants";
+import { useEffect, useState } from "react";
+import { CITIES, VISA_CATEGORIES } from "@/lib/constants";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Select,
   SelectContent,
@@ -12,6 +14,13 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Shield, Clock, Users, MapPin, Globe } from "lucide-react";
 import type { TrackingStatus } from "@/lib/constants";
+
+interface DynCountry {
+  value: string;
+  label: string;
+  flag: string;
+  code: string;
+}
 
 interface ControlPanelProps {
   country: string;
@@ -48,6 +57,25 @@ export default function ControlPanel({
 }: ControlPanelProps) {
   const isActive = status === "searching";
 
+  const [dynCountries, setDynCountries] = useState<DynCountry[]>([]);
+
+  useEffect(() => {
+    const load = async () => {
+      const { data } = await supabase
+        .from("vfs_countries")
+        .select("value, label, flag, code")
+        .eq("is_active", true)
+        .order("sort_order");
+      if (data) setDynCountries(data);
+    };
+    load();
+    const ch = supabase
+      .channel("countries-ctrl")
+      .on("postgres_changes", { event: "*", schema: "public", table: "vfs_countries" }, () => load())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, []);
+
   return (
     <Card className="p-4 space-y-4">
       <div>
@@ -69,7 +97,7 @@ export default function ControlPanel({
             <SelectValue placeholder="Ülke seçin" />
           </SelectTrigger>
           <SelectContent>
-            {COUNTRIES.map((c) => (
+            {dynCountries.map((c) => (
               <SelectItem key={c.value} value={c.value}>
                 <span className="flex items-center gap-2">
                   <span>{c.flag}</span>

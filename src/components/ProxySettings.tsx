@@ -11,20 +11,33 @@ interface ProxySettingsProps {
 export default function ProxySettings({ configId }: ProxySettingsProps) {
   const [currentIp, setCurrentIp] = useState<string | null>(null);
   const [lastReset, setLastReset] = useState<string | null>(null);
+  const [proxyHost, setProxyHost] = useState("—");
+  const [proxyCountry, setProxyCountry] = useState("—");
   const [cfStatus, setCfStatus] = useState<{ blocked: boolean; ip: string | null; since: string | null }>({
     blocked: false, ip: null, since: null,
   });
 
   useEffect(() => {
+    loadBotSettings();
     if (!configId) return;
     loadData();
     const channel = supabase
       .channel("proxy-status")
       .on("postgres_changes", { event: "*", schema: "public", table: "tracking_logs", filter: `config_id=eq.${configId}` }, () => loadData())
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "tracking_configs", filter: `id=eq.${configId}` }, () => loadCfStatus())
+      .on("postgres_changes", { event: "*", schema: "public", table: "bot_settings" }, () => loadBotSettings())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [configId]);
+
+  const loadBotSettings = async () => {
+    const { data } = await supabase.from("bot_settings").select("key, value");
+    if (data) {
+      const map = Object.fromEntries(data.map(d => [d.key, d.value]));
+      setProxyHost(map.proxy_host || "—");
+      setProxyCountry(map.proxy_country || "—");
+    }
+  };
 
   const loadData = async () => {
     if (!configId) return;
@@ -73,7 +86,8 @@ export default function ProxySettings({ configId }: ProxySettingsProps) {
     },
     { label: "Captcha Solver", value: "capsolver.com", icon: <Shield className="w-3.5 h-3.5" /> },
     { label: "Proxy", value: "Evomi Residential", icon: <Globe className="w-3.5 h-3.5" /> },
-    { label: "Proxy Host", value: "rp.evomi.com", icon: <Network className="w-3.5 h-3.5" /> },
+    { label: "Proxy Host", value: proxyHost, icon: <Network className="w-3.5 h-3.5" /> },
+    { label: "Proxy Ülke", value: proxyCountry, icon: <Globe className="w-3.5 h-3.5" /> },
   ];
 
   return (

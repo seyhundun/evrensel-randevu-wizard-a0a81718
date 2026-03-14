@@ -1484,13 +1484,18 @@ async function launchBrowser(proxyIp = null) {
     "--enable-webgl",
   ];
   
-  let proxyAuth = null;
+  let proxyConfig = undefined;
 
   if (PROXY_MODE === "residential" && EVOMI_PROXY_USER) {
-    // Evomi residential proxy (HTTP authenticated)
+    // Evomi residential proxy - connect() proxy parametresi ile auth popup'ı önle
     const rp = getResidentialProxyUrl();
-    args.push(`--proxy-server=http://${rp.host}:${rp.port}`);
-    proxyAuth = { username: rp.user, password: rp.pass };
+    proxyConfig = {
+      host: `http://${rp.host}`,
+      port: rp.port,
+      username: rp.user,
+      password: rp.pass,
+    };
+    console.log(`  [BROWSER] 🏠 Residential proxy config: ${rp.host}:${rp.port}`);
   } else if (proxyIp) {
     // Datacenter microsocks SOCKS5 proxy
     const proxyPort = 10800 + IP_LIST.indexOf(proxyIp);
@@ -1498,17 +1503,17 @@ async function launchBrowser(proxyIp = null) {
     console.log(`  [BROWSER] 🌐 Proxy: socks5://127.0.0.1:${proxyPort} (IP: ${proxyIp})`);
   }
   
-  const { browser, page } = await connect({
+  const connectOptions = {
     headless: false,
     args,
     turnstile: true,
-  });
-  
-  // Residential proxy auth
-  if (proxyAuth) {
-    await page.authenticate(proxyAuth);
-    console.log(`  [BROWSER] 🔑 Residential proxy auth uygulandı`);
+  };
+  if (proxyConfig) {
+    connectOptions.proxy = proxyConfig;
   }
+
+  const { browser, page } = await connect(connectOptions);
+  console.log(`  [BROWSER] ✅ Tarayıcı başlatıldı (proxy auth: ${proxyConfig ? 'connect() ile' : 'yok'})`);
 
   // Tarayıcı kapanınca temp klasörü sil
   browser.on("disconnected", () => cleanupUserDataDir(userDataDir));

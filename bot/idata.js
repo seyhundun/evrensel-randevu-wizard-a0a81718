@@ -1158,10 +1158,52 @@ async function selectDropdownOption(page, dropdownSelector, optionText) {
   }
 }
 
+// ==================== IMAP OTP READ ====================
+async function tryImapOtp(accountId) {
+  try {
+    const fetch = (await import("node-fetch")).default;
+    const res = await fetch(
+      `https://ocrpzwrsyiprfuzsyivf.supabase.co/functions/v1/read-otp`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: CONFIG.API_KEY,
+          Authorization: `Bearer ${CONFIG.API_KEY}`,
+        },
+        body: JSON.stringify({ account_id: accountId, account_type: "idata" }),
+      }
+    );
+    const data = await res.json();
+    if (data?.ok && data?.otp) {
+      return data.otp;
+    }
+    return null;
+  } catch (err) {
+    console.log(`  [IMAP] Hata: ${err.message}`);
+    return null;
+  }
+}
+
 // ==================== LOGIN OTP WAIT ====================
-async function waitForLoginOtp(accountId, timeoutMs = 180000) {
+async function waitForLoginOtp(accountId, timeoutMs = 180000, hasImap = false) {
   const start = Date.now();
+  let imapAttempts = 0;
+  
   while (Date.now() - start < timeoutMs) {
+    // 1) IMAP varsa önce otomatik dene (her 10 saniyede)
+    if (hasImap && imapAttempts < 20) {
+      imapAttempts++;
+      console.log(`  [OTP] IMAP ile otomatik okuma deneniyor (${imapAttempts})...`);
+      const imapOtp = await tryImapOtp(accountId);
+      if (imapOtp) {
+        console.log(`  [OTP] ✅ IMAP'ten OTP alındı: ${imapOtp}`);
+        await idataLog("login_otp", `📧 IMAP'ten OTP alındı otomatik: ${imapOtp}`);
+        return imapOtp;
+      }
+    }
+
+    // 2) Manuel OTP kontrolü (dashboard'dan)
     try {
       const data = await apiPost({ action: "idata_get_login_otp", account_id: accountId }, "get_login_otp");
       if (data?.manual_otp) {
@@ -1921,9 +1963,10 @@ async function loginToIdata(page, account) {
       await apiPost({ action: "idata_set_login_otp_requested", account_id: account.id }, "set_login_otp");
       await idataLog("login_otp", `📧 Giriş OTP bekleniyor | Hesap: ${account.email}`);
 
-      // Dashboard'dan OTP'yi bekle (max 3 dakika)
-      console.log("  [LOGIN] ⏳ Dashboard'dan OTP bekleniyor (max 180s)...");
-      const otpCode = await waitForLoginOtp(account.id, 180000);
+      // Dashboard'dan OTP'yi bekle (max 3 dakika) — IMAP varsa otomatik dene
+      const hasImap = !!(account.imap_password);
+      console.log(`  [LOGIN] ⏳ OTP bekleniyor (max 180s) | IMAP: ${hasImap ? 'aktif' : 'yok'}...`);
+      const otpCode = await waitForLoginOtp(account.id, 180000, hasImap);
       
       if (!otpCode) {
         console.log("  [LOGIN] ❌ OTP zaman aşımı");
@@ -2025,7 +2068,7 @@ async function loginToIdata(page, account) {
       await apiPost({ action: "idata_set_login_otp_requested", account_id: account.id }, "set_login_otp");
       await idataLog("login_otp", `📧 Giriş OTP bekleniyor (geç) | Hesap: ${account.email}`);
       
-      const otpCode2 = await waitForLoginOtp(account.id, 180000);
+      const otpCode2 = await waitForLoginOtp(account.id, 180000, !!(account.imap_password));
       if (otpCode2) {
         console.log(`  [LOGIN] ✅ OTP alındı (geç): ${otpCode2}`);
         await page.evaluate((code) => {

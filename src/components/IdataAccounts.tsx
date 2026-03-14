@@ -51,6 +51,8 @@ interface IdataAccount {
   invoice_district: string | null;
   invoice_address: string | null;
   membership_number: string | null;
+  imap_host: string | null;
+  imap_password: string | null;
   status: string;
   registration_status: string | null;
   banned_until: string | null;
@@ -87,7 +89,7 @@ export default function IdataAccounts() {
     phone: "", birth_day: "01", birth_month: "01", birth_year: "1990",
     residence_city: "", idata_office: "", travel_purpose: "",
     invoice_city: "", invoice_district: "", invoice_address: "",
-    membership_number: "",
+    membership_number: "", imap_host: "imap.gmail.com", imap_password: "",
   });
 
   useEffect(() => {
@@ -158,6 +160,8 @@ export default function IdataAccounts() {
       invoice_district: acc.invoice_district || "",
       invoice_address: acc.invoice_address || "",
       membership_number: acc.membership_number || "",
+      imap_host: acc.imap_host || "imap.gmail.com",
+      imap_password: acc.imap_password || "",
     });
     setEditingId(acc.id);
     setShowForm(true);
@@ -170,7 +174,7 @@ export default function IdataAccounts() {
       phone: "", birth_day: "01", birth_month: "01", birth_year: "1990",
       residence_city: "", idata_office: "", travel_purpose: "",
       invoice_city: "", invoice_district: "", invoice_address: "",
-      membership_number: "",
+      membership_number: "", imap_host: "imap.gmail.com", imap_password: "",
     });
     setEditingId(null);
     setShowForm(false);
@@ -437,6 +441,20 @@ export default function IdataAccounts() {
             </div>
           </div>
 
+          <h3 className="text-sm font-semibold pt-2">📧 IMAP Ayarları (Otomatik OTP)</h3>
+          <p className="text-[10px] text-muted-foreground -mt-2">IMAP bilgileri girilirse giriş OTP kodu otomatik e-postadan çekilir. Girilmezse manuel giriş yaparsınız.</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">IMAP Host</Label>
+              <Input placeholder="imap.gmail.com" value={form.imap_host} onChange={e => updateForm("imap_host", e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">IMAP Şifre (App Password)</Label>
+              <Input type="password" placeholder="Gmail App Password" value={form.imap_password} onChange={e => updateForm("imap_password", e.target.value)} />
+              <p className="text-[10px] text-muted-foreground mt-0.5">Gmail için: Hesap → Güvenlik → Uygulama Şifreleri</p>
+            </div>
+          </div>
+
           <Button onClick={saveAccount} disabled={loading} size="sm" className="gap-1.5">
             <UserPlus className="w-4 h-4" /> {editingId ? "Güncelle" : "Kayıt Talebi Oluştur"}
           </Button>
@@ -474,6 +492,7 @@ export default function IdataAccounts() {
                      {acc.passport_no && <span className="text-xs text-muted-foreground">🛂 {acc.passport_no}</span>}
                      {acc.membership_number && <span className="text-xs text-muted-foreground font-mono">🆔 {acc.membership_number}</span>}
                      {acc.idata_office && <span className="text-xs text-muted-foreground">🏢 {acc.idata_office}</span>}
+                     {acc.imap_password && <Badge className="bg-green-500/10 text-green-600 border-green-500/20 text-[10px]">📧 IMAP</Badge>}
                   </div>
                 </div>
                 <div className="flex gap-1.5 shrink-0">

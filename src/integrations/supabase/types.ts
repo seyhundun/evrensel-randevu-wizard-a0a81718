@@ -97,6 +97,8 @@ export type Database = {
           first_name: string
           id: string
           idata_office: string | null
+          imap_host: string | null
+          imap_password: string | null
           invoice_address: string | null
           invoice_city: string | null
           invoice_district: string | null
@@ -129,6 +131,8 @@ export type Database = {
           first_name?: string
           id?: string
           idata_office?: string | null
+          imap_host?: string | null
+          imap_password?: string | null
           invoice_address?: string | null
           invoice_city?: string | null
           invoice_district?: string | null
@@ -161,6 +165,8 @@ export type Database = {
           first_name?: string
           id?: string
           idata_office?: string | null
+          imap_host?: string | null
+          imap_password?: string | null
           invoice_address?: string | null
           invoice_city?: string | null
           invoice_district?: string | null

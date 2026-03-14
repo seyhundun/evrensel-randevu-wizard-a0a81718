@@ -51,6 +51,8 @@ interface IdataAccount {
   invoice_district: string | null;
   invoice_address: string | null;
   membership_number: string | null;
+  imap_host: string | null;
+  imap_password: string | null;
   status: string;
   registration_status: string | null;
   banned_until: string | null;

@@ -13,10 +13,10 @@ interface VncViewerProps {
   className?: string;
 }
 
-const VncViewer = ({ title, defaultHost = "187.77.161.201", defaultPort = 6080, className }: VncViewerProps) => {
+const VncViewer = ({ title, defaultHost = "vnc.fipacomputer.online", defaultPort = 6080, className }: VncViewerProps) => {
   const [host, setHost] = useState(defaultHost);
   const [port, setPort] = useState(defaultPort);
-  const [scheme, setScheme] = useState<"http" | "https">("http");
+  const [scheme, setScheme] = useState<"http" | "https">("https");
   const [isConnected, setIsConnected] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -26,7 +26,8 @@ const VncViewer = ({ title, defaultHost = "187.77.161.201", defaultPort = 6080, 
   const isHttpsApp = useMemo(() => window.location.protocol === "https:", []);
   const mixedContentBlocked = isHttpsApp && scheme === "http";
 
-  const vncUrl = `${scheme}://${host}:${port}/vnc.html?autoconnect=1&resize=scale&path=websockify&reconnect=true&reconnect_delay=3000`;
+  const pathPrefix = port === 6080 ? "/vfs" : port === 6081 ? "/idata" : "";
+  const vncUrl = `${scheme}://${host}${pathPrefix}/vnc.html?autoconnect=1&resize=scale&path=${pathPrefix.slice(1)}/websockify&reconnect=true&reconnect_delay=3000`;
 
   const handleConnect = useCallback(() => {
     setIsConnected(true);

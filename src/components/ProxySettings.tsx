@@ -86,7 +86,8 @@ export default function ProxySettings({ configId }: ProxySettingsProps) {
     },
     { label: "Captcha Solver", value: "capsolver.com", icon: <Shield className="w-3.5 h-3.5" /> },
     { label: "Proxy", value: "Evomi Residential", icon: <Globe className="w-3.5 h-3.5" /> },
-    { label: "Proxy Host", value: "rp.evomi.com", icon: <Network className="w-3.5 h-3.5" /> },
+    { label: "Proxy Host", value: proxyHost, icon: <Network className="w-3.5 h-3.5" /> },
+    { label: "Proxy Ülke", value: proxyCountry, icon: <Globe className="w-3.5 h-3.5" /> },
   ];
 
   return (

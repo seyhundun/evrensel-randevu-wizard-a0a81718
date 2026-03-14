@@ -156,10 +156,16 @@ export function useTracking() {
     return id;
   };
 
+  const foundHandledRef = useRef(false);
+
   const startPolling = (cfgId: string) => {
     const pollingStartTime = new Date().toISOString();
+    foundHandledRef.current = false;
     // Poll tracking_logs for "found" status — only logs after polling started
     pollRef.current = setInterval(async () => {
+      // Already handled — skip
+      if (foundHandledRef.current) return;
+
       const { data } = await supabase
         .from("tracking_logs")
         .select("*")
@@ -168,7 +174,8 @@ export function useTracking() {
         .gte("created_at", pollingStartTime)
         .limit(1);
 
-      if (data && data.length > 0) {
+      if (data && data.length > 0 && !foundHandledRef.current) {
+        foundHandledRef.current = true;
         handleFound();
       }
 

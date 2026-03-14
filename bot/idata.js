@@ -20,8 +20,8 @@ const CONFIG = {
 };
 
 // ==================== CAPTCHA PROVIDER ====================
-const CAPTCHA_PROVIDER = (process.env.CAPTCHA_PROVIDER || "auto").toLowerCase();
-const CAPSOLVER_API_KEY = (process.env.CAPSOLVER_API_KEY || "").trim();
+let CAPTCHA_PROVIDER = (process.env.CAPTCHA_PROVIDER || "auto").toLowerCase();
+let CAPSOLVER_API_KEY = (process.env.CAPSOLVER_API_KEY || "").trim();
 
 console.log("🇮🇹 iDATA İtalya Botu v1.0 başlatılıyor...");
 console.log(`🔐 CAPTCHA Provider: ${CAPTCHA_PROVIDER}`);

@@ -370,17 +370,19 @@ export default function BotSettingsPanel() {
           </div>
           {evomiRegions.length > 0 ? (
             <Select
-              value={getDraft("proxy_region") || ""}
-              onValueChange={v => setDraftValue("proxy_region", v)}
+              value={getDraft("proxy_region") || "__none__"}
+              onValueChange={v => setDraftValue("proxy_region", v === "__none__" ? "" : v)}
             >
               <SelectTrigger className="h-8 text-xs">
                 <SelectValue placeholder="Bölge seçin..." />
               </SelectTrigger>
               <SelectContent className="max-h-60">
-                <SelectItem value="">Yok (rastgele)</SelectItem>
-                {evomiRegions.map(r => (
-                  <SelectItem key={r} value={r}>{r}</SelectItem>
-                ))}
+                <SelectItem value="__none__">Yok (rastgele)</SelectItem>
+                {evomiRegions.map((r, i) => {
+                  const val = typeof r === "string" ? r : (r as any).name || (r as any).id || String(i);
+                  const label = typeof r === "string" ? r : (r as any).name || JSON.stringify(r);
+                  return <SelectItem key={val + i} value={val}>{label}</SelectItem>;
+                })}
               </SelectContent>
             </Select>
           ) : (

@@ -607,8 +607,6 @@ async function launchBrowser(ip = null) {
     console.log(`  [BROWSER] Proxy: socks5://127.0.0.1:${port} (${ip})`);
   }
 
-  const ua = getRandomItem(USER_AGENTS);
-  const vp = getRandomItem(VIEWPORTS);
 
   const connectOptions = {
     headless: false,

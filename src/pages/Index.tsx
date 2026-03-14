@@ -79,26 +79,34 @@ const Index = () => {
             {sidebarOpen && (
               <aside className="w-[320px] shrink-0 border-r border-border bg-card/50">
                 <ScrollArea className="h-full">
-                  <div className="p-3 space-y-3">
-                    <ProxySettings configId={t.configId} />
-                    <ControlPanel
-                      country={t.country}
-                      setCountry={t.setCountry}
-                      city={t.city}
-                      setCity={t.setCity}
-                      visaCategory={t.visaCategory}
-                      setVisaCategory={t.setVisaCategory}
-                      personCount={t.personCount}
-                      setPersonCount={t.setPersonCount}
-                      interval={t.interval}
-                      setIntervalValue={t.setIntervalValue}
-                      keepAlive={t.keepAlive}
-                      setKeepAlive={t.setKeepAlive}
-                      status={t.status}
-                      onStart={t.startTracking}
-                      onStop={t.stopTracking}
-                    />
-                    <BotSettingsPanel />
+                  <div className="p-3 space-y-1">
+                    <SidebarSection icon={<Network className="w-3.5 h-3.5" />} title="Proxy & Durum" defaultOpen>
+                      <ProxySettings configId={t.configId} />
+                    </SidebarSection>
+
+                    <SidebarSection icon={<Globe className="w-3.5 h-3.5" />} title="Randevu Ayarları" defaultOpen>
+                      <ControlPanel
+                        country={t.country}
+                        setCountry={t.setCountry}
+                        city={t.city}
+                        setCity={t.setCity}
+                        visaCategory={t.visaCategory}
+                        setVisaCategory={t.setVisaCategory}
+                        personCount={t.personCount}
+                        setPersonCount={t.setPersonCount}
+                        interval={t.interval}
+                        setIntervalValue={t.setIntervalValue}
+                        keepAlive={t.keepAlive}
+                        setKeepAlive={t.setKeepAlive}
+                        status={t.status}
+                        onStart={t.startTracking}
+                        onStop={t.stopTracking}
+                      />
+                    </SidebarSection>
+
+                    <SidebarSection icon={<Settings className="w-3.5 h-3.5" />} title="Bot & Ülke Ayarları">
+                      <BotSettingsPanel />
+                    </SidebarSection>
                   </div>
                 </ScrollArea>
               </aside>

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import {
   CheckCircle2, Search, AlertCircle, Clock, Image as ImageIcon, X,
   LogIn, FormInput, ShieldCheck, KeyRound, Globe, Timer, MonitorSmartphone,
-  UserPlus, MousePointer, Wifi, Ban, RefreshCw, Network, Trash2
+  UserPlus, MousePointer, Wifi, Ban, RefreshCw, Network, Trash2, MapPin
 } from "lucide-react";
 
 interface LogEntry {

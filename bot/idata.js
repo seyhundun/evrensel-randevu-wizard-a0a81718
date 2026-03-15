@@ -2761,8 +2761,8 @@ async function bookEarliestAppointment(page, account) {
       const body = (document.body?.innerText || "");
       const hasDateSection = body.includes("En yakın randevu tarihleri");
       
-      // Tarihleri topla (bilgi amaçlı)
-      const dateMatches = body.match(/\d{2}-\d{2}-\d{4}/g) || [];
+      // Ekranda listelenen uygun tarihleri topla
+      const dateMatches = Array.from(new Set(body.match(/\b\d{2}[./-]\d{2}[./-]\d{4}\b/g) || []));
       
       // İLERİ butonunu bul — genelde yeşil, sağ altta
       const candidates = Array.from(document.querySelectorAll('a, button, input[type="submit"], input[type="button"]'));
@@ -2780,13 +2780,41 @@ async function bookEarliestAppointment(page, account) {
       const greenBtn = document.querySelector('.btn-success, a.btn-success');
       if (greenBtn) {
         greenBtn.click();
-        return { clicked: true, text: (greenBtn.innerText || "").trim(), method: "green_btn", dates: dateMatches };
+        return { clicked: true, text: (greenBtn.innerText || "").trim(), method: "green_btn", dates: dateMatches, hasDateSection };
       }
       
       return { clicked: false, dates: dateMatches, hasDateSection };
     });
 
     console.log(`  [BOOK] Step 1 sonuç: ${JSON.stringify(step1Result)}`);
+
+    const parseAnnouncedAppointmentDate = (raw) => {
+      const m = String(raw || "").trim().match(/^(\d{2})[./-](\d{2})[./-](\d{4})$/);
+      if (!m) return null;
+      const day = parseInt(m[1], 10);
+      const month = parseInt(m[2], 10);
+      const year = parseInt(m[3], 10);
+      const timestamp = new Date(year, month - 1, day).getTime();
+      if (Number.isNaN(timestamp)) return null;
+      return {
+        raw,
+        day,
+        month,
+        year,
+        timestamp,
+        normalized: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+      };
+    };
+
+    const announcedAppointmentDates = (step1Result.dates || [])
+      .map(parseAnnouncedAppointmentDate)
+      .filter(Boolean)
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    const preferredAppointmentDate = announcedAppointmentDates[0] || null;
+    if (preferredAppointmentDate) {
+      console.log(`  [BOOK] En erken ilan edilen randevu tarihi hedeflenecek: ${preferredAppointmentDate.raw}`);
+    }
     
     if (!step1Result.clicked) {
       const ss = await takeScreenshotBase64(page);
@@ -2795,7 +2823,7 @@ async function bookEarliestAppointment(page, account) {
     }
 
     const ss1 = await takeScreenshotBase64(page);
-    await idataLog("appt_step1_ileri", `✅ İLERİ tıklandı | Tarihler: ${(step1Result.dates || []).join(", ")} | Hesap: ${account.email}`, ss1);
+    await idataLog("appt_step1_ileri", `✅ İLERİ tıklandı | Tarihler: ${(step1Result.dates || []).join(", ")} | Hedef: ${preferredAppointmentDate?.raw || "ilk yeşil"} | Hesap: ${account.email}`, ss1);
     
     await delay(3000, 5000);
 
@@ -3197,21 +3225,14 @@ async function bookEarliestAppointment(page, account) {
     console.log(`  [BOOK] Takvim ikonu: ${JSON.stringify(calIconClicked)}`);
     await delay(2000, 3000);
 
-    // ===== STEP 3: Takvimden en erken YEŞİL günü seç =====
-    // Yeşil = müsait, kırmızı = dolu, sarı/turuncu = bugün
-    const targetTravelDate = account.travel_date || null;
-    let targetDay = null;
-    let targetMonth = null;
-    let targetYear = null;
+    // ===== STEP 3: Takvimden sadece YEŞİL ve en erken günü seç =====
+    // Öncelik: Step 1'de ekranda listelenen en erken randevu tarihi
+    const targetAppointmentDate = preferredAppointmentDate || null;
+    let targetDay = targetAppointmentDate?.day ?? null;
+    let targetMonth = targetAppointmentDate?.month ?? null;
+    let targetYear = targetAppointmentDate?.year ?? null;
     
-    if (targetTravelDate) {
-      const ymd = targetTravelDate.match(/(\d{4})-(\d{2})-(\d{2})/);
-      const dmy = targetTravelDate.match(/(\d{2})[.\/-](\d{2})[.\/-](\d{4})/);
-      if (ymd) { targetYear = parseInt(ymd[1]); targetMonth = parseInt(ymd[2]); targetDay = parseInt(ymd[3]); }
-      else if (dmy) { targetDay = parseInt(dmy[1]); targetMonth = parseInt(dmy[2]); targetYear = parseInt(dmy[3]); }
-    }
-    
-    console.log(`  [BOOK] Step 3: Takvimden en erken yeşil gün seçiliyor... hedef: ${targetDay ? `${targetDay}/${targetMonth}/${targetYear}` : "ilk yeşil gün"}`);
+    console.log(`  [BOOK] Step 3: Sadece yeşil gün seçilecek... hedef: ${targetDay ? `${targetDay}/${targetMonth}/${targetYear}` : "ilk yeşil gün"}`);
     
     // Takvimi hedef aya navigate et (gerekirse)
     if (targetMonth && targetYear) {
@@ -3368,14 +3389,12 @@ async function bookEarliestAppointment(page, account) {
       const selectedCalendar = candidateCalendars[0];
       const allDays = selectedCalendar.days;
 
-      const greenDays = allDays.filter(d => d.isGreen && !d.isRed).sort((a, b) => a.day - b.day);
-      const clickableDays = allDays.filter(d => !d.isRed && !d.isYellow && (d.hasLink || d.isGreen)).sort((a, b) => a.day - b.day);
-      const pool = greenDays.length > 0 ? greenDays : clickableDays;
+      const greenDays = allDays.filter(d => d.isGreen && !d.isRed && !d.isYellow).sort((a, b) => a.day - b.day);
 
-      if (pool.length > 0) {
+      if (greenDays.length > 0) {
         let target = null;
-        if (tDay) target = pool.find(d => d.day === tDay);
-        if (!target) target = pool.length > 1 ? pool[1] : pool[0];
+        if (tDay) target = greenDays.find(d => d.day === tDay);
+        if (!target) target = greenDays[0];
 
         return {
           found: true,
@@ -3394,7 +3413,7 @@ async function bookEarliestAppointment(page, account) {
         };
       }
 
-      return { found: false, totalDays: allDays.length, reason: "no_days_in_pool" };
+      return { found: false, totalDays: allDays.length, reason: "no_green_days" };
     }, targetDay, calIconClicked?.inputX ?? null, calIconClicked?.inputY ?? null);
 
     console.log(`  [BOOK] Tarih bilgisi: ${JSON.stringify(dateInfo)}`);
@@ -3851,8 +3870,8 @@ async function bookEarliestAppointment(page, account) {
 
     console.log(`  [BOOK] Tarih seçimi: ${JSON.stringify(dateSelected)}`);
 
-    if (!dateSelected.selected) {
-      // Takvim click seçimini doğrulayamadık — input fallback (seçilen güne öncelik ver)
+    if (!dateSelected.selected && dateInfo?.found) {
+      // Sadece yeşil olarak tespit edilen gün için input fallback uygula
       const headerText = await page.evaluate(() => {
         const header = document.querySelector(".datepicker-switch, .datepicker-days th.datepicker-switch, th.switch");
         return header ? (header.textContent || "").trim() : "";
@@ -3872,87 +3891,86 @@ async function bookEarliestAppointment(page, account) {
       const ym = headerText.match(/(\d{4})/);
       if (ym) headerYear = parseInt(ym[1]);
 
-      const fallbackDay = dateInfo?.found ? dateInfo.day : targetDay;
-      let dateStr;
+      const fallbackDay = dateInfo.day;
+      let dateStr = null;
       if (fallbackDay && headerMonth && headerYear) {
         dateStr = `${String(fallbackDay).padStart(2, "0")}-${String(headerMonth).padStart(2, "0")}-${headerYear}`;
       } else if (fallbackDay && targetMonth && targetYear) {
         dateStr = `${String(fallbackDay).padStart(2, "0")}-${String(targetMonth).padStart(2, "0")}-${targetYear}`;
-      } else if (targetDay && targetMonth && targetYear) {
-        dateStr = `${String(targetDay).padStart(2, "0")}-${String(targetMonth).padStart(2, "0")}-${targetYear}`;
-      } else {
-        const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-        dateStr = `${String(futureDate.getDate()).padStart(2, "0")}-${String(futureDate.getMonth() + 1).padStart(2, "0")}-${futureDate.getFullYear()}`;
       }
 
-      await page.evaluate((val) => {
-        const inputs = Array.from(document.querySelectorAll("input"));
-        const travelWords = ["seyahat", "gidiş", "gidis", "travel", "flight", "departure", "baslangic", "başlangıç"];
-        const apptWords = ["randevu", "appointment", "slot", "tarih"];
-        const hasWord = (txt, words) => words.some((w) => txt.includes(w));
+      if (dateStr) {
+        await page.evaluate((val) => {
+          const inputs = Array.from(document.querySelectorAll("input"));
+          const travelWords = ["seyahat", "gidiş", "gidis", "travel", "flight", "departure", "baslangic", "başlangıç"];
+          const apptWords = ["randevu", "appointment", "slot", "tarih"];
+          const hasWord = (txt, words) => words.some((w) => txt.includes(w));
 
-        const isVisible = (el) => {
-          const r = el.getBoundingClientRect();
-          const s = window.getComputedStyle(el);
-          return r.width > 0 && r.height > 0 && s.display !== "none" && s.visibility !== "hidden";
-        };
+          const isVisible = (el) => {
+            const r = el.getBoundingClientRect();
+            const s = window.getComputedStyle(el);
+            return r.width > 0 && r.height > 0 && s.display !== "none" && s.visibility !== "hidden";
+          };
 
-        const candidates = inputs
-          .filter(isVisible)
-          .map((inp) => {
-            const ph = (inp.placeholder || "").toLowerCase();
-            const nm = (inp.name || "").toLowerCase();
-            const id = (inp.id || "").toLowerCase();
-            const cls = (inp.className || "").toLowerCase();
-            const blob = `${ph} ${nm} ${id} ${cls}`;
+          const candidates = inputs
+            .filter(isVisible)
+            .map((inp) => {
+              const ph = (inp.placeholder || "").toLowerCase();
+              const nm = (inp.name || "").toLowerCase();
+              const id = (inp.id || "").toLowerCase();
+              const cls = (inp.className || "").toLowerCase();
+              const blob = `${ph} ${nm} ${id} ${cls}`;
 
-            const isDateLike = cls.includes("calendarinput") || cls.includes("flightdate") || cls.includes("datepicker") || ph.includes("tarih") || nm.includes("date") || nm.includes("tarih");
-            if (!isDateLike) return null;
+              const isDateLike = cls.includes("calendarinput") || cls.includes("flightdate") || cls.includes("datepicker") || ph.includes("tarih") || nm.includes("date") || nm.includes("tarih");
+              if (!isDateLike) return null;
 
-            const isTravel = hasWord(blob, travelWords);
-            const isAppt = hasWord(blob, apptWords) && !isTravel;
-            const rect = inp.getBoundingClientRect();
+              const isTravel = hasWord(blob, travelWords);
+              const isAppt = hasWord(blob, apptWords) && !isTravel;
+              const rect = inp.getBoundingClientRect();
 
-            let score = 0;
-            if (isAppt) score += 180;
-            if (ph.includes("randevu")) score += 220;
-            if (nm.includes("randevu") || id.includes("randevu")) score += 180;
-            if (isTravel) score -= 300;
-            if (!(inp.value || "").trim()) score += 60;
-            score += Math.floor(rect.y / 3);
+              let score = 0;
+              if (isAppt) score += 180;
+              if (ph.includes("randevu")) score += 220;
+              if (nm.includes("randevu") || id.includes("randevu")) score += 180;
+              if (isTravel) score -= 300;
+              if (!(inp.value || "").trim()) score += 60;
+              score += Math.floor(rect.y / 3);
 
-            return { inp, score, y: rect.y };
-          })
-          .filter(Boolean)
-          .sort((a, b) => b.score - a.score || b.y - a.y);
+              return { inp, score, y: rect.y };
+            })
+            .filter(Boolean)
+            .sort((a, b) => b.score - a.score || b.y - a.y);
 
-        const dateInput = candidates[0]?.inp || null;
-        if (!dateInput) return;
+          const dateInput = candidates[0]?.inp || null;
+          if (!dateInput) return;
 
-        const finalVal = val;
-        dateInput.value = "";
-        dateInput.focus();
-        const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-        nativeSetter.call(dateInput, finalVal);
-        dateInput.dispatchEvent(new Event("input", { bubbles: true }));
-        dateInput.dispatchEvent(new Event("change", { bubbles: true }));
-        dateInput.dispatchEvent(new Event("blur", { bubbles: true }));
+          const finalVal = val;
+          dateInput.value = "";
+          dateInput.focus();
+          const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+          nativeSetter.call(dateInput, finalVal);
+          dateInput.dispatchEvent(new Event("input", { bubbles: true }));
+          dateInput.dispatchEvent(new Event("change", { bubbles: true }));
+          dateInput.dispatchEvent(new Event("blur", { bubbles: true }));
 
-        if (typeof window.jQuery !== "undefined") {
-          try {
-            const parts = val.split("-");
-            const dateObj = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
-            window.jQuery(dateInput).datepicker("setDate", dateObj);
-            window.jQuery(dateInput).trigger("changeDate").trigger("change");
-          } catch (_) {
+          if (typeof window.jQuery !== "undefined") {
             try {
-              window.jQuery(dateInput).datepicker("update", finalVal);
-              window.jQuery(dateInput).trigger("changeDate");
-            } catch (__) {}
+              const parts = val.split("-");
+              const dateObj = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+              window.jQuery(dateInput).datepicker("setDate", dateObj);
+              window.jQuery(dateInput).trigger("changeDate").trigger("change");
+            } catch (_) {
+              try {
+                window.jQuery(dateInput).datepicker("update", finalVal);
+                window.jQuery(dateInput).trigger("changeDate");
+              } catch (__) {}
+            }
           }
-        }
-      }, dateStr);
-      console.log(`  [BOOK] Manuel tarih girildi: ${dateStr}`);
+        }, dateStr);
+        console.log(`  [BOOK] Manuel tarih girildi (yeşil hedef): ${dateStr}`);
+      }
+    } else if (!dateSelected.selected) {
+      console.log("  [BOOK] Takvimde yeşil tarih bulunmadığı için manuel tarih zorlanmadı.");
     }
 
     await delay(2000, 3000);
@@ -4354,8 +4372,8 @@ async function bookEarliestAppointment(page, account) {
 
         await delay(500, 1000);
 
-        // ===== TAMAM'dan sonra yeniden tarih seç (yeşil günün ortasından + postback) =====
-        const retryDateInfo = await page.evaluate(() => {
+        // ===== TAMAM'dan sonra yeniden tarih seç (sadece yeşil + en erken) =====
+        const retryDateInfo = await page.evaluate((preferredDay) => {
           const calContainers = document.querySelectorAll(
             ".datepicker, .datepicker-dropdown, .bootstrap-datetimepicker-widget, " +
             ".datepicker-days, .flatpickr-calendar, .ui-datepicker, " +
@@ -4373,19 +4391,22 @@ async function bookEarliestAppointment(page, account) {
               const classBlob = `${d.className || ""} ${childFlagEl?.className || ""}`.toLowerCase();
               if (d.classList.contains("disabled") || d.classList.contains("off") || d.classList.contains("old") || classBlob.includes("disabled-day")) continue;
 
-              const dayNum = parseInt(text);
+              const dayNum = parseInt(text, 10);
               const tdBg = window.getComputedStyle(d).backgroundColor;
               const childBg = childFlagEl ? window.getComputedStyle(childFlagEl).backgroundColor : "";
               const bgColor = childBg && childBg !== "rgba(0, 0, 0, 0)" ? childBg : tdBg;
               const rgbMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
               let isGreen = false;
+              let isYellow = false;
               if (rgbMatch) {
-                const r = parseInt(rgbMatch[1]), g = parseInt(rgbMatch[2]), b = parseInt(rgbMatch[3]);
+                const r = parseInt(rgbMatch[1], 10), g = parseInt(rgbMatch[2], 10), b = parseInt(rgbMatch[3], 10);
                 isGreen = g > 100 && g > r * 1.2 && g > b * 1.2;
+                isYellow = r > 200 && g > 150 && b < 120;
               }
               if (d.classList.contains("bg-success") || d.classList.contains("success") || classBlob.includes("enabled-day") || classBlob.includes("bg-success")) isGreen = true;
+              if (d.classList.contains("bg-warning") || d.classList.contains("warning") || d.classList.contains("today") || d.classList.contains("active") || classBlob.includes("bg-warning") || classBlob.includes("warning") || classBlob.includes("active")) isYellow = true;
+              if (!isGreen || isYellow) continue;
 
-              // ASP.NET postback bilgisi
               const innerLink = d.querySelector("a[href*='doPostBack'], a[href*='javascript'], a");
               const postbackHref = innerLink ? (innerLink.getAttribute("href") || "") : "";
               let postbackTarget = null, postbackArg = null;
@@ -4395,20 +4416,17 @@ async function bookEarliestAppointment(page, account) {
               const clickableEl = innerLink || d;
               const rect = clickableEl.getBoundingClientRect();
               if (rect.width > 0 && rect.height > 0) {
-                allDays.push({ day: dayNum, isGreen, x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, postbackTarget, postbackArg, hasLink: !!innerLink });
+                allDays.push({ day: dayNum, x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, postbackTarget, postbackArg, hasLink: !!innerLink });
               }
             }
           }
-          const greenDays = allDays.filter(d => d.isGreen).sort((a, b) => a.day - b.day);
-          const clickableDays = allDays.filter(d => d.hasLink || d.isGreen).sort((a, b) => a.day - b.day);
-          const pool = greenDays.length > 0 ? greenDays : clickableDays;
-          // İlk yeşili değil, bir sonrakini (2. uygun gün) seç
-          if (pool.length > 0) {
-            const target = pool.length > 1 ? pool[1] : pool[0];
+          const greenDays = allDays.sort((a, b) => a.day - b.day);
+          if (greenDays.length > 0) {
+            const target = greenDays.find(d => d.day === preferredDay) || greenDays[0];
             return { found: true, day: target.day, x: target.x, y: target.y, greenCount: greenDays.length, postbackTarget: target.postbackTarget, postbackArg: target.postbackArg, hasLink: target.hasLink };
           }
           return { found: false };
-        });
+        }, targetDay);
 
         if (retryDateInfo.found) {
           console.log(`  [BOOK] 📅 Retry tarih seçimi: Gün ${retryDateInfo.day} (${retryDateInfo.greenCount} yeşil, postback=${!!retryDateInfo.postbackTarget})`);

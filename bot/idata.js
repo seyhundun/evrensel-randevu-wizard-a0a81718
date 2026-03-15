@@ -3061,6 +3061,10 @@ async function bookEarliestAppointment(page, account) {
       }
       
       if (targetInput) {
+        const inputRect = targetInput.getBoundingClientRect();
+        const inputX = inputRect.x + inputRect.width / 2;
+        const inputY = inputRect.y + inputRect.height / 2;
+
         // Input-group içindeki takvim ikonunu bul
         const parent = targetInput.closest(".input-group, .form-group, div");
         if (parent) {
@@ -3072,20 +3076,20 @@ async function bookEarliestAppointment(page, account) {
           );
           for (const icon of icons) {
             icon.click();
-            return { clicked: true, method: "icon", tag: icon.tagName };
+            return { clicked: true, method: "icon", tag: icon.tagName, inputX, inputY };
           }
           const addon = parent.querySelector(".input-group-addon, .input-group-btn, .input-group-append");
           if (addon) {
             addon.click();
-            return { clicked: true, method: "addon" };
+            return { clicked: true, method: "addon", inputX, inputY };
           }
         }
         targetInput.click();
         targetInput.focus();
-        return { clicked: true, method: "input_click" };
+        return { clicked: true, method: "input_click", inputX, inputY };
       }
       
-      return { clicked: false };
+      return { clicked: false, inputX: null, inputY: null };
     });
     
     console.log(`  [BOOK] Seyahat tarihi ikonu: ${JSON.stringify(travelDateIconClicked)}`);
@@ -3102,6 +3106,8 @@ async function bookEarliestAppointment(page, account) {
         await navigateVisibleCalendarToMonth({
           targetMonth: travelMonth,
           targetYear: travelYear,
+          anchorX: travelDateIconClicked?.inputX ?? null,
+          anchorY: travelDateIconClicked?.inputY ?? null,
           label: "Seyahat tarihi takvimi",
         });
       }

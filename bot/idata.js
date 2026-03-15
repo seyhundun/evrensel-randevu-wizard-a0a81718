@@ -3007,36 +3007,62 @@ async function bookEarliestAppointment(page, account) {
     // ===== STEP 2: TARİH sayfası — "Randevu Tarihinizi Seçiniz" takvim ikonuna tıkla =====
     console.log("  [BOOK] Step 2: TARİH sayfası — 'Randevu Tarihinizi Seçiniz' takvim ikonu aranıyor...");
     
-    // Sayfadaki tüm input-group'ları tara, "Randevu Tarihinizi Seçiniz" placeholder'lı olanın takvim ikonuna tıkla
+    // Sayfadaki input-group'ları tara, randevu tarih input'unu kesin hedefle
     const calIconClicked = await page.evaluate(() => {
       const inputs = Array.from(document.querySelectorAll("input"));
-      
-      // 1) "Randevu Tarihinizi Seçiniz" placeholder'lı input
+
+      const isVisible = (el) => {
+        const r = el.getBoundingClientRect();
+        const s = window.getComputedStyle(el);
+        return r.width > 0 && r.height > 0 && s.display !== "none" && s.visibility !== "hidden";
+      };
+
+      // 0) En güçlü sinyal: datepicker class'lı ve dolu değerli input (ekrandaki ikinci alan)
       let targetInput = inputs.find(inp => {
-        const ph = (inp.placeholder || "").toLowerCase();
-        return ph.includes("randevu tarih") || ph.includes("randevu tarihinizi");
+        if (!isVisible(inp)) return false;
+        const cls = (inp.className || "").toLowerCase();
+        const val = (inp.value || "").trim();
+        const isDateClass = cls.includes("calendarinput") || cls.includes("flightdate") || cls.includes("datepicker");
+        const hasDateValue = /\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}/.test(val);
+        return isDateClass && hasDateValue;
       });
-      
-      // 2) Fallback: "tarih" içeren herhangi bir input
+
+      // 1) "Randevu Tarihinizi Seçiniz" placeholder'lı input
       if (!targetInput) {
         targetInput = inputs.find(inp => {
+          if (!isVisible(inp)) return false;
           const ph = (inp.placeholder || "").toLowerCase();
-          return ph.includes("tarih") && !ph.includes("seyahat");
+          return ph.includes("randevu tarih") || ph.includes("randevu tarihinizi");
         });
       }
-      
+
+      // 2) Fallback: "tarih" içeren ama "seyahat" olmayan, date class'lı input
+      if (!targetInput) {
+        targetInput = inputs.find(inp => {
+          if (!isVisible(inp)) return false;
+          const ph = (inp.placeholder || "").toLowerCase();
+          const cls = (inp.className || "").toLowerCase();
+          return ph.includes("tarih") && !ph.includes("seyahat") && (cls.includes("calendarinput") || cls.includes("flightdate") || cls.includes("datepicker"));
+        });
+      }
+
       if (targetInput) {
         const inputRect = targetInput.getBoundingClientRect();
-        // Input-group içindeki takvim ikonunu bul
         const parent = targetInput.closest(".input-group, .form-group, div");
         if (parent) {
-          const icons = parent.querySelectorAll(
+          const icons = Array.from(parent.querySelectorAll(
             ".input-group-addon, .input-group-append, .input-group-text, " +
             "span.glyphicon-calendar, span.fa-calendar, i.fa-calendar, " +
             "i.glyphicon-calendar, span[class*='calendar'], i[class*='calendar'], " +
             "button[class*='calendar'], .datepickerbutton, img[src*='calendar']"
-          );
-          for (const icon of icons) {
+          ));
+
+          // Aynı parent'taki en sağdaki (genelde input'a ait) ikonu tıkla
+          if (icons.length > 0) {
+            const sorted = icons
+              .filter(isVisible)
+              .sort((a, b) => b.getBoundingClientRect().x - a.getBoundingClientRect().x);
+            const icon = sorted[0] || icons[0];
             icon.click();
             return {
               clicked: true,
@@ -3047,6 +3073,7 @@ async function bookEarliestAppointment(page, account) {
               inputY: inputRect.y + inputRect.height / 2,
             };
           }
+
           const addon = parent.querySelector(".input-group-addon, .input-group-btn, .input-group-append");
           if (addon) {
             addon.click();
@@ -3059,6 +3086,7 @@ async function bookEarliestAppointment(page, account) {
             };
           }
         }
+
         targetInput.click();
         targetInput.focus();
         return {
@@ -3068,26 +3096,27 @@ async function bookEarliestAppointment(page, account) {
           inputY: inputRect.y + inputRect.height / 2,
         };
       }
-      
-      // 3) Tüm takvim ikonlarını dene (ilki = Randevu Tarihi olmalı)
+
+      // 3) Son fallback: tüm takvim ikonlarından SONUNCU olanı dene (ilk ikon seyahat alanı olabiliyor)
       const allIcons = Array.from(document.querySelectorAll(
         ".glyphicon-calendar, .fa-calendar, [class*='calendar'], " +
         ".input-group-addon, img[src*='calendar']"
-      ));
+      )).filter(isVisible);
+
       if (allIcons.length > 0) {
-        const first = allIcons[0];
-        const rect = first.getBoundingClientRect();
-        first.click();
+        const last = allIcons[allIcons.length - 1];
+        const rect = last.getBoundingClientRect();
+        last.click();
         return {
           clicked: true,
-          method: "first_icon",
-          tag: first.tagName,
+          method: "last_icon",
+          tag: last.tagName,
           totalIcons: allIcons.length,
           inputX: rect.x + rect.width / 2,
           inputY: rect.y + rect.height / 2,
         };
       }
-      
+
       return { clicked: false };
     });
 

@@ -359,6 +359,58 @@ async function humanType(page, selector, text, options = {}) {
   return false;
 }
 
+// Bezier curve ile insansı mouse hareketi
+async function humanMouseMoveTo(page, targetX, targetY, options = {}) {
+  try {
+    const { jitter = true, speed = 'normal' } = options;
+    // Mevcut mouse konumunu al (yoksa rastgele başla)
+    const currentPos = await page.evaluate(() => {
+      return { x: window.__mouseX || Math.random() * 500 + 100, y: window.__mouseY || Math.random() * 300 + 100 };
+    });
+    
+    const startX = currentPos.x;
+    const startY = currentPos.y;
+    const dist = Math.sqrt((targetX - startX) ** 2 + (targetY - startY) ** 2);
+    
+    // Adım sayısı mesafeye göre (daha uzun = daha çok adım)
+    const baseSteps = speed === 'fast' ? 12 : speed === 'slow' ? 35 : 20;
+    const steps = Math.max(8, Math.floor(baseSteps + dist / 50 + Math.random() * 10));
+    
+    // Bezier kontrol noktaları (doğal eğri için)
+    const cp1x = startX + (targetX - startX) * (0.2 + Math.random() * 0.3) + (Math.random() - 0.5) * 80;
+    const cp1y = startY + (targetY - startY) * (0.1 + Math.random() * 0.2) + (Math.random() - 0.5) * 60;
+    const cp2x = startX + (targetX - startX) * (0.6 + Math.random() * 0.2) + (Math.random() - 0.5) * 40;
+    const cp2y = startY + (targetY - startY) * (0.7 + Math.random() * 0.2) + (Math.random() - 0.5) * 30;
+    
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      // Ease-in-out: hedefe yaklaşırken yavaşla
+      const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      
+      // Cubic bezier
+      const u = 1 - ease;
+      let x = u*u*u*startX + 3*u*u*ease*cp1x + 3*u*ease*ease*cp2x + ease*ease*ease*targetX;
+      let y = u*u*u*startY + 3*u*u*ease*cp1y + 3*u*ease*ease*cp2y + ease*ease*ease*targetY;
+      
+      // Küçük titreşim ekle (insan eli titremesi)
+      if (jitter && i < steps) {
+        x += (Math.random() - 0.5) * 3;
+        y += (Math.random() - 0.5) * 2;
+      }
+      
+      await page.mouse.move(Math.round(x), Math.round(y));
+      
+      // Değişken hız: başta hızlı, hedefe yakınken yavaş
+      const baseDelay = speed === 'fast' ? 5 : speed === 'slow' ? 20 : 10;
+      const slowdownFactor = t > 0.8 ? 2.5 : t > 0.6 ? 1.5 : 1;
+      await new Promise(r => setTimeout(r, baseDelay * slowdownFactor + Math.random() * 8));
+    }
+    
+    // Mouse konumunu kaydet
+    await page.evaluate((x, y) => { window.__mouseX = x; window.__mouseY = y; }, targetX, targetY);
+  } catch {}
+}
+
 async function humanMove(page) {
   try {
     const vp = page.viewport();
@@ -366,9 +418,36 @@ async function humanMove(page) {
     const h = vp?.height || 768;
     const x = Math.floor(Math.random() * w * 0.6 + w * 0.2);
     const y = Math.floor(Math.random() * h * 0.6 + h * 0.2);
-    await page.mouse.move(x, y, { steps: Math.floor(Math.random() * 15 + 5) });
-    await delay(200, 500);
+    await humanMouseMoveTo(page, x, y);
+    await delay(150, 400);
   } catch {}
+}
+
+// İnsan benzeri tıklama: mouse hareket et + küçük gecikme + tıkla
+async function humanClick(page, x, y, options = {}) {
+  const { preMovesNear = true } = options;
+  
+  // Hedefe yakın 2-3 rastgele nokta (göz gezdirme)
+  if (preMovesNear) {
+    const nearMoves = 2 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < nearMoves; i++) {
+      const rx = x + (Math.random() - 0.5) * 120;
+      const ry = y + (Math.random() - 0.5) * 80;
+      await humanMouseMoveTo(page, rx, ry, { speed: 'fast' });
+      await delay(100 + Math.random() * 300, 200 + Math.random() * 400);
+    }
+  }
+  
+  // Hedef noktaya yavaşça yaklaş
+  await humanMouseMoveTo(page, x, y, { speed: 'slow' });
+  
+  // Küçük gecikme (insanlar hemen tıklamaz)
+  await delay(50 + Math.random() * 150, 100 + Math.random() * 200);
+  
+  // Mouse down + küçük bekleme + mouse up (gerçek tıklama süresi)
+  await page.mouse.down();
+  await new Promise(r => setTimeout(r, 30 + Math.random() * 80)); // 30-110ms basılı tut
+  await page.mouse.up();
 }
 
 async function humanScroll(page, amount = null) {

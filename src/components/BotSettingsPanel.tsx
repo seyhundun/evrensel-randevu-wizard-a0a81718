@@ -224,21 +224,6 @@ export default function BotSettingsPanel() {
         <h3 className="text-sm font-semibold text-foreground">Panel ve Hesap Bot Proxy Ayarları</h3>
       </div>
 
-      {/* Current IP & Reset Date (read-only) */}
-      <div className="space-y-3">
-        <div className="space-y-1">
-          <Label className="text-[11px] text-muted-foreground">IP</Label>
-          <Input className="h-8 text-xs font-mono bg-muted/50" value={currentIp || "—"} readOnly />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-[11px] text-muted-foreground">Reset Tarihi</Label>
-          <Input
-            className="h-8 text-xs font-mono bg-muted/50"
-            value={lastIpReset ? new Date(lastIpReset).toLocaleString("tr-TR") : "—"}
-            readOnly
-          />
-        </div>
-      </div>
 
       {/* Captcha Solver */}
       <div className="space-y-3 border-t border-border pt-4">

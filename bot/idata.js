@@ -3190,7 +3190,164 @@ async function bookEarliestAppointment(page, account) {
     if (step5Ileri.clicked) {
       await delay(3000, 5000);
       
-      // Popup kontrolü
+      // "Bir Randevu Tarihi ve Saati Seçiniz" uyarısını kontrol et
+      const warningPopup = await page.evaluate(() => {
+        const body = (document.body?.innerText || "").toLowerCase();
+        const hasWarning = body.includes("bir randevu tarihi ve saati seçiniz") || 
+                          body.includes("randevu tarihi ve saati") ||
+                          body.includes("tarih ve saat seçiniz");
+        // Uyarı varsa Tamam'a tıkla
+        if (hasWarning) {
+          const closeButtons = document.querySelectorAll('.swal2-confirm, .swal2-close, .modal .btn, button');
+          for (const btn of closeButtons) {
+            const txt = (btn.innerText || "").trim().toUpperCase();
+            if (txt === "TAMAM" || txt === "OK" || txt === "KAPAT") { btn.click(); break; }
+          }
+          return { hasWarning: true };
+        }
+        return { hasWarning: false };
+      });
+      
+      if (warningPopup.hasWarning) {
+        console.log("  [BOOK] ⚠️ 'Randevu Tarihi ve Saati Seçiniz' uyarısı tespit edildi! Farklı tarih/saat denenecek...");
+        const ssWarn = await takeScreenshotBase64(page);
+        await idataLog("appt_warning_retry", `⚠️ Tarih/Saat uyarısı! Farklı gün denenecek | Hesap: ${account.email}`, ssWarn);
+        
+        await delay(2000, 3000);
+        
+        // Takvimi tekrar aç ve bir sonraki yeşil günü seç (önceki seçilen günü atla)
+        const previousDay = dateSelected?.day || 0;
+        
+        // Takvim ikonuna tekrar tıkla
+        await page.evaluate(() => {
+          const inputs = Array.from(document.querySelectorAll("input"));
+          let targetInput = inputs.find(inp => {
+            const ph = (inp.placeholder || "").toLowerCase();
+            return (ph.includes("randevu tarih") || ph.includes("randevu tarihinizi")) && !ph.includes("seyahat");
+          });
+          if (!targetInput) {
+            targetInput = inputs.find(inp => {
+              const ph = (inp.placeholder || "").toLowerCase();
+              return ph.includes("tarih") && !ph.includes("seyahat");
+            });
+          }
+          if (targetInput) {
+            const parent = targetInput.closest(".input-group, .form-group, div");
+            if (parent) {
+              const icons = parent.querySelectorAll(
+                ".input-group-addon, .input-group-append, .input-group-text, " +
+                "span[class*='calendar'], i[class*='calendar'], .datepickerbutton"
+              );
+              for (const icon of icons) { icon.click(); return; }
+              const addon = parent.querySelector(".input-group-addon, .input-group-btn");
+              if (addon) { addon.click(); return; }
+            }
+            targetInput.click();
+            targetInput.focus();
+          }
+        });
+        
+        await delay(2000, 3000);
+        
+        // Bir sonraki yeşil günü seç (önceki günü atla)
+        const retryDateSelected = await page.evaluate((skipDay) => {
+          const calContainers = document.querySelectorAll(
+            ".datepicker, .datepicker-dropdown, .bootstrap-datetimepicker-widget, " +
+            ".datepicker-days, .flatpickr-calendar, .ui-datepicker, " +
+            "[class*='datepicker'], [class*='calendar'], table.table-condensed"
+          );
+          let allDays = [];
+          for (const cal of calContainers) {
+            const style = window.getComputedStyle(cal);
+            if (style.display === "none" || style.visibility === "hidden") continue;
+            const tds = cal.querySelectorAll("td");
+            for (const d of tds) {
+              const text = (d.innerText || d.textContent || "").trim();
+              if (!/^\d{1,2}$/.test(text)) continue;
+              if (d.classList.contains("disabled") || d.classList.contains("off") || d.classList.contains("old")) continue;
+              const dayNum = parseInt(text);
+              const bgColor = window.getComputedStyle(d).backgroundColor;
+              const rgbMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+              let isGreen = false;
+              if (rgbMatch) {
+                const r = parseInt(rgbMatch[1]), g = parseInt(rgbMatch[2]), b = parseInt(rgbMatch[3]);
+                isGreen = g > 100 && g > r * 1.3 && g > b * 1.3;
+              }
+              if (d.classList.contains("bg-success") || d.classList.contains("success")) isGreen = true;
+              allDays.push({ el: d, day: dayNum, isGreen, bgColor });
+            }
+          }
+          // Önceki günü atla, sonraki yeşil günleri seç
+          const greenDays = allDays.filter(d => d.isGreen && d.day !== skipDay).sort((a, b) => a.day - b.day);
+          const pool = greenDays.length > 0 ? greenDays : allDays.filter(d => d.day !== skipDay).sort((a, b) => a.day - b.day);
+          if (pool.length > 0) {
+            pool[0].el.click();
+            return { selected: true, day: pool[0].day, isGreen: pool[0].isGreen, skipped: skipDay };
+          }
+          return { selected: false, skipped: skipDay };
+        }, previousDay);
+        
+        console.log(`  [BOOK] Retry tarih seçimi: ${JSON.stringify(retryDateSelected)}`);
+        
+        if (retryDateSelected.selected) {
+          await delay(2000, 3000);
+          
+          // Yeni saat seç
+          const retryTimeResult = await page.evaluate(() => {
+            const candidates = Array.from(document.querySelectorAll("a, button, span, div, li, label"));
+            const timeButtons = [];
+            for (const el of candidates) {
+              const text = (el.innerText || el.textContent || "").trim();
+              const timeMatch = text.match(/(\d{2}:\d{2})/);
+              if (timeMatch) {
+                const style = window.getComputedStyle(el);
+                const isVisible = style.display !== "none" && style.visibility !== "hidden" && el.offsetParent !== null;
+                if (isVisible && el.offsetHeight > 10) {
+                  const bgColor = style.backgroundColor;
+                  const rgbMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+                  let isOrange = false;
+                  if (rgbMatch) {
+                    const r = parseInt(rgbMatch[1]), g = parseInt(rgbMatch[2]), b = parseInt(rgbMatch[3]);
+                    isOrange = r > 180 && g > 80 && b < 100;
+                  }
+                  timeButtons.push({ el, time: timeMatch[1], isOrange, bgColor });
+                }
+              }
+            }
+            if (timeButtons.length > 0) {
+              const orangeButtons = timeButtons.filter(t => t.isOrange);
+              const target = orangeButtons.length > 0 ? orangeButtons[0] : timeButtons[0];
+              target.el.click();
+              return { clicked: true, time: target.time, isOrange: target.isOrange };
+            }
+            return { clicked: false };
+          });
+          
+          console.log(`  [BOOK] Retry saat seçimi: ${JSON.stringify(retryTimeResult)}`);
+          await delay(2000, 3000);
+          
+          const ssRetry = await takeScreenshotBase64(page);
+          await idataLog("appt_retry_date_time", `🔄 Yeni tarih: Gün ${retryDateSelected.day} | Saat: ${retryTimeResult.clicked ? retryTimeResult.time : "seçilemedi"} | Hesap: ${account.email}`, ssRetry);
+          
+          // İLERİ'ye tekrar tıkla
+          await page.evaluate(() => {
+            const candidates = Array.from(document.querySelectorAll('a, button, input[type="submit"], input[type="button"]'));
+            const ileriBtn = candidates.find(el => {
+              const txt = (el.innerText || el.value || el.textContent || "").trim().toUpperCase();
+              return txt === "İLERİ" || txt === "ILERI";
+            });
+            if (ileriBtn) ileriBtn.click();
+            else {
+              const greenBtn = document.querySelector('.btn-success, a.btn-success');
+              if (greenBtn) greenBtn.click();
+            }
+          });
+          
+          await delay(3000, 5000);
+        }
+      }
+      
+      // Normal popup kontrolü (diğer uyarılar)
       await page.evaluate(() => {
         const closeButtons = document.querySelectorAll('.swal2-confirm, .swal2-close, .modal .btn, button');
         for (const btn of closeButtons) {

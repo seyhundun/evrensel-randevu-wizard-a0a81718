@@ -189,7 +189,12 @@ async function getNextProxyRegion() {
   EVOMI_PROXY_COUNTRY = "TR";
   const regions = await fetchEvomiRegions();
   currentRegionIndex = (currentRegionIndex + 1) % regions.length;
-  const region = regions[currentRegionIndex];
+  let region = regions[currentRegionIndex];
+  // Obje gelirse string'e çevir
+  if (region && typeof region === "object") {
+    region = region.city || region.name || region.region || JSON.stringify(region);
+  }
+  region = String(region || "").toLowerCase().replace(/\s+/g, "").replace(/\.(province|city|region|state)$/i, "");
   console.log(`  [PROXY] 🏙 Bölge rotasyonu: ${region} (${currentRegionIndex + 1}/${regions.length})`);
   return region;
 }

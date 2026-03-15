@@ -2617,10 +2617,257 @@ async function checkAppointments(page, account) {
 // ==================== AUTO BOOKING ====================
 async function bookEarliestAppointment(page, account) {
   try {
-    console.log("  [BOOK] 🎯 En erken tarih seçiliyor...");
+    console.log("  [BOOK] 🎯 Randevu alma akışı başlıyor...");
     
-    // 1) Tarihleri bul ve en erken olanı seç
+    // Step 0: Mevcut sayfayı analiz et
+    const pageAnalysis = await page.evaluate(() => {
+      const body = (document.body?.innerText || "");
+      const lower = body.toLowerCase();
+      return {
+        hasTravelDatePicker: lower.includes("seyahat başlangıç") || lower.includes("tarihinizi seçiniz"),
+        hasDateLabel: lower.includes("tarih:") && lower.includes("saat:"),
+        hasTarihTab: !!Array.from(document.querySelectorAll("a, button, li")).find(el => 
+          (el.innerText || "").trim().toUpperCase() === "TARİH"
+        ),
+        url: window.location.href,
+        bodyPreview: body.substring(0, 800),
+      };
+    });
+
+    console.log(`  [BOOK] Sayfa analizi: travelDate=${pageAnalysis.hasTravelDatePicker} dateLabel=${pageAnalysis.hasDateLabel} tarihTab=${pageAnalysis.hasTarihTab}`);
+    console.log(`  [BOOK] URL: ${pageAnalysis.url}`);
+
+    // ===== STEP 1: Seyahat Başlangıç Tarihi Seçimi =====
+    if (pageAnalysis.hasTravelDatePicker) {
+      console.log("  [BOOK] 📅 Seyahat başlangıç tarihi seçiliyor...");
+      
+      // Date picker input'unu bul ve tıkla
+      const datePickerClicked = await page.evaluate(() => {
+        // "Seyahat Başlangıç Tarihinizi Seçiniz" placeholder'ını içeren input
+        const inputs = Array.from(document.querySelectorAll("input"));
+        const dateInput = inputs.find(inp => {
+          const ph = (inp.placeholder || "").toLowerCase();
+          const name = (inp.name || "").toLowerCase();
+          const id = (inp.id || "").toLowerCase();
+          return ph.includes("seyahat") || ph.includes("tarih") || name.includes("date") || 
+                 name.includes("tarih") || id.includes("date") || id.includes("tarih") ||
+                 inp.type === "date";
+        });
+        
+        if (dateInput) {
+          dateInput.click();
+          dateInput.focus();
+          return { found: true, type: "input", placeholder: dateInput.placeholder || "", inputType: dateInput.type };
+        }
+
+        // Takvim ikonu (📅) olabilir
+        const calIcons = Array.from(document.querySelectorAll("i, span, button, a, img"));
+        const calIcon = calIcons.find(el => {
+          const cls = (el.className || "").toLowerCase();
+          const title = (el.title || el.getAttribute("aria-label") || "").toLowerCase();
+          return cls.includes("calendar") || cls.includes("date") || cls.includes("fa-calendar") ||
+                 cls.includes("glyphicon-calendar") || title.includes("calendar") || title.includes("takvim");
+        });
+        if (calIcon) {
+          calIcon.click();
+          return { found: true, type: "icon" };
+        }
+
+        return { found: false };
+      });
+
+      console.log(`  [BOOK] DatePicker: ${JSON.stringify(datePickerClicked)}`);
+
+      if (datePickerClicked.found) {
+        await delay(1500, 2500);
+
+        // Takvim açıldı mı kontrol et
+        const calendarVisible = await page.evaluate(() => {
+          const calElements = document.querySelectorAll(
+            ".datepicker, .flatpickr-calendar, .ui-datepicker, .bootstrap-datetimepicker-widget, " +
+            ".datepicker-days, .datepicker-dropdown, .picker-open, .calendar, " +
+            "[class*='datepicker'], [class*='calendar'], [class*='picker']"
+          );
+          for (const el of calElements) {
+            const style = window.getComputedStyle(el);
+            if (style.display !== "none" && style.visibility !== "hidden") {
+              return { visible: true, className: el.className.substring(0, 100) };
+            }
+          }
+          return { visible: false };
+        });
+
+        console.log(`  [BOOK] Takvim görünür: ${JSON.stringify(calendarVisible)}`);
+
+        if (calendarVisible.visible) {
+          // Yarından itibaren en yakın tarihi seç (bugün + 30-90 gün sonrası için)
+          const dateSelected = await page.evaluate(() => {
+            // Aktif/seçilebilir günleri bul
+            const dayCells = Array.from(document.querySelectorAll(
+              ".datepicker-days td:not(.disabled):not(.old):not(.new), " +
+              ".flatpickr-day:not(.flatpickr-disabled), " +
+              ".ui-datepicker td:not(.ui-datepicker-unselectable) a, " +
+              "td.day:not(.disabled), td:not(.disabled):not(.off) .day, " +
+              "[class*='datepicker'] td:not(.disabled), " +
+              "table td[data-date], table td[data-day]"
+            ));
+
+            // Tıklanabilir gün hücreleri
+            const clickableDays = dayCells.filter(td => {
+              const text = (td.innerText || td.textContent || "").trim();
+              return /^\d{1,2}$/.test(text) && !td.classList.contains("disabled") && !td.classList.contains("off");
+            });
+
+            if (clickableDays.length > 0) {
+              // İlk müsait günü tıkla
+              clickableDays[0].click();
+              return { selected: true, day: clickableDays[0].innerText.trim(), method: "day_cell" };
+            }
+
+            return { selected: false };
+          });
+
+          console.log(`  [BOOK] Tarih seçimi: ${JSON.stringify(dateSelected)}`);
+
+          if (!dateSelected.selected) {
+            // Manuel tarih girişi dene — yarın tarihini yaz
+            const tomorrow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 gün sonra
+            const dateStr = `${String(tomorrow.getDate()).padStart(2, "0")}.${String(tomorrow.getMonth() + 1).padStart(2, "0")}.${tomorrow.getFullYear()}`;
+            
+            await page.evaluate((val) => {
+              const inputs = Array.from(document.querySelectorAll("input"));
+              const dateInput = inputs.find(inp => {
+                const ph = (inp.placeholder || "").toLowerCase();
+                return ph.includes("seyahat") || ph.includes("tarih") || inp.type === "date";
+              });
+              if (dateInput) {
+                dateInput.value = val;
+                dateInput.dispatchEvent(new Event("input", { bubbles: true }));
+                dateInput.dispatchEvent(new Event("change", { bubbles: true }));
+              }
+            }, dateStr);
+            console.log(`  [BOOK] Manuel tarih girildi: ${dateStr}`);
+          }
+
+          await delay(1500, 2500);
+        } else {
+          // Takvim açılmadı, manuel tarih girişi dene
+          const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+          const dateStr = `${String(futureDate.getDate()).padStart(2, "0")}.${String(futureDate.getMonth() + 1).padStart(2, "0")}.${futureDate.getFullYear()}`;
+          
+          await page.evaluate((val) => {
+            const inputs = Array.from(document.querySelectorAll("input"));
+            const dateInput = inputs.find(inp => {
+              const ph = (inp.placeholder || "").toLowerCase();
+              return ph.includes("seyahat") || ph.includes("tarih") || inp.type === "date";
+            });
+            if (dateInput) {
+              // Önce temizle
+              dateInput.value = "";
+              dateInput.focus();
+              dateInput.value = val;
+              dateInput.dispatchEvent(new Event("input", { bubbles: true }));
+              dateInput.dispatchEvent(new Event("change", { bubbles: true }));
+              dateInput.dispatchEvent(new Event("blur", { bubbles: true }));
+            }
+          }, dateStr);
+          console.log(`  [BOOK] Takvim açılmadı, manuel girdi: ${dateStr}`);
+          await delay(1500, 2500);
+        }
+
+        const ss0 = await takeScreenshotBase64(page);
+        await idataLog("appt_travel_date", `🗓 Seyahat tarihi seçildi | Hesap: ${account.email}`, ss0);
+      }
+    }
+
+    // ===== STEP 2: Tarih ve Saat seçimi =====
+    console.log("  [BOOK] ⏰ Randevu tarih/saat seçimi kontrol ediliyor...");
+    await delay(1000, 2000);
+
+    const timeSelection = await page.evaluate(() => {
+      const body = (document.body?.innerText || "").toLowerCase();
+      
+      // "Tarih: Seçiniz" ve "Saat: Seçiniz" alanlarını bul
+      // Bunlar genelde select/dropdown veya tıklanabilir linkler olarak çıkar
+      const allSelects = Array.from(document.querySelectorAll("select"));
+      const allLinks = Array.from(document.querySelectorAll("a, button, span, div"));
+      
+      // Tarih seçimi — select veya tıklanabilir alan
+      let dateSelect = allSelects.find(s => {
+        const label = (s.previousElementSibling?.innerText || s.closest("label")?.innerText || 
+                       s.name || s.id || "").toLowerCase();
+        return label.includes("tarih") && !label.includes("seyahat");
+      });
+      
+      let dateClicked = false;
+      if (dateSelect && dateSelect.options.length > 1) {
+        // İlk müsait tarihi seç (index 0 genelde "Seçiniz")
+        dateSelect.selectedIndex = 1;
+        dateSelect.dispatchEvent(new Event("change", { bubbles: true }));
+        dateClicked = true;
+      }
+
+      // "Tarih: Seçiniz" text'ine tıkla
+      if (!dateClicked) {
+        const dateLink = allLinks.find(el => {
+          const text = (el.innerText || el.textContent || "").trim();
+          return text === "Seçiniz" && el.previousSibling?.textContent?.includes("Tarih");
+        });
+        if (dateLink) {
+          dateLink.click();
+          dateClicked = true;
+        }
+      }
+
+      // Tüm "Seçiniz" linklerini bul
+      const selectLinks = allLinks.filter(el => (el.innerText || "").trim() === "Seçiniz");
+      
+      return {
+        dateSelected: dateClicked,
+        selectCount: allSelects.length,
+        selectLinksCount: selectLinks.length,
+        bodyHasTarih: body.includes("tarih:"),
+        bodyHasSaat: body.includes("saat:"),
+      };
+    });
+
+    console.log(`  [BOOK] Tarih/saat durumu: ${JSON.stringify(timeSelection)}`);
+
+    // Tarih seçildi mi kontrol et, sayfa güncellensin
+    if (timeSelection.dateSelected) {
+      await delay(2000, 3000);
+    }
+
+    // Saat seçimi
+    const hourSelected = await page.evaluate(() => {
+      const allSelects = Array.from(document.querySelectorAll("select"));
+      const hourSelect = allSelects.find(s => {
+        const label = (s.previousElementSibling?.innerText || s.closest("label")?.innerText ||
+                       s.name || s.id || "").toLowerCase();
+        return label.includes("saat") || label.includes("time") || label.includes("hour");
+      });
+      
+      if (hourSelect && hourSelect.options.length > 1) {
+        hourSelect.selectedIndex = 1; // İlk müsait saat
+        hourSelect.dispatchEvent(new Event("change", { bubbles: true }));
+        return { selected: true, value: hourSelect.value };
+      }
+      return { selected: false };
+    });
+
+    console.log(`  [BOOK] Saat seçimi: ${JSON.stringify(hourSelected)}`);
+    if (hourSelected.selected) {
+      await delay(1500, 2500);
+    }
+
+    const ssTime = await takeScreenshotBase64(page);
+    await idataLog("appt_time_selection", `⏰ Tarih/Saat seçimi | tarih=${timeSelection.dateSelected} saat=${hourSelected.selected} | Hesap: ${account.email}`, ssTime);
+
+    // ===== STEP 3: Tarihleri/slotları bul ve en erken olanı seç =====
+    console.log("  [BOOK] 🎯 Müsait tarih/slot aranıyor...");
+    
     const dateResult = await page.evaluate(() => {
+      // Tarih input'ları
       const allInputs = Array.from(document.querySelectorAll('input'));
       const dateInputs = allInputs.filter(inp => {
         const val = inp.value || "";
@@ -2638,7 +2885,7 @@ async function bookEarliestAppointment(page, account) {
           dateCandidates[0].click();
           return { clicked: true, date: dateCandidates[0].innerText.trim(), method: "link_click", allDates: dateCandidates.map(d => d.innerText.trim()) };
         }
-        return { clicked: false, error: "Tarih elementi bulunamadı" };
+        return { clicked: false, error: "Tarih elementi bulunamadı", skipDateStep: true };
       }
 
       // Tarihleri parse et, en erken olanı bul
@@ -2663,7 +2910,6 @@ async function bookEarliestAppointment(page, account) {
       earliest.element.click();
       earliest.element.focus();
       
-      // Yakınındaki radio/checkbox varsa tıkla
       const parent = earliest.element.closest('td, div, label, li');
       if (parent) {
         const radio = parent.querySelector('input[type="radio"], input[type="checkbox"]');
@@ -2677,36 +2923,34 @@ async function bookEarliestAppointment(page, account) {
       return { clicked: true, date: earliest.val, allDates: parsedDates.map(d => d.val), method: "earliest_date_selected" };
     });
 
-    console.log(`  [BOOK] Tarih: ${JSON.stringify(dateResult)}`);
-    
-    if (!dateResult.clicked) {
-      console.log(`  [BOOK] ❌ Tarih seçilemedi: ${dateResult.error}`);
-      return { success: false, error: dateResult.error };
+    console.log(`  [BOOK] Tarih sonucu: ${JSON.stringify(dateResult)}`);
+
+    if (dateResult.clicked) {
+      const ss1 = await takeScreenshotBase64(page);
+      await idataLog("appt_date_selected", `📅 Tarih seçildi: ${dateResult.date} | Tüm tarihler: ${(dateResult.allDates || []).join(", ")} | Hesap: ${account.email}`, ss1);
+      await delay(1500, 2500);
     }
 
-    const ss1 = await takeScreenshotBase64(page);
-    await idataLog("appt_date_selected", `📅 Tarih seçildi: ${dateResult.date} | Tüm tarihler: ${(dateResult.allDates || []).join(", ")} | Hesap: ${account.email}`, ss1);
-    await delay(1500, 2500);
-
-    // 2) "İLERİ" butonuna tıkla
-    console.log("  [BOOK] İLERİ butonuna tıklanıyor...");
+    // ===== STEP 4: İLERİ / DEVAM butonuna tıkla =====
+    console.log("  [BOOK] ➡ İLERİ butonuna tıklanıyor...");
     const ileriClicked = await page.evaluate(() => {
       const candidates = Array.from(document.querySelectorAll('a, button, input[type="submit"], input[type="button"]'));
       const ileriBtn = candidates.find(el => {
         const txt = (el.innerText || el.value || el.textContent || "").trim().toUpperCase();
-        return txt === "İLERİ" || txt === "ILERI" || txt === "DEVAM" || txt === "NEXT" || txt === "DEVAM ET";
+        return txt === "İLERİ" || txt === "ILERI" || txt === "DEVAM" || txt === "NEXT" || txt === "DEVAM ET" ||
+               txt === "RANDEVU AL" || txt === "KAYDET" || txt === "ONAYLA";
       });
       if (ileriBtn) {
         ileriBtn.click();
         return { clicked: true, text: (ileriBtn.innerText || ileriBtn.value || "").trim() };
       }
-      // Fallback: btn-success class
-      const greenBtns = Array.from(document.querySelectorAll('.btn-success, .btn-primary'));
+      // Fallback: btn-success / btn-primary class
+      const greenBtns = Array.from(document.querySelectorAll('.btn-success, .btn-primary, .btn-warning'));
       for (const btn of greenBtns) {
         const txt = (btn.innerText || btn.value || "").trim();
-        if (txt.length > 0) {
+        if (txt.length > 0 && txt.length < 30) {
           btn.click();
-          return { clicked: true, text: txt };
+          return { clicked: true, text: txt, method: "color_btn" };
         }
       }
       return { clicked: false };
@@ -2715,13 +2959,13 @@ async function bookEarliestAppointment(page, account) {
     if (!ileriClicked.clicked) {
       const ss2 = await takeScreenshotBase64(page);
       await idataLog("appt_error", `İLERİ butonu bulunamadı | Hesap: ${account.email}`, ss2);
-      return { success: false, error: "İLERİ butonu bulunamadı" };
+      return { success: false, error: "İLERİ butonu bulunamadı", partial: true };
     }
 
     console.log(`  [BOOK] ✅ İLERİ tıklandı: ${ileriClicked.text}`);
     await delay(3000, 5000);
 
-    // 3) Popup kontrolü — uyarı varsa kapat
+    // ===== STEP 5: Popup kontrolü =====
     await page.evaluate(() => {
       const closeButtons = document.querySelectorAll('.swal2-confirm, .swal2-close, .modal .btn, button');
       for (const btn of closeButtons) {
@@ -2734,7 +2978,7 @@ async function bookEarliestAppointment(page, account) {
     });
     await delay(2000, 3000);
 
-    // 4) Sonraki sayfanın ekran görüntüsünü al ve logla
+    // ===== STEP 6: Sonraki sayfayı analiz et =====
     const ss3 = await takeScreenshotBase64(page);
     const nextPageState = await page.evaluate(() => {
       const body = (document.body?.innerText || "");
@@ -2750,20 +2994,29 @@ async function bookEarliestAppointment(page, account) {
           const txt = (el.innerText || el.value || "").trim().toUpperCase();
           return txt === "İLERİ" || txt === "ILERI";
         }),
+        hasPayment: lower.includes("ödeme") || lower.includes("payment") || lower.includes("kredi kartı"),
+        hasTravelDate: lower.includes("seyahat başlangıç"),
         hasError: lower.includes("hata") || lower.includes("error"),
         success: lower.includes("başarılı") || lower.includes("randevunuz") || lower.includes("onaylandı") || lower.includes("tamamlandı"),
       };
     });
 
-    await idataLog("appt_next_page", `Sonraki sayfa | URL: ${nextPageState.url} | Onay: ${nextPageState.hasConfirmButton} | İleri: ${nextPageState.hasIleriButton} | Hesap: ${account.email}\n${nextPageState.bodyPreview.substring(0, 500)}`, ss3);
+    await idataLog("appt_next_page", `Sonraki sayfa | URL: ${nextPageState.url} | Onay: ${nextPageState.hasConfirmButton} | İleri: ${nextPageState.hasIleriButton} | Ödeme: ${nextPageState.hasPayment} | Hesap: ${account.email}\n${nextPageState.bodyPreview.substring(0, 500)}`, ss3);
 
     if (nextPageState.success) {
       startAlarm();
-      await idataLog("appt_booked", `🎉 RANDEVU ALINDI! | Tarih: ${dateResult.date} | Hesap: ${account.email}`, ss3);
+      await idataLog("appt_booked", `🎉 RANDEVU ALINDI! | Tarih: ${dateResult.date || "?"} | Hesap: ${account.email}`, ss3);
       return { success: true, date: dateResult.date };
     }
 
-    // Eğer başka bir İLERİ varsa onu da tıkla
+    // Hâlâ seyahat tarihi sayfasındaysa tekrar dene (tarih seçilmemiş olabilir)
+    if (nextPageState.hasTravelDate) {
+      console.log("  [BOOK] ⚠ Hâlâ tarih seçim sayfasında, tekrar deneniyor...");
+      await idataLog("appt_retry", `Tarih sayfasından çıkılamadı, tekrar deneniyor | Hesap: ${account.email}`, ss3);
+      return { success: false, partial: true, error: "Tarih seçim sayfasından çıkılamadı" };
+    }
+
+    // Eğer başka İLERİ varsa onu da tıkla (çok adımlı akış)
     if (nextPageState.hasIleriButton) {
       console.log("  [BOOK] 🔄 Bir sonraki İLERİ butonuna tıklanıyor...");
       await page.evaluate(() => {
@@ -2805,11 +3058,10 @@ async function bookEarliestAppointment(page, account) {
 
       if (page2State.success) {
         startAlarm();
-        await idataLog("appt_booked", `🎉 RANDEVU ALINDI! | Tarih: ${dateResult.date} | Hesap: ${account.email}`, ss4);
+        await idataLog("appt_booked", `🎉 RANDEVU ALINDI! | Tarih: ${dateResult.date || "?"} | Hesap: ${account.email}`, ss4);
         return { success: true, date: dateResult.date };
       }
 
-      // Onay butonu varsa tıkla
       if (page2State.hasConfirmButton) {
         console.log("  [BOOK] 🟢 Onay butonu tıklanıyor...");
         await page.evaluate(() => {

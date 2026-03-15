@@ -3686,56 +3686,139 @@ async function bookEarliestAppointment(page, account) {
         dateVerify = await verifyDateSelection();
       }
 
-      // === YÖNTEM 5: Inner <a> link tıkla ===
-      if (!dateVerify.isActive && dateInfo.hasLink) {
-        console.log("  [BOOK] Tarih aktif değil, inner <a> link'e tıklanıyor...");
-        await page.evaluate((dayNum) => {
-          const calContainers = document.querySelectorAll("[class*='datepicker'], [class*='calendar'], table.table-condensed");
+      // === YÖNTEM 5: Inner <a>/onclick/postback kombinasyonu ===
+      if (!dateVerify.isActive) {
+        console.log("  [BOOK] Tarih aktif değil, inner link + onclick + postback deneniyor...");
+        const linkResult = await page.evaluate((dayNum) => {
+          const fireClick = (el) => {
+            if (!el) return;
+            try {
+              el.dispatchEvent(new FocusEvent("focus", { bubbles: true }));
+              el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
+              el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+              el.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true }));
+              el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true }));
+              el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+              if (typeof el.click === "function") el.click();
+            } catch (_) {}
+          };
+
+          const calContainers = Array.from(document.querySelectorAll("[class*='datepicker'], [class*='calendar'], table.table-condensed"));
           for (const cal of calContainers) {
+            const style = window.getComputedStyle(cal);
+            if (style.display === "none" || style.visibility === "hidden") continue;
+
             const tds = cal.querySelectorAll("td");
             for (const d of tds) {
               const text = (d.innerText || d.textContent || "").trim();
-              if (parseInt(text) === dayNum && !d.classList.contains("disabled") && !d.classList.contains("old")) {
-                const link = d.querySelector("a");
-                if (link) { link.click(); return true; }
-                d.click();
-                return true;
+              if (parseInt(text, 10) !== dayNum) continue;
+              if (d.classList.contains("disabled") || d.classList.contains("old") || d.classList.contains("new") || d.classList.contains("off")) continue;
+
+              const link = d.querySelector("a") || d;
+              const href = (link.getAttribute && link.getAttribute("href")) || "";
+              const onclick = `${(link.getAttribute && link.getAttribute("onclick")) || ""} ${(d.getAttribute && d.getAttribute("onclick")) || ""}`;
+
+              fireClick(link);
+
+              const pbMatch = (href.match(/__doPostBack\(['"](.*?)['"],\s*['"](.*?)['"]\)/) || onclick.match(/__doPostBack\(['"](.*?)['"],\s*['"](.*?)['"]\)/));
+              if (pbMatch && typeof window.__doPostBack === "function") {
+                try { window.__doPostBack(pbMatch[1], pbMatch[2] || ""); } catch (_) {}
               }
+
+              if (href && href.includes("__doPostBack")) {
+                try { eval(href.replace("javascript:", "")); } catch (_) {}
+              }
+              if (onclick && onclick.includes("__doPostBack")) {
+                try { eval(onclick); } catch (_) {}
+              }
+
+              return { clicked: true, via: link.tagName || "TD", href: href.substring(0, 120), onclick: onclick.substring(0, 120) };
             }
           }
-          return false;
+          return { clicked: false };
         }, dateInfo.day);
+
+        console.log(`  [BOOK] Link/postback sonucu: ${JSON.stringify(linkResult)}`);
         await delay(1500, 2500);
         dateVerify = await verifyDateSelection();
       }
 
-      // === YÖNTEM 6: Element handle + jQuery click ===
+      // === YÖNTEM 6: Element handle + gerçek mouse + postback ===
       if (!dateVerify.isActive) {
-        console.log("  [BOOK] Tarih aktif değil, element handle ile deneniyor...");
+        console.log("  [BOOK] Tarih aktif değil, element handle + gerçek mouse ile deneniyor...");
         try {
-          const tdElements = await page.$$("td.enabled-day, td .enabled-day, a.enabled-day");
-          const greenPool = [];
+          const tdElements = await page.$$("td, td a");
+          const dayPool = [];
+
           for (const elHandle of tdElements) {
-            const elInfo = await page.evaluate(el => {
+            const elInfo = await elHandle.evaluate((el) => {
               const cell = el.tagName === "TD" ? el : (el.closest("td") || el);
+              if (!cell) return null;
+
+              const style = window.getComputedStyle(cell);
+              const rect = cell.getBoundingClientRect();
+              const isVisible = style.display !== "none" && style.visibility !== "hidden" && rect.width > 4 && rect.height > 4;
+              if (!isVisible) return null;
+
               const text = (cell.innerText || cell.textContent || "").trim();
-              const day = parseInt(text);
-              return { day };
-            }, elHandle);
-            if (!isNaN(elInfo.day)) {
-              greenPool.push({ handle: elHandle, day: elInfo.day });
-            }
+              const day = parseInt(text, 10);
+              if (Number.isNaN(day)) return null;
+
+              const cls = (cell.className || "").toLowerCase();
+              const disabled = cls.includes("disabled") || cls.includes("old") || cls.includes("new") || cls.includes("off");
+              if (disabled) return null;
+
+              const link = cell.querySelector("a") || cell;
+              const href = (link.getAttribute && link.getAttribute("href")) || "";
+              const onclick = `${(link.getAttribute && link.getAttribute("onclick")) || ""} ${(cell.getAttribute && cell.getAttribute("onclick")) || ""}`;
+
+              let score = 0;
+              if (cls.includes("enabled-day") || cls.includes("success") || cls.includes("bg-success")) score += 40;
+              if (href.includes("__doPostBack") || onclick.includes("__doPostBack")) score += 50;
+              if (link.tagName === "A") score += 20;
+
+              return { day, score, hasPostback: href.includes("__doPostBack") || onclick.includes("__doPostBack") };
+            });
+
+            if (elInfo) dayPool.push({ handle: elHandle, ...elInfo });
           }
-          greenPool.sort((a, b) => a.day - b.day);
-          const targetGreen = greenPool.find(g => g.day === dateInfo.day) || (greenPool.length > 1 ? greenPool[1] : greenPool[0]);
-          if (targetGreen) {
-            await targetGreen.handle.click();
-            console.log(`  [BOOK] ✅ Element handle td.enabled-day: Gün ${targetGreen.day}`);
-            await delay(500, 1000);
-            // Element handle sonrası da forceDateSelection çağır
-            const forceResult2 = await forceDateSelectionInternal(targetGreen.day);
+
+          dayPool.sort((a, b) => b.score - a.score);
+          const exactPool = dayPool.filter((d) => d.day === dateInfo.day);
+          const targetDay = exactPool[0] || dayPool.find((d) => d.day === dateInfo.day) || null;
+
+          if (targetDay) {
+            const box = await targetDay.handle.boundingBox();
+            if (box) {
+              await humanClick(page, box.x + box.width / 2, box.y + box.height / 2, { preMovesNear: true });
+            }
+
+            await targetDay.handle.evaluate((el) => {
+              const cell = el.tagName === "TD" ? el : (el.closest("td") || el);
+              if (!cell) return;
+              const link = cell.querySelector("a") || cell;
+              link.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+              link.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true }));
+              link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+              if (typeof link.click === "function") link.click();
+
+              const href = (link.getAttribute && link.getAttribute("href")) || "";
+              const onclick = `${(link.getAttribute && link.getAttribute("onclick")) || ""} ${(cell.getAttribute && cell.getAttribute("onclick")) || ""}`;
+              const pbMatch = (href.match(/__doPostBack\(['"](.*?)['"],\s*['"](.*?)['"]\)/) || onclick.match(/__doPostBack\(['"](.*?)['"],\s*['"](.*?)['"]\)/));
+              if (pbMatch && typeof window.__doPostBack === "function") {
+                try { window.__doPostBack(pbMatch[1], pbMatch[2] || ""); } catch (_) {}
+              }
+              if (href && href.includes("__doPostBack")) {
+                try { eval(href.replace("javascript:", "")); } catch (_) {}
+              }
+            });
+
+            console.log(`  [BOOK] ✅ Element handle güçlü tıklama: Gün ${targetDay.day}`);
+            await delay(800, 1300);
+            const forceResult2 = await forceDateSelectionInternal(targetDay.day);
             console.log(`  [BOOK] Element handle + force sonuç: ${JSON.stringify(forceResult2)}`);
           }
+
           await delay(1000, 1500);
           dateVerify = await verifyDateSelection();
         } catch (ehErr) {

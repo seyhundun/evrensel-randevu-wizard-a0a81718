@@ -2811,9 +2811,11 @@ async function bookEarliestAppointment(page, account) {
       .filter(Boolean)
       .sort((a, b) => a.timestamp - b.timestamp);
 
+    const announcedAppointmentDateKeys = announcedAppointmentDates.map((d) => d.normalized);
     const preferredAppointmentDate = announcedAppointmentDates[0] || null;
     if (preferredAppointmentDate) {
       console.log(`  [BOOK] En erken ilan edilen randevu tarihi hedeflenecek: ${preferredAppointmentDate.raw}`);
+      console.log(`  [BOOK] Açık tarih whitelist: ${announcedAppointmentDateKeys.join(", ")}`);
     }
     
     if (!step1Result.clicked) {
@@ -3285,13 +3287,57 @@ async function bookEarliestAppointment(page, account) {
       }
     }
     
-    // Yeşil günleri tespit et — doğru takvimi hedefle (input'a en yakın görünür takvim)
-    const dateInfo = await page.evaluate((tDay, anchorX, anchorY) => {
+    // Yeşil günleri tespit et — sadece whitelist içindeki açık tarihlerden seç
+    const dateInfo = await page.evaluate((targetNormalized, allowedDates, anchorX, anchorY) => {
       const calContainers = Array.from(document.querySelectorAll(
         ".datepicker, .datepicker-dropdown, .bootstrap-datetimepicker-widget, " +
         ".datepicker-days, .flatpickr-calendar, .ui-datepicker, " +
         "[class*='datepicker'], [class*='calendar'], .picker-open, table.table-condensed"
       ));
+
+      const allowedSet = new Set((allowedDates || []).filter(Boolean));
+      const monthMap = {
+        january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+        ocak: 1, şubat: 2, subat: 2, mart: 3, nisan: 4, mayıs: 5, mayis: 5, haziran: 6, temmuz: 7, ağustos: 8, agustos: 8, eylül: 9, eylul: 9, ekim: 10, kasım: 11, kasim: 11, aralık: 12, aralik: 12,
+      };
+
+      const parseMonthYear = (text) => {
+        const raw = String(text || "").trim().toLowerCase();
+        if (!raw) return { month: null, year: null, headerText: "" };
+        const yearMatch = raw.match(/(20\d{2})/);
+        let month = null;
+        for (const [name, num] of Object.entries(monthMap)) {
+          if (raw.includes(name)) {
+            month = num;
+            break;
+          }
+        }
+        return {
+          month,
+          year: yearMatch ? parseInt(yearMatch[1], 10) : null,
+          headerText: raw,
+        };
+      };
+
+      const pickCalendarHeader = (cal) => {
+        const localHeaders = Array.from(cal.querySelectorAll(
+          ".datepicker-switch, .picker-switch, .datepicker th.switch, .ui-datepicker-title, caption, th"
+        ));
+        for (const node of localHeaders) {
+          const parsed = parseMonthYear(node.innerText || node.textContent || "");
+          if (parsed.month && parsed.year) return parsed;
+        }
+
+        const parentHeaders = Array.from((cal.parentElement || document.body).querySelectorAll(
+          ".datepicker-switch, .picker-switch, .datepicker th.switch, .ui-datepicker-title, caption, th"
+        ));
+        for (const node of parentHeaders) {
+          const parsed = parseMonthYear(node.innerText || node.textContent || "");
+          if (parsed.month && parsed.year) return parsed;
+        }
+
+        return { month: null, year: null, headerText: "" };
+      };
 
       const candidateCalendars = [];
 
@@ -3301,6 +3347,7 @@ async function bookEarliestAppointment(page, account) {
         if (style.display === "none" || style.visibility === "hidden") continue;
         if (calRect.width < 140 || calRect.height < 120) continue;
 
+        const { month: displayedMonth, year: displayedYear, headerText } = pickCalendarHeader(cal);
         const days = [];
         const tds = cal.querySelectorAll("td");
         for (const d of tds) {
@@ -3314,12 +3361,13 @@ async function bookEarliestAppointment(page, account) {
             d.classList.contains("disabled-day") ||
             d.classList.contains("off") ||
             d.classList.contains("old") ||
+            d.classList.contains("new") ||
             classBlob.includes("disabled-day") ||
             classBlob.includes("disabled");
 
           if (hasDisabledClass) continue;
 
-          const dayNum = parseInt(text);
+          const dayNum = parseInt(text, 10);
           const tdBg = window.getComputedStyle(d).backgroundColor;
           const childBg = childFlagEl ? window.getComputedStyle(childFlagEl).backgroundColor : "";
           const bgColor = childBg && childBg !== "rgba(0, 0, 0, 0)" ? childBg : tdBg;
@@ -3328,13 +3376,12 @@ async function bookEarliestAppointment(page, account) {
           let isGreen = false, isRed = false, isYellow = false;
 
           if (rgbMatch) {
-            const r = parseInt(rgbMatch[1]), g = parseInt(rgbMatch[2]), b = parseInt(rgbMatch[3]);
+            const r = parseInt(rgbMatch[1], 10), g = parseInt(rgbMatch[2], 10), b = parseInt(rgbMatch[3], 10);
             isGreen = g > 100 && g > r * 1.2 && g > b * 1.2;
             isRed = r > 150 && r > g * 1.4 && r > b * 1.4;
             isYellow = r > 200 && g > 150 && b < 120;
           }
 
-          // iDATA specific: enabled/disabled class td'de veya child elementte olabilir
           if (d.classList.contains("enabled-day") || classBlob.includes("enabled-day")) isGreen = true;
           if (d.classList.contains("disabled-day") || classBlob.includes("disabled-day")) { isRed = true; isGreen = false; }
           if (d.classList.contains("bg-success") || d.classList.contains("success") || classBlob.includes("bg-success") || classBlob.includes("success")) isGreen = true;
@@ -3353,6 +3400,9 @@ async function bookEarliestAppointment(page, account) {
 
           const clickableEl = innerLink || d;
           const rect = clickableEl.getBoundingClientRect();
+          const normalizedDate = displayedMonth && displayedYear
+            ? `${displayedYear}-${String(displayedMonth).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`
+            : null;
 
           days.push({
             day: dayNum,
@@ -3367,10 +3417,12 @@ async function bookEarliestAppointment(page, account) {
             postbackArg,
             linkHref: postbackHref.substring(0, 200),
             onclickText: onclickText.substring(0, 200),
+            normalizedDate,
+            matchesWhitelist: normalizedDate ? allowedSet.has(normalizedDate) : false,
           });
         }
 
-        if (days.length < 20) continue; // gerçek takvim değilse ele
+        if (days.length < 20) continue;
 
         const calCenterX = calRect.x + calRect.width / 2;
         const calCenterY = calRect.y + calRect.height / 2;
@@ -3378,7 +3430,7 @@ async function bookEarliestAppointment(page, account) {
           ? Math.hypot(calCenterX - anchorX, calCenterY - anchorY)
           : 9999;
 
-        candidateCalendars.push({ days, distance, width: calRect.width, height: calRect.height });
+        candidateCalendars.push({ days, distance, width: calRect.width, height: calRect.height, headerText });
       }
 
       if (candidateCalendars.length === 0) {
@@ -3389,32 +3441,45 @@ async function bookEarliestAppointment(page, account) {
       const selectedCalendar = candidateCalendars[0];
       const allDays = selectedCalendar.days;
 
-      const greenDays = allDays.filter(d => d.isGreen && !d.isRed && !d.isYellow).sort((a, b) => a.day - b.day);
+      const strictGreenDays = allDays
+        .filter((d) => d.isGreen && !d.isRed && !d.isYellow)
+        .sort((a, b) => a.day - b.day);
 
-      if (greenDays.length > 0) {
+      const selectableDays = allowedSet.size > 0
+        ? strictGreenDays.filter((d) => d.matchesWhitelist)
+        : strictGreenDays;
+
+      if (selectableDays.length > 0) {
         let target = null;
-        if (tDay) target = greenDays.find(d => d.day === tDay);
-        if (!target) target = greenDays[0];
+        if (targetNormalized) target = selectableDays.find((d) => d.normalizedDate === targetNormalized);
+        if (!target) target = selectableDays[0];
 
         return {
           found: true,
           day: target.day,
+          normalizedDate: target.normalizedDate,
           isGreen: target.isGreen,
           x: target.x,
           y: target.y,
           totalDays: allDays.length,
-          greenCount: greenDays.length,
+          greenCount: selectableDays.length,
           bgColor: target.bgColor,
           hasLink: target.hasLink,
           postbackTarget: target.postbackTarget,
           postbackArg: target.postbackArg,
           linkHref: target.linkHref,
           calendarDistance: selectedCalendar.distance,
+          matchedWhitelist: target.matchesWhitelist,
         };
       }
 
-      return { found: false, totalDays: allDays.length, reason: "no_green_days" };
-    }, targetDay, calIconClicked?.inputX ?? null, calIconClicked?.inputY ?? null);
+      return {
+        found: false,
+        totalDays: allDays.length,
+        reason: allowedSet.size > 0 ? "no_whitelisted_green_days" : "no_green_days",
+        visibleGreenDates: strictGreenDays.map((d) => d.normalizedDate).filter(Boolean).slice(0, 10),
+      };
+    }, targetAppointmentDate?.normalized ?? null, announcedAppointmentDateKeys, calIconClicked?.inputX ?? null, calIconClicked?.inputY ?? null);
 
     console.log(`  [BOOK] Tarih bilgisi: ${JSON.stringify(dateInfo)}`);
     
@@ -3424,22 +3489,46 @@ async function bookEarliestAppointment(page, account) {
       console.log(`  [BOOK] Tarih bilgisi: hasLink=${dateInfo.hasLink} postbackTarget=${dateInfo.postbackTarget} linkHref=${dateInfo.linkHref}`);
 
       const verifyDateSelection = async () => {
-        return await page.evaluate((dayNum) => {
-          // Bootstrap datepicker + ASP.NET takvim desteği
+        return await page.evaluate((dayNum, targetNormalized) => {
+          const normalizeDateValue = (val) => {
+            const raw = String(val || "").trim();
+            if (!raw) return null;
+
+            let match = raw.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/);
+            if (match) {
+              return `${match[1]}-${String(parseInt(match[2], 10)).padStart(2, "0")}-${String(parseInt(match[3], 10)).padStart(2, "0")}`;
+            }
+
+            match = raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+            if (match) {
+              const year = match[3].length === 2 ? `20${match[3]}` : match[3];
+              return `${year}-${String(parseInt(match[2], 10)).padStart(2, "0")}-${String(parseInt(match[1], 10)).padStart(2, "0")}`;
+            }
+
+            return null;
+          };
+
+          const parsePickedDay = (val) => {
+            const normalized = normalizeDateValue(val);
+            if (normalized) return parseInt(normalized.slice(-2), 10);
+            const dayMatch = String(val || "").match(/(\d{1,2})/);
+            return dayMatch ? parseInt(dayMatch[1], 10) : NaN;
+          };
+
           const calContainers = document.querySelectorAll("[class*='datepicker'], [class*='calendar'], table.table-condensed, .datepicker-days table");
           for (const cal of calContainers) {
             const tds = cal.querySelectorAll("td");
             for (const d of tds) {
               const text = (d.innerText || d.textContent || "").trim();
-              if (parseInt(text) === dayNum) {
+              if (parseInt(text, 10) === dayNum) {
                 const cls = (d.className || "").toLowerCase();
                 const isActive = cls.includes("active") || cls.includes("selected") || cls.includes("focused") || cls.includes("highlighted");
-                if (isActive) return { isActive: true, cls };
+                const isMonthCell = !cls.includes("old") && !cls.includes("new") && !cls.includes("off") && !cls.includes("disabled");
+                if (isActive && isMonthCell) return { isActive: true, cls };
               }
             }
           }
-          // Date input değeri gerçekten seçilen günü yansıtıyor mu kontrol et
-          // ÖNEMLİ: Seyahat alanını dışla, yalnızca randevu inputunu doğrula
+
           const travelWords = ["seyahat", "gidiş", "gidis", "travel", "flight", "departure", "baslangic", "başlangıç"];
           const hasTravelWord = (txt) => travelWords.some((w) => txt.includes(w));
 
@@ -3478,32 +3567,34 @@ async function bookEarliestAppointment(page, account) {
               .sort((a, b) => a.dy - b.dy)[0]?.inp || null;
           }
 
-          const parsePickedDay = (val) => {
-            const dayMatch = val.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/) || val.match(/(\d{1,2})/);
-            return dayMatch ? parseInt(dayMatch[1]) : NaN;
-          };
-
           if (targetInput) {
             const v = (targetInput.value || "").trim();
             if (v) {
+              const normalized = normalizeDateValue(v);
+              if (targetNormalized && normalized === targetNormalized) {
+                return { isActive: true, cls: "appt-input-matched-date: " + v };
+              }
               const pickedDay = parsePickedDay(v);
-              if (!Number.isNaN(pickedDay) && pickedDay === dayNum) {
+              if (!targetNormalized && !Number.isNaN(pickedDay) && pickedDay === dayNum) {
                 return { isActive: true, cls: "appt-input-matched-day: " + v };
               }
             }
           }
 
-          // Fallback: seyahat dışı herhangi bir date input hedef günü tutuyorsa aktif say
           for (const inp of nonTravelInputs) {
             const v = (inp.value || "").trim();
             if (!v) continue;
+            const normalized = normalizeDateValue(v);
+            if (targetNormalized && normalized === targetNormalized) {
+              return { isActive: true, cls: "non-travel-input-matched-date: " + v };
+            }
             const pickedDay = parsePickedDay(v);
-            if (!Number.isNaN(pickedDay) && pickedDay === dayNum) {
+            if (!targetNormalized && !Number.isNaN(pickedDay) && pickedDay === dayNum) {
               return { isActive: true, cls: "non-travel-input-matched-day: " + v };
             }
           }
           return { isActive: false, cls: "" };
-        }, dateInfo.day);
+        }, dateInfo.day, dateInfo.normalizedDate || null);
       };
 
       // === DeepSeek simulateRealClick: tam mouse event chain ===
@@ -3705,10 +3796,10 @@ async function bookEarliestAppointment(page, account) {
         dateVerify = await verifyDateSelection();
       }
 
-      // === YÖNTEM 5: Inner <a>/onclick/postback kombinasyonu ===
+      // === YÖNTEM 5: Aynı hedef hücre üzerinde inner <a>/onclick/postback kombinasyonu ===
       if (!dateVerify.isActive) {
-        console.log("  [BOOK] Tarih aktif değil, inner link + onclick + postback deneniyor...");
-        const linkResult = await page.evaluate((dayNum) => {
+        console.log("  [BOOK] Tarih aktif değil, hedef açık hücrede inner link + onclick + postback deneniyor...");
+        const linkResult = await page.evaluate((dayNum, targetX, targetY) => {
           const fireClick = (el) => {
             if (!el) return;
             try {
@@ -3722,6 +3813,7 @@ async function bookEarliestAppointment(page, account) {
             } catch (_) {}
           };
 
+          const candidates = [];
           const calContainers = Array.from(document.querySelectorAll("[class*='datepicker'], [class*='calendar'], table.table-condensed"));
           for (const cal of calContainers) {
             const style = window.getComputedStyle(cal);
@@ -3731,31 +3823,55 @@ async function bookEarliestAppointment(page, account) {
             for (const d of tds) {
               const text = (d.innerText || d.textContent || "").trim();
               if (parseInt(text, 10) !== dayNum) continue;
-              if (d.classList.contains("disabled") || d.classList.contains("old") || d.classList.contains("new") || d.classList.contains("off")) continue;
+
+              const childFlagEl = d.querySelector("a, span, div");
+              const classBlob = `${d.className || ""} ${childFlagEl?.className || ""}`.toLowerCase();
+              if (classBlob.includes("disabled") || classBlob.includes("old") || classBlob.includes("new") || classBlob.includes("off")) continue;
+
+              const tdBg = window.getComputedStyle(d).backgroundColor;
+              const childBg = childFlagEl ? window.getComputedStyle(childFlagEl).backgroundColor : "";
+              const bgColor = childBg && childBg !== "rgba(0, 0, 0, 0)" ? childBg : tdBg;
+              const rgbMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+              let isGreen = classBlob.includes("enabled-day") || classBlob.includes("bg-success") || classBlob.includes("success");
+              let isYellow = classBlob.includes("warning") || classBlob.includes("bg-warning") || classBlob.includes("today") || classBlob.includes("active");
+              let isRed = classBlob.includes("danger") || classBlob.includes("bg-danger") || classBlob.includes("disabled-day");
+              if (rgbMatch) {
+                const r = parseInt(rgbMatch[1], 10), g = parseInt(rgbMatch[2], 10), b = parseInt(rgbMatch[3], 10);
+                if (g > 100 && g > r * 1.2 && g > b * 1.2) isGreen = true;
+                if (r > 200 && g > 150 && b < 120) isYellow = true;
+                if (r > 150 && r > g * 1.4 && r > b * 1.4) isRed = true;
+              }
+              if (!isGreen || isYellow || isRed) continue;
 
               const link = d.querySelector("a") || d;
+              const rect = link.getBoundingClientRect();
               const href = (link.getAttribute && link.getAttribute("href")) || "";
               const onclick = `${(link.getAttribute && link.getAttribute("onclick")) || ""} ${(d.getAttribute && d.getAttribute("onclick")) || ""}`;
-
-              fireClick(link);
-
-              const pbMatch = (href.match(/__doPostBack\(['"](.*?)['"],\s*['"](.*?)['"]\)/) || onclick.match(/__doPostBack\(['"](.*?)['"],\s*['"](.*?)['"]\)/));
-              if (pbMatch && typeof window.__doPostBack === "function") {
-                try { window.__doPostBack(pbMatch[1], pbMatch[2] || ""); } catch (_) {}
-              }
-
-              if (href && href.includes("__doPostBack")) {
-                try { eval(href.replace("javascript:", "")); } catch (_) {}
-              }
-              if (onclick && onclick.includes("__doPostBack")) {
-                try { eval(onclick); } catch (_) {}
-              }
-
-              return { clicked: true, via: link.tagName || "TD", href: href.substring(0, 120), onclick: onclick.substring(0, 120) };
+              const distance = Math.hypot((rect.x + rect.width / 2) - targetX, (rect.y + rect.height / 2) - targetY);
+              candidates.push({ link, href, onclick, distance });
             }
           }
-          return { clicked: false };
-        }, dateInfo.day);
+
+          candidates.sort((a, b) => a.distance - b.distance);
+          const target = candidates[0];
+          if (!target) return { clicked: false };
+
+          fireClick(target.link);
+
+          const pbMatch = (target.href.match(/__doPostBack\(['"](.*?)['"],\s*['"](.*?)['"]\)/) || target.onclick.match(/__doPostBack\(['"](.*?)['"],\s*['"](.*?)['"]\)/));
+          if (pbMatch && typeof window.__doPostBack === "function") {
+            try { window.__doPostBack(pbMatch[1], pbMatch[2] || ""); } catch (_) {}
+          }
+
+          if (target.href && target.href.includes("__doPostBack")) {
+            try { eval(target.href.replace("javascript:", "")); } catch (_) {}
+          }
+          if (target.onclick && target.onclick.includes("__doPostBack")) {
+            try { eval(target.onclick); } catch (_) {}
+          }
+
+          return { clicked: true, href: target.href.substring(0, 120), onclick: target.onclick.substring(0, 120), distance: Math.round(target.distance) };
+        }, dateInfo.day, dateInfo.x, dateInfo.y);
 
         console.log(`  [BOOK] Link/postback sonucu: ${JSON.stringify(linkResult)}`);
         await delay(1500, 2500);
@@ -3764,13 +3880,13 @@ async function bookEarliestAppointment(page, account) {
 
       // === YÖNTEM 6: Element handle + gerçek mouse + postback ===
       if (!dateVerify.isActive) {
-        console.log("  [BOOK] Tarih aktif değil, element handle + gerçek mouse ile deneniyor...");
+        console.log("  [BOOK] Tarih aktif değil, aynı açık hücreye element handle ile yeniden vuruluyor...");
         try {
           const tdElements = await page.$$("td, td a");
           const dayPool = [];
 
           for (const elHandle of tdElements) {
-            const elInfo = await elHandle.evaluate((el) => {
+            const elInfo = await elHandle.evaluate((el, wantedDay, targetX, targetY) => {
               const cell = el.tagName === "TD" ? el : (el.closest("td") || el);
               if (!cell) return null;
 
@@ -3781,30 +3897,47 @@ async function bookEarliestAppointment(page, account) {
 
               const text = (cell.innerText || cell.textContent || "").trim();
               const day = parseInt(text, 10);
-              if (Number.isNaN(day)) return null;
+              if (Number.isNaN(day) || day !== wantedDay) return null;
 
-              const cls = (cell.className || "").toLowerCase();
-              const disabled = cls.includes("disabled") || cls.includes("old") || cls.includes("new") || cls.includes("off");
+              const childFlagEl = cell.querySelector("a, span, div");
+              const classBlob = `${cell.className || ""} ${childFlagEl?.className || ""}`.toLowerCase();
+              const disabled = classBlob.includes("disabled") || classBlob.includes("old") || classBlob.includes("new") || classBlob.includes("off");
               if (disabled) return null;
+
+              const tdBg = window.getComputedStyle(cell).backgroundColor;
+              const childBg = childFlagEl ? window.getComputedStyle(childFlagEl).backgroundColor : "";
+              const bgColor = childBg && childBg !== "rgba(0, 0, 0, 0)" ? childBg : tdBg;
+              const rgbMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+              let isGreen = classBlob.includes("enabled-day") || classBlob.includes("success") || classBlob.includes("bg-success");
+              let isYellow = classBlob.includes("warning") || classBlob.includes("bg-warning") || classBlob.includes("today") || classBlob.includes("active");
+              let isRed = classBlob.includes("danger") || classBlob.includes("bg-danger") || classBlob.includes("disabled-day");
+              if (rgbMatch) {
+                const r = parseInt(rgbMatch[1], 10), g = parseInt(rgbMatch[2], 10), b = parseInt(rgbMatch[3], 10);
+                if (g > 100 && g > r * 1.2 && g > b * 1.2) isGreen = true;
+                if (r > 200 && g > 150 && b < 120) isYellow = true;
+                if (r > 150 && r > g * 1.4 && r > b * 1.4) isRed = true;
+              }
+              if (!isGreen || isYellow || isRed) return null;
 
               const link = cell.querySelector("a") || cell;
               const href = (link.getAttribute && link.getAttribute("href")) || "";
               const onclick = `${(link.getAttribute && link.getAttribute("onclick")) || ""} ${(cell.getAttribute && cell.getAttribute("onclick")) || ""}`;
+              const centerX = rect.x + rect.width / 2;
+              const centerY = rect.y + rect.height / 2;
+              const distance = Math.hypot(centerX - targetX, centerY - targetY);
 
               let score = 0;
-              if (cls.includes("enabled-day") || cls.includes("success") || cls.includes("bg-success")) score += 40;
               if (href.includes("__doPostBack") || onclick.includes("__doPostBack")) score += 50;
               if (link.tagName === "A") score += 20;
 
-              return { day, score, hasPostback: href.includes("__doPostBack") || onclick.includes("__doPostBack") };
-            });
+              return { day, score, distance, hasPostback: href.includes("__doPostBack") || onclick.includes("__doPostBack") };
+            }, dateInfo.day, dateInfo.x, dateInfo.y);
 
             if (elInfo) dayPool.push({ handle: elHandle, ...elInfo });
           }
 
-          dayPool.sort((a, b) => b.score - a.score);
-          const exactPool = dayPool.filter((d) => d.day === dateInfo.day);
-          const targetDay = exactPool[0] || dayPool.find((d) => d.day === dateInfo.day) || null;
+          dayPool.sort((a, b) => a.distance - b.distance || b.score - a.score);
+          const targetDay = dayPool[0] || null;
 
           if (targetDay) {
             const box = await targetDay.handle.boundingBox();
@@ -3832,7 +3965,7 @@ async function bookEarliestAppointment(page, account) {
               }
             });
 
-            console.log(`  [BOOK] ✅ Element handle güçlü tıklama: Gün ${targetDay.day}`);
+            console.log(`  [BOOK] ✅ Element handle güçlü tıklama: Gün ${targetDay.day} mesafe=${Math.round(targetDay.distance)}`);
             await delay(800, 1300);
             const forceResult2 = await forceDateSelectionInternal(targetDay.day);
             console.log(`  [BOOK] Element handle + force sonuç: ${JSON.stringify(forceResult2)}`);
@@ -4372,24 +4505,56 @@ async function bookEarliestAppointment(page, account) {
 
         await delay(500, 1000);
 
-        // ===== TAMAM'dan sonra yeniden tarih seç (sadece yeşil + en erken) =====
-        const retryDateInfo = await page.evaluate((preferredDay) => {
+        // ===== TAMAM'dan sonra yeniden tarih seç (yalnızca ilk ekrandaki açık tarihler) =====
+        const retryTargetDate = announcedAppointmentDates[warningRetry % Math.max(announcedAppointmentDates.length, 1)] || preferredAppointmentDate || null;
+        const retryDateInfo = await page.evaluate((targetNormalized, allowedDates) => {
+          const allowedSet = new Set((allowedDates || []).filter(Boolean));
+          const monthMap = {
+            january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+            ocak: 1, şubat: 2, subat: 2, mart: 3, nisan: 4, mayıs: 5, mayis: 5, haziran: 6, temmuz: 7, ağustos: 8, agustos: 8, eylül: 9, eylul: 9, ekim: 10, kasım: 11, kasim: 11, aralık: 12, aralik: 12,
+          };
+          const parseMonthYear = (text) => {
+            const raw = String(text || "").trim().toLowerCase();
+            const yearMatch = raw.match(/(20\d{2})/);
+            let month = null;
+            for (const [name, num] of Object.entries(monthMap)) {
+              if (raw.includes(name)) {
+                month = num;
+                break;
+              }
+            }
+            return { month, year: yearMatch ? parseInt(yearMatch[1], 10) : null };
+          };
+
           const calContainers = document.querySelectorAll(
             ".datepicker, .datepicker-dropdown, .bootstrap-datetimepicker-widget, " +
             ".datepicker-days, .flatpickr-calendar, .ui-datepicker, " +
             "[class*='datepicker'], [class*='calendar'], .picker-open, table.table-condensed"
           );
-          let allDays = [];
+          const allDays = [];
           for (const cal of calContainers) {
             const style = window.getComputedStyle(cal);
             if (style.display === "none" || style.visibility === "hidden") continue;
+
+            const headerNodes = Array.from(cal.querySelectorAll(".datepicker-switch, .picker-switch, .datepicker th.switch, .ui-datepicker-title, caption, th"));
+            let displayedMonth = null;
+            let displayedYear = null;
+            for (const node of headerNodes) {
+              const parsed = parseMonthYear(node.innerText || node.textContent || "");
+              if (parsed.month && parsed.year) {
+                displayedMonth = parsed.month;
+                displayedYear = parsed.year;
+                break;
+              }
+            }
+
             const tds = cal.querySelectorAll("td");
             for (const d of tds) {
               const text = (d.innerText || d.textContent || "").trim();
               if (!/^\d{1,2}$/.test(text)) continue;
               const childFlagEl = d.querySelector("a, span, div");
               const classBlob = `${d.className || ""} ${childFlagEl?.className || ""}`.toLowerCase();
-              if (d.classList.contains("disabled") || d.classList.contains("off") || d.classList.contains("old") || classBlob.includes("disabled-day")) continue;
+              if (classBlob.includes("disabled") || classBlob.includes("off") || classBlob.includes("old") || classBlob.includes("new") || classBlob.includes("disabled-day")) continue;
 
               const dayNum = parseInt(text, 10);
               const tdBg = window.getComputedStyle(d).backgroundColor;
@@ -4398,14 +4563,22 @@ async function bookEarliestAppointment(page, account) {
               const rgbMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
               let isGreen = false;
               let isYellow = false;
+              let isRed = false;
               if (rgbMatch) {
                 const r = parseInt(rgbMatch[1], 10), g = parseInt(rgbMatch[2], 10), b = parseInt(rgbMatch[3], 10);
                 isGreen = g > 100 && g > r * 1.2 && g > b * 1.2;
                 isYellow = r > 200 && g > 150 && b < 120;
+                isRed = r > 150 && r > g * 1.4 && r > b * 1.4;
               }
               if (d.classList.contains("bg-success") || d.classList.contains("success") || classBlob.includes("enabled-day") || classBlob.includes("bg-success")) isGreen = true;
               if (d.classList.contains("bg-warning") || d.classList.contains("warning") || d.classList.contains("today") || d.classList.contains("active") || classBlob.includes("bg-warning") || classBlob.includes("warning") || classBlob.includes("active")) isYellow = true;
-              if (!isGreen || isYellow) continue;
+              if (d.classList.contains("bg-danger") || d.classList.contains("danger") || classBlob.includes("bg-danger") || classBlob.includes("danger")) isRed = true;
+              if (!isGreen || isYellow || isRed) continue;
+
+              const normalizedDate = displayedMonth && displayedYear
+                ? `${displayedYear}-${String(displayedMonth).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`
+                : null;
+              if (allowedSet.size > 0 && (!normalizedDate || !allowedSet.has(normalizedDate))) continue;
 
               const innerLink = d.querySelector("a[href*='doPostBack'], a[href*='javascript'], a");
               const postbackHref = innerLink ? (innerLink.getAttribute("href") || "") : "";
@@ -4416,17 +4589,17 @@ async function bookEarliestAppointment(page, account) {
               const clickableEl = innerLink || d;
               const rect = clickableEl.getBoundingClientRect();
               if (rect.width > 0 && rect.height > 0) {
-                allDays.push({ day: dayNum, x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, postbackTarget, postbackArg, hasLink: !!innerLink });
+                allDays.push({ day: dayNum, normalizedDate, x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, postbackTarget, postbackArg, hasLink: !!innerLink });
               }
             }
           }
-          const greenDays = allDays.sort((a, b) => a.day - b.day);
-          if (greenDays.length > 0) {
-            const target = greenDays.find(d => d.day === preferredDay) || greenDays[0];
-            return { found: true, day: target.day, x: target.x, y: target.y, greenCount: greenDays.length, postbackTarget: target.postbackTarget, postbackArg: target.postbackArg, hasLink: target.hasLink };
+          allDays.sort((a, b) => (a.normalizedDate || "").localeCompare(b.normalizedDate || "") || a.day - b.day);
+          if (allDays.length > 0) {
+            const target = allDays.find((d) => d.normalizedDate === targetNormalized) || allDays[0];
+            return { found: true, day: target.day, normalizedDate: target.normalizedDate, x: target.x, y: target.y, greenCount: allDays.length, postbackTarget: target.postbackTarget, postbackArg: target.postbackArg, hasLink: target.hasLink };
           }
           return { found: false };
-        }, targetDay);
+        }, retryTargetDate?.normalized ?? null, announcedAppointmentDateKeys);
 
         if (retryDateInfo.found) {
           console.log(`  [BOOK] 📅 Retry tarih seçimi: Gün ${retryDateInfo.day} (${retryDateInfo.greenCount} yeşil, postback=${!!retryDateInfo.postbackTarget})`);

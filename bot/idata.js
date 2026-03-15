@@ -3318,6 +3318,7 @@ async function bookEarliestAppointment(page, account) {
         }, dateInfo.day);
       };
 
+      // === YÖNTEM 1: humanClick + jQuery datepicker setDate ===
       try {
         await humanClick(page, dateInfo.x, dateInfo.y, { preMovesNear: true });
         console.log(`  [BOOK] ✅ HumanClick tarih: Gün ${dateInfo.day} (x:${Math.round(dateInfo.x)}, y:${Math.round(dateInfo.y)})`);
@@ -3326,8 +3327,73 @@ async function bookEarliestAppointment(page, account) {
       }
 
       await delay(1500, 2500);
-      let dateVerify = await verifyDateSelection();
+      
+      // HumanClick sonrası hemen jQuery datepicker API ile seçimi garanti altına al
+      await page.evaluate((dayNum) => {
+        // iDATA Bootstrap datepicker: td tıklanınca "active" class eklenmeli
+        // Eğer humanClick bunu yapmadıysa, jQuery API ile zorluyoruz
+        const dateInputs = document.querySelectorAll("input.calendarinput, input.flightDate, input[data-provide='datepicker'], input.datepicker");
+        for (const inp of dateInputs) {
+          const rect = inp.getBoundingClientRect();
+          if (rect.width <= 0 || rect.height <= 0) continue;
+          
+          // Mevcut takvim ayını header'dan al
+          const header = document.querySelector(".datepicker-switch, .datepicker-days th.datepicker-switch, th.switch");
+          const headerText = header ? header.textContent.trim() : "";
+          const monthNames = {"January":"01","February":"02","March":"03","April":"04","May":"05","June":"06","July":"07","August":"08","September":"09","October":"10","November":"11","December":"12",
+            "Ocak":"01","Şubat":"02","Mart":"03","Nisan":"04","Mayıs":"05","Haziran":"06","Temmuz":"07","Ağustos":"08","Eylül":"09","Ekim":"10","Kasım":"11","Aralık":"12"};
+          let month = "03", year = "2026";
+          for (const [name, num] of Object.entries(monthNames)) {
+            if (headerText.includes(name)) { month = num; break; }
+          }
+          const yearMatch = headerText.match(/(\d{4})/);
+          if (yearMatch) year = yearMatch[1];
+          
+          // iDATA format: DD-MM-YYYY (tire ile)
+          const dateStrDash = `${String(dayNum).padStart(2, "0")}-${month}-${year}`;
+          const dateStrDot = `${String(dayNum).padStart(2, "0")}.${month}.${year}`;
+          
+          // Mevcut input değerinden format tespit et
+          const existingVal = (inp.value || "").trim();
+          const usesDash = existingVal.includes("-");
+          const dateStr = usesDash ? dateStrDash : dateStrDot;
+          
+          if (typeof window.jQuery !== "undefined") {
+            try {
+              // Önce Date objesiyle setDate dene (en güvenilir)
+              const dateObj = new Date(parseInt(year), parseInt(month) - 1, dayNum);
+              window.jQuery(inp).datepicker("setDate", dateObj);
+              console.log("  [BOOK-jQuery] datepicker setDate çağrıldı:", dateObj.toISOString());
+            } catch (e1) {
+              try {
+                // Fallback: string ile update
+                window.jQuery(inp).datepicker("update", dateStr);
+                console.log("  [BOOK-jQuery] datepicker update çağrıldı:", dateStr);
+              } catch (e2) {
+                console.log("  [BOOK-jQuery] datepicker API başarısız:", e2.message);
+              }
+            }
+            // Event tetikle
+            window.jQuery(inp).trigger("changeDate");
+            window.jQuery(inp).trigger("change");
+          }
+          
+          // Input değerini de ayarla (güvenlik için)
+          if (!inp.value || !inp.value.includes(String(dayNum))) {
+            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+            nativeSetter.call(inp, dateStr);
+            inp.dispatchEvent(new Event("input", { bubbles: true }));
+            inp.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+          break;
+        }
+      }, dateInfo.day);
 
+      await delay(1500, 2000);
+      let dateVerify = await verifyDateSelection();
+      console.log(`  [BOOK] jQuery setDate sonrası doğrulama: ${JSON.stringify(dateVerify)}`);
+
+      // === YÖNTEM 2: __doPostBack varsa çağır ===
       if (!dateVerify.isActive && dateInfo.postbackTarget) {
         console.log(`  [BOOK] Tarih aktif değil, __doPostBack çağrılıyor: ${dateInfo.postbackTarget}`);
         await page.evaluate((target, arg) => {
@@ -3339,6 +3405,7 @@ async function bookEarliestAppointment(page, account) {
         dateVerify = await verifyDateSelection();
       }
 
+      // === YÖNTEM 3: Inner <a> link tıkla ===
       if (!dateVerify.isActive && dateInfo.hasLink) {
         console.log("  [BOOK] Tarih aktif değil, inner <a> link'e tıklanıyor...");
         await page.evaluate((dayNum) => {
@@ -3349,10 +3416,7 @@ async function bookEarliestAppointment(page, account) {
               const text = (d.innerText || d.textContent || "").trim();
               if (parseInt(text) === dayNum && !d.classList.contains("disabled") && !d.classList.contains("old")) {
                 const link = d.querySelector("a");
-                if (link) {
-                  link.click();
-                  return true;
-                }
+                if (link) { link.click(); return true; }
                 d.click();
                 return true;
               }
@@ -3364,146 +3428,54 @@ async function bookEarliestAppointment(page, account) {
         dateVerify = await verifyDateSelection();
       }
 
+      // === YÖNTEM 4: Element handle + jQuery click ===
       if (!dateVerify.isActive) {
-        console.log("  [BOOK] Tarih aktif değil, element handle + jQuery datepicker ile deneniyor...");
+        console.log("  [BOOK] Tarih aktif değil, element handle ile deneniyor...");
         try {
-          // Yöntem 1: element handle ile td tıklama
-          // Yöntem 1: element handle ile td.enabled-day tıklama (iDATA specific)
-          const tdElements = await page.$$("td.enabled-day, td.day:not(.disabled):not(.disabled-day):not(.old):not(.new), td:not(.disabled):not(.disabled-day):not(.old)");
+          const tdElements = await page.$$("td.enabled-day");
           const greenPool = [];
           for (const elHandle of tdElements) {
             const elInfo = await page.evaluate(el => {
               const text = (el.innerText || el.textContent || "").trim();
-              const bgColor = window.getComputedStyle(el).backgroundColor;
-              const cls = (el.className || "").toLowerCase();
-              const rgbMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-              let isGreen = cls.includes("enabled-day");
-              if (!isGreen && rgbMatch) {
-                const r = parseInt(rgbMatch[1]), g = parseInt(rgbMatch[2]), b = parseInt(rgbMatch[3]);
-                isGreen = g > 100 && g > r * 1.3 && g > b * 1.3;
-              }
-              return { text, isGreen, bgColor, day: parseInt(text) };
+              return { day: parseInt(text) };
             }, elHandle);
-            if (elInfo.isGreen && !isNaN(elInfo.day)) {
-              greenPool.push({ handle: elHandle, ...elInfo });
+            if (!isNaN(elInfo.day)) {
+              greenPool.push({ handle: elHandle, day: elInfo.day });
             }
           }
-          // İkinci yeşil günü seç (pool[1]), yoksa ilki
           greenPool.sort((a, b) => a.day - b.day);
           const targetGreen = greenPool.find(g => g.day === dateInfo.day) || (greenPool.length > 1 ? greenPool[1] : greenPool[0]);
           if (targetGreen) {
             await targetGreen.handle.click();
             console.log(`  [BOOK] ✅ Element handle td.enabled-day: Gün ${targetGreen.day}`);
+            await delay(500, 1000);
+            
+            // Element handle click sonrası da jQuery setDate çağır
+            await page.evaluate((dayNum) => {
+              const inp = document.querySelector("input.calendarinput, input.flightDate, input[data-provide='datepicker']");
+              if (inp && typeof window.jQuery !== "undefined") {
+                const header = document.querySelector(".datepicker-switch, th.datepicker-switch");
+                const headerText = header ? header.textContent.trim() : "";
+                const monthNames = {"January":"01","February":"02","March":"03","April":"04","May":"05","June":"06","July":"07","August":"08","September":"09","October":"10","November":"11","December":"12",
+                  "Ocak":"01","Şubat":"02","Mart":"03","Nisan":"04","Mayıs":"05","Haziran":"06","Temmuz":"07","Ağustos":"08","Eylül":"09","Ekim":"10","Kasım":"11","Aralık":"12"};
+                let month = 2, year = 2026;
+                for (const [name, num] of Object.entries(monthNames)) {
+                  if (headerText.includes(name)) { month = parseInt(num) - 1; break; }
+                }
+                const ym = headerText.match(/(\d{4})/);
+                if (ym) year = parseInt(ym[1]);
+                try {
+                  window.jQuery(inp).datepicker("setDate", new Date(year, month, dayNum));
+                  window.jQuery(inp).trigger("changeDate").trigger("change");
+                } catch(e) {}
+              }
+            }, dateInfo.day);
           }
-
           await delay(1000, 1500);
           dateVerify = await verifyDateSelection();
-
-          // Yöntem 2: jQuery datepicker event'i tetikle
-          if (!dateVerify.isActive) {
-            console.log("  [BOOK] jQuery datepicker event tetikleniyor...");
-            await page.evaluate((dayNum) => {
-              // iDATA: td.enabled-day veya yeşil td elemanına tıklama simüle et
-              const allTds = document.querySelectorAll("td.enabled-day, td.day, td");
-              for (const td of allTds) {
-                const text = (td.innerText || td.textContent || "").trim();
-                if (parseInt(text) !== dayNum) continue;
-                const cls = (td.className || "").toLowerCase();
-                const isEnabledDay = cls.includes("enabled-day");
-                if (!isEnabledDay) {
-                  const bgColor = window.getComputedStyle(td).backgroundColor;
-                  const rgbMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-                  let isGreen = false;
-                  if (rgbMatch) {
-                    const r = parseInt(rgbMatch[1]), g = parseInt(rgbMatch[2]), b = parseInt(rgbMatch[3]);
-                    isGreen = g > 100 && g > r * 1.3 && g > b * 1.3;
-                  }
-                  if (!isGreen) continue;
-                }
-
-                // Focus, mousedown, mouseup, click tam sırası
-                ["pointerdown", "mousedown", "pointerup", "mouseup", "click"].forEach(evt => {
-                  td.dispatchEvent(new MouseEvent(evt, { bubbles: true, cancelable: true, view: window }));
-                });
-
-                // Inner link varsa onu da tıkla
-                const innerA = td.querySelector("a");
-                if (innerA) {
-                  innerA.click();
-                  const href = innerA.getAttribute("href") || "";
-                  if (href.includes("__doPostBack")) {
-                    try { eval(href.replace("javascript:", "")); } catch(e) {}
-                  }
-                }
-
-                // jQuery trigger dene
-                if (typeof window.jQuery !== "undefined") {
-                  window.jQuery(td).trigger("click");
-                }
-                return true;
-              }
-              return false;
-            }, dateInfo.day);
-            await delay(1500, 2500);
-            dateVerify = await verifyDateSelection();
-          }
-
-          // Yöntem 3: Datepicker input'una doğrudan tarih yaz
-          if (!dateVerify.isActive) {
-            console.log("  [BOOK] Datepicker input'una doğrudan tarih yazılıyor...");
-            const currentMonthYear = await page.evaluate(() => {
-              const header = document.querySelector(".datepicker-switch, .datepicker-days th.datepicker-switch, th.switch");
-              return header ? header.textContent.trim() : "";
-            });
-            console.log(`  [BOOK] Takvim başlığı: ${currentMonthYear}`);
-            
-            // Tarih formatını bul ve input'a yaz
-            await page.evaluate((dayNum) => {
-              const dateInputs = document.querySelectorAll("input[data-provide='datepicker'], input.datepicker, input.calendarinput, input.flightDate, input.hasDatepicker, input[name*='date' i], input[name*='tarih' i], input[placeholder*='Tarih' i], input[placeholder*='tarih' i]");
-              for (const inp of dateInputs) {
-                const rect = inp.getBoundingClientRect();
-                if (rect.width > 0 && rect.height > 0) {
-                  // Mevcut takvim ayını al
-                  const header = document.querySelector(".datepicker-switch, th.datepicker-switch, th.switch");
-                  const headerText = header ? header.textContent.trim() : "";
-                  // March 2026 formatını parse et
-                  const monthNames = {"January":"01","February":"02","March":"03","April":"04","May":"05","June":"06","July":"07","August":"08","September":"09","October":"10","November":"11","December":"12",
-                    "Ocak":"01","Şubat":"02","Mart":"03","Nisan":"04","Mayıs":"05","Haziran":"06","Temmuz":"07","Ağustos":"08","Eylül":"09","Ekim":"10","Kasım":"11","Aralık":"12"};
-                  let month = "03", year = "2026";
-                  for (const [name, num] of Object.entries(monthNames)) {
-                    if (headerText.includes(name)) { month = num; break; }
-                  }
-                  const yearMatch = headerText.match(/(\d{4})/);
-                  if (yearMatch) year = yearMatch[1];
-                  
-                  const dateStr = `${String(dayNum).padStart(2, "0")}.${month}.${year}`;
-                  const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-                  nativeSetter.call(inp, dateStr);
-                  inp.dispatchEvent(new Event("input", { bubbles: true }));
-                  inp.dispatchEvent(new Event("change", { bubbles: true }));
-                  inp.dispatchEvent(new Event("blur", { bubbles: true }));
-                  
-                  // jQuery datepicker update
-                  if (typeof window.jQuery !== "undefined") {
-                    window.jQuery(inp).datepicker("update", dateStr);
-                    window.jQuery(inp).trigger("changeDate");
-                    window.jQuery(inp).trigger("change");
-                  }
-                  console.log("  Input'a tarih yazıldı:", dateStr);
-                  return true;
-                }
-              }
-              return false;
-            }, dateInfo.day);
-            await delay(1500, 2500);
-            dateVerify = await verifyDateSelection();
-          }
         } catch (ehErr) {
           console.log(`  [BOOK] Element handle tarih hata: ${ehErr.message}`);
         }
-
-        await delay(1000, 1500);
-        dateVerify = await verifyDateSelection();
       }
 
       dateSelected = {

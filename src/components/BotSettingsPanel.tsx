@@ -39,8 +39,6 @@ export default function BotSettingsPanel() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [showCaptchaKey, setShowCaptchaKey] = useState(false);
-  const [currentIp, setCurrentIp] = useState<string | null>(null);
-  const [lastIpReset, setLastIpReset] = useState<string | null>(null);
   const [evomiRegions, setEvomiRegions] = useState<{ id: string; name: string }[]>([]);
   const [evomiCities, setEvomiCities] = useState<{ name: string; region?: string }[]>([]);
   const [evomiCountries, setEvomiCountries] = useState<{ code: string; name: string }[]>([]);

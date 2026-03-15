@@ -3211,28 +3211,40 @@ async function bookEarliestAppointment(page, account) {
         for (const d of tds) {
           const text = (d.innerText || d.textContent || "").trim();
           if (!/^\d{1,2}$/.test(text)) continue;
-          // iDATA uses disabled-day class with pointer-events:none
-          if (d.classList.contains("disabled") || d.classList.contains("disabled-day") || d.classList.contains("off") || d.classList.contains("old")) continue;
+          const childFlagEl = d.querySelector("a, span, div");
+          const classBlob = `${d.className || ""} ${childFlagEl?.className || ""}`.toLowerCase();
+
+          const hasDisabledClass =
+            d.classList.contains("disabled") ||
+            d.classList.contains("disabled-day") ||
+            d.classList.contains("off") ||
+            d.classList.contains("old") ||
+            classBlob.includes("disabled-day") ||
+            classBlob.includes("disabled");
+
+          if (hasDisabledClass) continue;
 
           const dayNum = parseInt(text);
-          const bgColor = window.getComputedStyle(d).backgroundColor;
+          const tdBg = window.getComputedStyle(d).backgroundColor;
+          const childBg = childFlagEl ? window.getComputedStyle(childFlagEl).backgroundColor : "";
+          const bgColor = childBg && childBg !== "rgba(0, 0, 0, 0)" ? childBg : tdBg;
 
           const rgbMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
           let isGreen = false, isRed = false, isYellow = false;
 
           if (rgbMatch) {
             const r = parseInt(rgbMatch[1]), g = parseInt(rgbMatch[2]), b = parseInt(rgbMatch[3]);
-            isGreen = g > 100 && g > r * 1.3 && g > b * 1.3;
-            isRed = r > 150 && r > g * 1.5 && r > b * 1.5;
-            isYellow = r > 200 && g > 150 && b < 100;
+            isGreen = g > 100 && g > r * 1.2 && g > b * 1.2;
+            isRed = r > 150 && r > g * 1.4 && r > b * 1.4;
+            isYellow = r > 200 && g > 150 && b < 120;
           }
 
-          // iDATA specific: enabled-day = green, disabled-day = red
-          if (d.classList.contains("enabled-day")) isGreen = true;
-          if (d.classList.contains("disabled-day")) { isRed = true; isGreen = false; }
-          if (d.classList.contains("bg-success") || d.classList.contains("success")) isGreen = true;
-          if (d.classList.contains("bg-danger") || d.classList.contains("danger")) isRed = true;
-          if (d.classList.contains("bg-warning") || d.classList.contains("warning") || d.classList.contains("today") || d.classList.contains("active")) isYellow = true;
+          // iDATA specific: enabled/disabled class td'de veya child elementte olabilir
+          if (d.classList.contains("enabled-day") || classBlob.includes("enabled-day")) isGreen = true;
+          if (d.classList.contains("disabled-day") || classBlob.includes("disabled-day")) { isRed = true; isGreen = false; }
+          if (d.classList.contains("bg-success") || d.classList.contains("success") || classBlob.includes("bg-success") || classBlob.includes("success")) isGreen = true;
+          if (d.classList.contains("bg-danger") || d.classList.contains("danger") || classBlob.includes("bg-danger") || classBlob.includes("danger")) isRed = true;
+          if (d.classList.contains("bg-warning") || d.classList.contains("warning") || d.classList.contains("today") || d.classList.contains("active") || classBlob.includes("bg-warning") || classBlob.includes("warning") || classBlob.includes("active")) isYellow = true;
 
           const innerLink = d.querySelector("a[href*='doPostBack'], a[href*='javascript'], a");
           const postbackHref = innerLink ? (innerLink.getAttribute("href") || "") : "";
@@ -3277,9 +3289,9 @@ async function bookEarliestAppointment(page, account) {
       const selectedCalendar = candidateCalendars[0];
       const allDays = selectedCalendar.days;
 
-      const greenDays = allDays.filter(d => d.isGreen).sort((a, b) => a.day - b.day);
-      const nonRedDays = allDays.filter(d => !d.isRed && !d.isYellow).sort((a, b) => a.day - b.day);
-      const pool = greenDays.length > 0 ? greenDays : (nonRedDays.length > 0 ? nonRedDays : allDays);
+      const greenDays = allDays.filter(d => d.isGreen && !d.isRed).sort((a, b) => a.day - b.day);
+      const clickableDays = allDays.filter(d => !d.isRed && !d.isYellow && (d.hasLink || d.isGreen)).sort((a, b) => a.day - b.day);
+      const pool = greenDays.length > 0 ? greenDays : clickableDays;
 
       if (pool.length > 0) {
         let target = null;
@@ -3371,13 +3383,30 @@ async function bookEarliestAppointment(page, account) {
       // === DeepSeek forceDateSelection: datepicker internal state manipülasyonu ===
       const forceDateSelectionInternal = async (dayNum) => {
         return await page.evaluate((d) => {
-          // Tüm potansiyel datepicker input'larını bul
-          const inputs = document.querySelectorAll("input.calendarinput, input.flightDate, input[data-provide='datepicker'], input.datepicker");
-          if (!inputs.length || typeof window.jQuery === "undefined") return { success: false, reason: "no_inputs_or_jquery" };
+          // Tüm potansiyel datepicker input'larını bul (RANDEVU alanını önceliklendir)
+          const inputList = Array.from(document.querySelectorAll("input.calendarinput, input.flightDate, input[data-provide='datepicker'], input.datepicker"));
+          if (!inputList.length || typeof window.jQuery === "undefined") return { success: false, reason: "no_inputs_or_jquery" };
 
+          const isVisible = (el) => {
+            const r = el.getBoundingClientRect();
+            const s = window.getComputedStyle(el);
+            return r.width > 0 && r.height > 0 && s.display !== "none" && s.visibility !== "hidden";
+          };
+
+          const scoreInput = (inp) => {
+            const ph = (inp.placeholder || "").toLowerCase();
+            const nm = (inp.name || inp.id || "").toLowerCase();
+            const cls = (inp.className || "").toLowerCase();
+            let score = 0;
+            if (ph.includes("randevu")) score += 100;
+            if (ph.includes("seyahat") || ph.includes("gidiş") || nm.includes("travel") || nm.includes("seyahat")) score -= 120;
+            if (cls.includes("calendarinput")) score += 20;
+            if ((inp.value || "").trim()) score += 10;
+            return score;
+          };
+
+          const inputs = inputList.filter(isVisible).sort((a, b) => scoreInput(b) - scoreInput(a));
           for (const inp of inputs) {
-            const rect = inp.getBoundingClientRect();
-            if (rect.width <= 0 || rect.height <= 0) continue;
 
             // Takvim header'ından ay/yıl oku
             const header = document.querySelector(".datepicker-switch, .datepicker-days th.datepicker-switch, th.switch");
@@ -3556,12 +3585,14 @@ async function bookEarliestAppointment(page, account) {
       if (!dateVerify.isActive) {
         console.log("  [BOOK] Tarih aktif değil, element handle ile deneniyor...");
         try {
-          const tdElements = await page.$$("td.enabled-day");
+          const tdElements = await page.$$("td.enabled-day, td .enabled-day, a.enabled-day");
           const greenPool = [];
           for (const elHandle of tdElements) {
             const elInfo = await page.evaluate(el => {
-              const text = (el.innerText || el.textContent || "").trim();
-              return { day: parseInt(text) };
+              const cell = el.tagName === "TD" ? el : (el.closest("td") || el);
+              const text = (cell.innerText || cell.textContent || "").trim();
+              const day = parseInt(text);
+              return { day };
             }, elHandle);
             if (!isNaN(elInfo.day)) {
               greenPool.push({ handle: elHandle, day: elInfo.day });
@@ -4030,24 +4061,29 @@ async function bookEarliestAppointment(page, account) {
             for (const d of tds) {
               const text = (d.innerText || d.textContent || "").trim();
               if (!/^\d{1,2}$/.test(text)) continue;
-              if (d.classList.contains("disabled") || d.classList.contains("off") || d.classList.contains("old")) continue;
+              const childFlagEl = d.querySelector("a, span, div");
+              const classBlob = `${d.className || ""} ${childFlagEl?.className || ""}`.toLowerCase();
+              if (d.classList.contains("disabled") || d.classList.contains("off") || d.classList.contains("old") || classBlob.includes("disabled-day")) continue;
+
               const dayNum = parseInt(text);
-              const bgColor = window.getComputedStyle(d).backgroundColor;
+              const tdBg = window.getComputedStyle(d).backgroundColor;
+              const childBg = childFlagEl ? window.getComputedStyle(childFlagEl).backgroundColor : "";
+              const bgColor = childBg && childBg !== "rgba(0, 0, 0, 0)" ? childBg : tdBg;
               const rgbMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
               let isGreen = false;
               if (rgbMatch) {
                 const r = parseInt(rgbMatch[1]), g = parseInt(rgbMatch[2]), b = parseInt(rgbMatch[3]);
-                isGreen = g > 100 && g > r * 1.3 && g > b * 1.3;
+                isGreen = g > 100 && g > r * 1.2 && g > b * 1.2;
               }
-              if (d.classList.contains("bg-success") || d.classList.contains("success")) isGreen = true;
-              
+              if (d.classList.contains("bg-success") || d.classList.contains("success") || classBlob.includes("enabled-day") || classBlob.includes("bg-success")) isGreen = true;
+
               // ASP.NET postback bilgisi
               const innerLink = d.querySelector("a[href*='doPostBack'], a[href*='javascript'], a");
               const postbackHref = innerLink ? (innerLink.getAttribute("href") || "") : "";
               let postbackTarget = null, postbackArg = null;
               const pbMatch = postbackHref.match(/__doPostBack\(['"](.*?)['"],\s*['"](.*?)['"]\)/);
               if (pbMatch) { postbackTarget = pbMatch[1]; postbackArg = pbMatch[2]; }
-              
+
               const clickableEl = innerLink || d;
               const rect = clickableEl.getBoundingClientRect();
               if (rect.width > 0 && rect.height > 0) {
@@ -4056,7 +4092,8 @@ async function bookEarliestAppointment(page, account) {
             }
           }
           const greenDays = allDays.filter(d => d.isGreen).sort((a, b) => a.day - b.day);
-          const pool = greenDays.length > 0 ? greenDays : allDays;
+          const clickableDays = allDays.filter(d => d.hasLink || d.isGreen).sort((a, b) => a.day - b.day);
+          const pool = greenDays.length > 0 ? greenDays : clickableDays;
           // İlk yeşili değil, bir sonrakini (2. uygun gün) seç
           if (pool.length > 0) {
             const target = pool.length > 1 ? pool[1] : pool[0];

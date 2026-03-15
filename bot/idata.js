@@ -3403,11 +3403,14 @@ async function bookEarliestAppointment(page, account) {
           if (!dateVerify.isActive) {
             console.log("  [BOOK] jQuery datepicker event tetikleniyor...");
             await page.evaluate((dayNum) => {
-              // Bootstrap datepicker: td.day elemanına tıklama simüle et
-              const allTds = document.querySelectorAll("td.day, td");
+              // iDATA: td.enabled-day veya yeşil td elemanına tıklama simüle et
+              const allTds = document.querySelectorAll("td.enabled-day, td.day, td");
               for (const td of allTds) {
                 const text = (td.innerText || td.textContent || "").trim();
-                if (parseInt(text) === dayNum) {
+                if (parseInt(text) !== dayNum) continue;
+                const cls = (td.className || "").toLowerCase();
+                const isEnabledDay = cls.includes("enabled-day");
+                if (!isEnabledDay) {
                   const bgColor = window.getComputedStyle(td).backgroundColor;
                   const rgbMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
                   let isGreen = false;
@@ -3416,18 +3419,28 @@ async function bookEarliestAppointment(page, account) {
                     isGreen = g > 100 && g > r * 1.3 && g > b * 1.3;
                   }
                   if (!isGreen) continue;
-
-                  // Focus, mousedown, mouseup, click tam sırası
-                  ["mousedown", "mouseup", "click"].forEach(evt => {
-                    td.dispatchEvent(new MouseEvent(evt, { bubbles: true, cancelable: true, view: window }));
-                  });
-
-                  // jQuery trigger dene
-                  if (typeof window.jQuery !== "undefined") {
-                    window.jQuery(td).trigger("click");
-                  }
-                  return true;
                 }
+
+                // Focus, mousedown, mouseup, click tam sırası
+                ["pointerdown", "mousedown", "pointerup", "mouseup", "click"].forEach(evt => {
+                  td.dispatchEvent(new MouseEvent(evt, { bubbles: true, cancelable: true, view: window }));
+                });
+
+                // Inner link varsa onu da tıkla
+                const innerA = td.querySelector("a");
+                if (innerA) {
+                  innerA.click();
+                  const href = innerA.getAttribute("href") || "";
+                  if (href.includes("__doPostBack")) {
+                    try { eval(href.replace("javascript:", "")); } catch(e) {}
+                  }
+                }
+
+                // jQuery trigger dene
+                if (typeof window.jQuery !== "undefined") {
+                  window.jQuery(td).trigger("click");
+                }
+                return true;
               }
               return false;
             }, dateInfo.day);

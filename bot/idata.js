@@ -3404,7 +3404,9 @@ async function mainLoop() {
                 if (bookResult.success) {
                   console.log(`  🎉 RANDEVU ALINDI! Tarih: ${bookResult.date}`);
                   await idataLog("appt_booked", `🎉 RANDEVU BAŞARIYLA ALINDI! | Tarih: ${bookResult.date} | Hesap: ${account.email}`);
-                  // Alarm çalmaya devam etsin, kullanıcı fark etsin
+                  // Tarayıcıyı açık tut — kullanıcı fark edene kadar bekle
+                  console.log("  🔒 Tarayıcı açık kalacak — randevu alındı! 5 dakika bekleniyor...");
+                  await delay(300000, 300000); // 5 dakika bekle
                 } else {
                   console.log(`  ⚠️ Otomatik alma ${bookResult.partial ? "kısmen ilerledi" : "başarısız"}: ${bookResult.error || "Bilinmeyen"}`);
                   // Randevu hala mevcut mu kontrol et
@@ -3420,6 +3422,8 @@ async function mainLoop() {
                       if (retryBook.success) {
                         console.log(`  🎉 RANDEVU ALINDI (retry)! Tarih: ${retryBook.date}`);
                         await idataLog("appt_booked", `🎉 RANDEVU ALINDI (retry)! | Tarih: ${retryBook.date} | Hesap: ${account.email}`);
+                        console.log("  🔒 Tarayıcı açık kalacak — 5 dakika bekleniyor...");
+                        await delay(300000, 300000);
                         break;
                       }
                     } else {

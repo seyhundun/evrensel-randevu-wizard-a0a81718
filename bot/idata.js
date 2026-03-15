@@ -2761,8 +2761,8 @@ async function bookEarliestAppointment(page, account) {
       const body = (document.body?.innerText || "");
       const hasDateSection = body.includes("En yakın randevu tarihleri");
       
-      // Tarihleri topla (bilgi amaçlı)
-      const dateMatches = body.match(/\d{2}-\d{2}-\d{4}/g) || [];
+      // Ekranda listelenen uygun tarihleri topla
+      const dateMatches = Array.from(new Set(body.match(/\b\d{2}[./-]\d{2}[./-]\d{4}\b/g) || []));
       
       // İLERİ butonunu bul — genelde yeşil, sağ altta
       const candidates = Array.from(document.querySelectorAll('a, button, input[type="submit"], input[type="button"]'));
@@ -2780,13 +2780,41 @@ async function bookEarliestAppointment(page, account) {
       const greenBtn = document.querySelector('.btn-success, a.btn-success');
       if (greenBtn) {
         greenBtn.click();
-        return { clicked: true, text: (greenBtn.innerText || "").trim(), method: "green_btn", dates: dateMatches };
+        return { clicked: true, text: (greenBtn.innerText || "").trim(), method: "green_btn", dates: dateMatches, hasDateSection };
       }
       
       return { clicked: false, dates: dateMatches, hasDateSection };
     });
 
     console.log(`  [BOOK] Step 1 sonuç: ${JSON.stringify(step1Result)}`);
+
+    const parseAnnouncedAppointmentDate = (raw) => {
+      const m = String(raw || "").trim().match(/^(\d{2})[./-](\d{2})[./-](\d{4})$/);
+      if (!m) return null;
+      const day = parseInt(m[1], 10);
+      const month = parseInt(m[2], 10);
+      const year = parseInt(m[3], 10);
+      const timestamp = new Date(year, month - 1, day).getTime();
+      if (Number.isNaN(timestamp)) return null;
+      return {
+        raw,
+        day,
+        month,
+        year,
+        timestamp,
+        normalized: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+      };
+    };
+
+    const announcedAppointmentDates = (step1Result.dates || [])
+      .map(parseAnnouncedAppointmentDate)
+      .filter(Boolean)
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    const preferredAppointmentDate = announcedAppointmentDates[0] || null;
+    if (preferredAppointmentDate) {
+      console.log(`  [BOOK] En erken ilan edilen randevu tarihi hedeflenecek: ${preferredAppointmentDate.raw}`);
+    }
     
     if (!step1Result.clicked) {
       const ss = await takeScreenshotBase64(page);
@@ -2795,7 +2823,7 @@ async function bookEarliestAppointment(page, account) {
     }
 
     const ss1 = await takeScreenshotBase64(page);
-    await idataLog("appt_step1_ileri", `✅ İLERİ tıklandı | Tarihler: ${(step1Result.dates || []).join(", ")} | Hesap: ${account.email}`, ss1);
+    await idataLog("appt_step1_ileri", `✅ İLERİ tıklandı | Tarihler: ${(step1Result.dates || []).join(", ")} | Hedef: ${preferredAppointmentDate?.raw || "ilk yeşil"} | Hesap: ${account.email}`, ss1);
     
     await delay(3000, 5000);
 

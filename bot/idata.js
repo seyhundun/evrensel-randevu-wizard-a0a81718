@@ -4372,8 +4372,8 @@ async function bookEarliestAppointment(page, account) {
 
         await delay(500, 1000);
 
-        // ===== TAMAM'dan sonra yeniden tarih seç (yeşil günün ortasından + postback) =====
-        const retryDateInfo = await page.evaluate(() => {
+        // ===== TAMAM'dan sonra yeniden tarih seç (sadece yeşil + en erken) =====
+        const retryDateInfo = await page.evaluate((preferredDay) => {
           const calContainers = document.querySelectorAll(
             ".datepicker, .datepicker-dropdown, .bootstrap-datetimepicker-widget, " +
             ".datepicker-days, .flatpickr-calendar, .ui-datepicker, " +
@@ -4391,19 +4391,22 @@ async function bookEarliestAppointment(page, account) {
               const classBlob = `${d.className || ""} ${childFlagEl?.className || ""}`.toLowerCase();
               if (d.classList.contains("disabled") || d.classList.contains("off") || d.classList.contains("old") || classBlob.includes("disabled-day")) continue;
 
-              const dayNum = parseInt(text);
+              const dayNum = parseInt(text, 10);
               const tdBg = window.getComputedStyle(d).backgroundColor;
               const childBg = childFlagEl ? window.getComputedStyle(childFlagEl).backgroundColor : "";
               const bgColor = childBg && childBg !== "rgba(0, 0, 0, 0)" ? childBg : tdBg;
               const rgbMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
               let isGreen = false;
+              let isYellow = false;
               if (rgbMatch) {
-                const r = parseInt(rgbMatch[1]), g = parseInt(rgbMatch[2]), b = parseInt(rgbMatch[3]);
+                const r = parseInt(rgbMatch[1], 10), g = parseInt(rgbMatch[2], 10), b = parseInt(rgbMatch[3], 10);
                 isGreen = g > 100 && g > r * 1.2 && g > b * 1.2;
+                isYellow = r > 200 && g > 150 && b < 120;
               }
               if (d.classList.contains("bg-success") || d.classList.contains("success") || classBlob.includes("enabled-day") || classBlob.includes("bg-success")) isGreen = true;
+              if (d.classList.contains("bg-warning") || d.classList.contains("warning") || d.classList.contains("today") || d.classList.contains("active") || classBlob.includes("bg-warning") || classBlob.includes("warning") || classBlob.includes("active")) isYellow = true;
+              if (!isGreen || isYellow) continue;
 
-              // ASP.NET postback bilgisi
               const innerLink = d.querySelector("a[href*='doPostBack'], a[href*='javascript'], a");
               const postbackHref = innerLink ? (innerLink.getAttribute("href") || "") : "";
               let postbackTarget = null, postbackArg = null;
@@ -4413,20 +4416,17 @@ async function bookEarliestAppointment(page, account) {
               const clickableEl = innerLink || d;
               const rect = clickableEl.getBoundingClientRect();
               if (rect.width > 0 && rect.height > 0) {
-                allDays.push({ day: dayNum, isGreen, x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, postbackTarget, postbackArg, hasLink: !!innerLink });
+                allDays.push({ day: dayNum, x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, postbackTarget, postbackArg, hasLink: !!innerLink });
               }
             }
           }
-          const greenDays = allDays.filter(d => d.isGreen).sort((a, b) => a.day - b.day);
-          const clickableDays = allDays.filter(d => d.hasLink || d.isGreen).sort((a, b) => a.day - b.day);
-          const pool = greenDays.length > 0 ? greenDays : clickableDays;
-          // İlk yeşili değil, bir sonrakini (2. uygun gün) seç
-          if (pool.length > 0) {
-            const target = pool.length > 1 ? pool[1] : pool[0];
+          const greenDays = allDays.sort((a, b) => a.day - b.day);
+          if (greenDays.length > 0) {
+            const target = greenDays.find(d => d.day === preferredDay) || greenDays[0];
             return { found: true, day: target.day, x: target.x, y: target.y, greenCount: greenDays.length, postbackTarget: target.postbackTarget, postbackArg: target.postbackArg, hasLink: target.hasLink };
           }
           return { found: false };
-        });
+        }, targetDay);
 
         if (retryDateInfo.found) {
           console.log(`  [BOOK] 📅 Retry tarih seçimi: Gün ${retryDateInfo.day} (${retryDateInfo.greenCount} yeşil, postback=${!!retryDateInfo.postbackTarget})`);

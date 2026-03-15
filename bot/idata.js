@@ -1917,8 +1917,11 @@ async function loginToIdata(page, account) {
           textLike,
           metaText,
           isCaptcha: /captcha|mailconfirm|do[gğ]rulama|verification/.test(metaText),
-          isMembership: /üyelik|uyelik|membership|member/.test(metaText),
-          isEmail: /e-?posta|email|mail/.test(metaText),
+          isMembership: /üyelik|uyelik|membership|member|numara/.test(metaText),
+          isEmail: /e-?posta|email/.test(metaText) && !/captcha|mailconfirm|do[gğ]rulama|verification/.test(metaText),
+          name: el.name || '',
+          id: el.id || '',
+          placeholder: el.placeholder || '',
         };
       }, input);
 
@@ -1939,42 +1942,95 @@ async function loginToIdata(page, account) {
     const primaryAuthInput = membershipInput || emailInput || nonCaptchaTextInputs[0]?.el || null;
     const secondaryAuthInput = nonCaptchaTextInputs.find((item) => item.el !== primaryAuthInput)?.el || null;
 
+    // Detaylı input debug logu
+    for (let i = 0; i < textCandidates.length; i++) {
+      const m = textCandidates[i].meta;
+      console.log(`  [LOGIN] Input[${i}]: name="${m.name}" id="${m.id}" ph="${m.placeholder}" meta="${m.metaText}" captcha=${m.isCaptcha} member=${m.isMembership} email=${m.isEmail}`);
+    }
+    for (let i = 0; i < passwordCandidates.length; i++) {
+      const m = passwordCandidates[i].meta;
+      console.log(`  [LOGIN] Pass[${i}]: name="${m.name}" id="${m.id}" ph="${m.placeholder}"`);
+    }
+    
     console.log(`  [LOGIN] Görünür input: text=${textCandidates.length}, auth=${nonCaptchaTextInputs.length}, password=${passwordCandidates.length}`);
-    await idataLog("login_form", `Input eşleştirme: auth=${nonCaptchaTextInputs.length}, pass=${passwordCandidates.length}, captcha=${preDetectedCaptchaInput ? "var" : "yok"}`);
+    console.log(`  [LOGIN] Eşleşme: membership=${membershipInput ? "✅" : "❌"} email=${emailInput ? "✅" : "❌"} primary=${primaryAuthInput ? "✅" : "❌"} secondary=${secondaryAuthInput ? "✅" : "❌"} captcha=${preDetectedCaptchaInput ? "✅" : "❌"}`);
+    await idataLog("login_form", `Input: text=${textCandidates.length} auth=${nonCaptchaTextInputs.length} pass=${passwordCandidates.length} | member=${membershipInput ? "var" : "yok"} email=${emailInput ? "var" : "yok"} captcha=${preDetectedCaptchaInput ? "var" : "yok"} | meta: ${textCandidates.map(t => `[${t.meta.name||t.meta.id||t.meta.placeholder||"?"}]`).join(",")}`);
 
-    // 1) Üyelik/kimlik alanı
-    if (account.membership_number && primaryAuthInput) {
-      console.log(`  [LOGIN] Üyelik no giriliyor: ${account.membership_number}`);
-      const typed = await humanType(page, primaryAuthInput, account.membership_number, { minDelay: 140, maxDelay: 300, retries: 3 });
-      if (!typed) console.log("  [LOGIN] ⚠ Üyelik no tam yazılamadı");
-      await delay(700, 1200);
+    // Pozisyonel fallback: eğer hiçbir alan regex ile eşleşmediyse, sırayla doldur
+    if (!membershipInput && !emailInput && nonCaptchaTextInputs.length >= 1) {
+      console.log("  [LOGIN] ⚠ Regex eşleşmesi bulunamadı — pozisyonel fallback kullanılacak");
+      await idataLog("login_form", "⚠ Regex eşleşmesi yok, pozisyonel fallback aktif");
     }
 
-    // 2) E-posta alanı (ayrı input varsa oraya, yoksa gerektiğinde secondary'e)
-    if (emailInput) {
-      console.log(`  [LOGIN] E-Posta giriliyor: ${account.email}`);
-      const typed = await humanType(page, emailInput, account.email, { minDelay: 130, maxDelay: 280, retries: 3 });
-      if (!typed) console.log("  [LOGIN] ⚠ E-posta tam yazılamadı");
-      await delay(700, 1200);
-    } else if (!account.membership_number && primaryAuthInput) {
-      console.log(`  [LOGIN] E-Posta (fallback) giriliyor: ${account.email}`);
-      const typed = await humanType(page, primaryAuthInput, account.email, { minDelay: 130, maxDelay: 280, retries: 3 });
-      if (!typed) console.log("  [LOGIN] ⚠ E-posta fallback tam yazılamadı");
-      await delay(700, 1200);
-    } else if (account.membership_number && secondaryAuthInput) {
-      console.log(`  [LOGIN] E-Posta (secondary) giriliyor: ${account.email}`);
-      const typed = await humanType(page, secondaryAuthInput, account.email, { minDelay: 130, maxDelay: 280, retries: 3 });
-      if (!typed) console.log("  [LOGIN] ⚠ E-posta secondary tam yazılamadı");
-      await delay(700, 1200);
+    // 1) Üyelik/kimlik alanı
+    if (account.membership_number) {
+      const target = membershipInput || nonCaptchaTextInputs[0]?.el || null;
+      if (target) {
+        console.log(`  [LOGIN] Üyelik no giriliyor: ${account.membership_number}`);
+        const typed = await humanType(page, target, account.membership_number, { minDelay: 140, maxDelay: 300, retries: 3 });
+        const val = await page.evaluate(el => el?.value || '', target).catch(() => '');
+        console.log(`  [LOGIN] Üyelik no yazıldı mı: ${typed}, alandaki değer: "${val}"`);
+        if (!typed || !val) {
+          console.log("  [LOGIN] ⚠ Üyelik no yazılamadı — click + triple-clear + tekrar dene");
+          await target.click({ clickCount: 3 }).catch(() => {});
+          await page.keyboard.press('Backspace').catch(() => {});
+          await delay(500, 800);
+          await humanType(page, target, account.membership_number, { minDelay: 140, maxDelay: 300, retries: 2 });
+        }
+        await delay(700, 1200);
+      } else {
+        console.log("  [LOGIN] ❌ Üyelik no alanı bulunamadı!");
+        await idataLog("login_form", "❌ Üyelik no input bulunamadı");
+      }
+    }
+
+    // 2) E-posta alanı
+    {
+      // Eğer üyelik no varsa e-posta ikinci alandır, yoksa birinci alan
+      const target = emailInput 
+        || (account.membership_number ? (secondaryAuthInput || nonCaptchaTextInputs[1]?.el) : (primaryAuthInput || nonCaptchaTextInputs[0]?.el))
+        || null;
+      if (target) {
+        console.log(`  [LOGIN] E-Posta giriliyor: ${account.email}`);
+        const typed = await humanType(page, target, account.email, { minDelay: 130, maxDelay: 280, retries: 3 });
+        const val = await page.evaluate(el => el?.value || '', target).catch(() => '');
+        console.log(`  [LOGIN] E-Posta yazıldı mı: ${typed}, alandaki değer: "${val}"`);
+        if (!typed || !val) {
+          console.log("  [LOGIN] ⚠ E-posta yazılamadı — click + triple-clear + tekrar dene");
+          await target.click({ clickCount: 3 }).catch(() => {});
+          await page.keyboard.press('Backspace').catch(() => {});
+          await delay(500, 800);
+          await humanType(page, target, account.email, { minDelay: 130, maxDelay: 280, retries: 2 });
+        }
+        await delay(700, 1200);
+      } else {
+        console.log("  [LOGIN] ❌ E-Posta alanı bulunamadı!");
+        await idataLog("login_form", "❌ E-Posta input bulunamadı");
+      }
     }
 
     // 3) Şifre
     if (passwordCandidates[0]?.el) {
       console.log(`  [LOGIN] Şifre giriliyor`);
       const typed = await humanType(page, passwordCandidates[0].el, account.password, { minDelay: 120, maxDelay: 260, retries: 3 });
-      if (!typed) console.log("  [LOGIN] ⚠ Şifre tam yazılamadı");
+      const val = await page.evaluate(el => el?.value?.length || 0, passwordCandidates[0].el).catch(() => 0);
+      console.log(`  [LOGIN] Şifre yazıldı mı: ${typed}, karakter sayısı: ${val}`);
+      if (!typed || val === 0) {
+        console.log("  [LOGIN] ⚠ Şifre yazılamadı — tekrar dene");
+        await passwordCandidates[0].el.click({ clickCount: 3 }).catch(() => {});
+        await page.keyboard.press('Backspace').catch(() => {});
+        await delay(500, 800);
+        await humanType(page, passwordCandidates[0].el, account.password, { minDelay: 120, maxDelay: 260, retries: 2 });
+      }
       await delay(1000, 1800);
+    } else {
+      console.log("  [LOGIN] ❌ Şifre alanı bulunamadı!");
+      await idataLog("login_form", "❌ Şifre input bulunamadı");
     }
+
+    // Tüm alanlar doldurulduktan sonra doğrulama screenshot'ı
+    const preSubmitShot = await takeScreenshotBase64(page);
+    await idataLog("login_form_filled", "Form alanları dolduruldu — CAPTCHA çözülecek", preSubmitShot);
 
     // 4) CAPTCHA çöz ve son text input'a gir
     const captchaCode = await solveImageCaptcha(page, { maxAttempts: 3 });

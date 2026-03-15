@@ -3459,7 +3459,7 @@ async function bookEarliestAppointment(page, account) {
             
             // Tarih formatını bul ve input'a yaz
             await page.evaluate((dayNum) => {
-              const dateInputs = document.querySelectorAll("input[data-provide='datepicker'], input.datepicker, input.hasDatepicker, input[name*='date' i], input[name*='tarih' i], input[placeholder*='Tarih' i], input[placeholder*='tarih' i]");
+              const dateInputs = document.querySelectorAll("input[data-provide='datepicker'], input.datepicker, input.calendarinput, input.flightDate, input.hasDatepicker, input[name*='date' i], input[name*='tarih' i], input[placeholder*='Tarih' i], input[placeholder*='tarih' i]");
               for (const inp of dateInputs) {
                 const rect = inp.getBoundingClientRect();
                 if (rect.width > 0 && rect.height > 0) {

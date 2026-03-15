@@ -249,8 +249,8 @@ sleep 2
 
 Xvfb :98 -screen 0 1920x1080x24 &
 sleep 1
-x11vnc -display :98 -forever -nopw -shared -rfbport 5998 -bg -o /dev/null
-websockify --daemon --web /usr/share/novnc 6081 localhost:5998
+x11vnc -display :98 -forever -shared -rfbport 5901 -rfbauth /root/.vnc/passwd -noxdamage -bg -o /dev/null
+websockify --daemon --web /usr/share/novnc 6081 localhost:5901
 
 pm2 restart idata-bot
 echo "✅ iDATA ekranı yeniden başlatıldı"`}

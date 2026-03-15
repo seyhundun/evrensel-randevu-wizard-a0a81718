@@ -3026,6 +3026,7 @@ async function bookEarliestAppointment(page, account) {
       }
       
       if (targetInput) {
+        const inputRect = targetInput.getBoundingClientRect();
         // Input-group içindeki takvim ikonunu bul
         const parent = targetInput.closest(".input-group, .form-group, div");
         if (parent) {
@@ -3037,17 +3038,35 @@ async function bookEarliestAppointment(page, account) {
           );
           for (const icon of icons) {
             icon.click();
-            return { clicked: true, method: "icon_in_parent", tag: icon.tagName, cls: (icon.className || "").substring(0, 80) };
+            return {
+              clicked: true,
+              method: "icon_in_parent",
+              tag: icon.tagName,
+              cls: (icon.className || "").substring(0, 80),
+              inputX: inputRect.x + inputRect.width / 2,
+              inputY: inputRect.y + inputRect.height / 2,
+            };
           }
           const addon = parent.querySelector(".input-group-addon, .input-group-btn, .input-group-append");
           if (addon) {
             addon.click();
-            return { clicked: true, method: "addon_click", tag: addon.tagName };
+            return {
+              clicked: true,
+              method: "addon_click",
+              tag: addon.tagName,
+              inputX: inputRect.x + inputRect.width / 2,
+              inputY: inputRect.y + inputRect.height / 2,
+            };
           }
         }
         targetInput.click();
         targetInput.focus();
-        return { clicked: true, method: "input_click" };
+        return {
+          clicked: true,
+          method: "input_click",
+          inputX: inputRect.x + inputRect.width / 2,
+          inputY: inputRect.y + inputRect.height / 2,
+        };
       }
       
       // 3) Tüm takvim ikonlarını dene (ilki = Randevu Tarihi olmalı)
@@ -3056,8 +3075,17 @@ async function bookEarliestAppointment(page, account) {
         ".input-group-addon, img[src*='calendar']"
       ));
       if (allIcons.length > 0) {
-        allIcons[0].click();
-        return { clicked: true, method: "first_icon", tag: allIcons[0].tagName, totalIcons: allIcons.length };
+        const first = allIcons[0];
+        const rect = first.getBoundingClientRect();
+        first.click();
+        return {
+          clicked: true,
+          method: "first_icon",
+          tag: first.tagName,
+          totalIcons: allIcons.length,
+          inputX: rect.x + rect.width / 2,
+          inputY: rect.y + rect.height / 2,
+        };
       }
       
       return { clicked: false };
@@ -3133,82 +3161,117 @@ async function bookEarliestAppointment(page, account) {
       }
     }
     
-    // Yeşil günleri tespit et — koordinatlarını al (mouse.click için)
-    const dateInfo = await page.evaluate((tDay) => {
-      const calContainers = document.querySelectorAll(
+    // Yeşil günleri tespit et — doğru takvimi hedefle (input'a en yakın görünür takvim)
+    const dateInfo = await page.evaluate((tDay, anchorX, anchorY) => {
+      const calContainers = Array.from(document.querySelectorAll(
         ".datepicker, .datepicker-dropdown, .bootstrap-datetimepicker-widget, " +
         ".datepicker-days, .flatpickr-calendar, .ui-datepicker, " +
         "[class*='datepicker'], [class*='calendar'], .picker-open, table.table-condensed"
-      );
-      
-      let allDays = [];
-      
+      ));
+
+      const candidateCalendars = [];
+
       for (const cal of calContainers) {
         const style = window.getComputedStyle(cal);
+        const calRect = cal.getBoundingClientRect();
         if (style.display === "none" || style.visibility === "hidden") continue;
-        
+        if (calRect.width < 140 || calRect.height < 120) continue;
+
+        const days = [];
         const tds = cal.querySelectorAll("td");
         for (const d of tds) {
           const text = (d.innerText || d.textContent || "").trim();
           if (!/^\d{1,2}$/.test(text)) continue;
           if (d.classList.contains("disabled") || d.classList.contains("off") || d.classList.contains("old")) continue;
-          
+
           const dayNum = parseInt(text);
           const bgColor = window.getComputedStyle(d).backgroundColor;
-          
+
           const rgbMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
           let isGreen = false, isRed = false, isYellow = false;
-          
+
           if (rgbMatch) {
             const r = parseInt(rgbMatch[1]), g = parseInt(rgbMatch[2]), b = parseInt(rgbMatch[3]);
             isGreen = g > 100 && g > r * 1.3 && g > b * 1.3;
             isRed = r > 150 && r > g * 1.5 && r > b * 1.5;
             isYellow = r > 200 && g > 150 && b < 100;
           }
-          
+
           if (d.classList.contains("bg-success") || d.classList.contains("success")) isGreen = true;
           if (d.classList.contains("bg-danger") || d.classList.contains("danger")) isRed = true;
           if (d.classList.contains("bg-warning") || d.classList.contains("warning") || d.classList.contains("today") || d.classList.contains("active")) isYellow = true;
-          
-          // ASP.NET postback: <td> içindeki <a> etiketini bul
+
           const innerLink = d.querySelector("a[href*='doPostBack'], a[href*='javascript'], a");
           const postbackHref = innerLink ? (innerLink.getAttribute("href") || "") : "";
-          // __doPostBack argümanlarını çıkar
           let postbackTarget = null, postbackArg = null;
           const pbMatch = postbackHref.match(/__doPostBack\(['"](.*?)['"],\s*['"](.*?)['"]\)/);
           if (pbMatch) { postbackTarget = pbMatch[1]; postbackArg = pbMatch[2]; }
-          
+
           const clickableEl = innerLink || d;
           const rect = clickableEl.getBoundingClientRect();
-          allDays.push({ 
-            day: dayNum, isGreen, isRed, isYellow, bgColor, 
-            x: rect.x + rect.width / 2, y: rect.y + rect.height / 2,
-            hasLink: !!innerLink, postbackTarget, postbackArg,
+
+          days.push({
+            day: dayNum,
+            isGreen,
+            isRed,
+            isYellow,
+            bgColor,
+            x: rect.x + rect.width / 2,
+            y: rect.y + rect.height / 2,
+            hasLink: !!innerLink,
+            postbackTarget,
+            postbackArg,
             linkHref: postbackHref.substring(0, 200)
           });
         }
+
+        if (days.length < 20) continue; // gerçek takvim değilse ele
+
+        const calCenterX = calRect.x + calRect.width / 2;
+        const calCenterY = calRect.y + calRect.height / 2;
+        const distance = (anchorX != null && anchorY != null)
+          ? Math.hypot(calCenterX - anchorX, calCenterY - anchorY)
+          : 9999;
+
+        candidateCalendars.push({ days, distance, width: calRect.width, height: calRect.height });
       }
-      
+
+      if (candidateCalendars.length === 0) {
+        return { found: false, totalDays: 0, reason: "calendar_not_found" };
+      }
+
+      candidateCalendars.sort((a, b) => a.distance - b.distance);
+      const selectedCalendar = candidateCalendars[0];
+      const allDays = selectedCalendar.days;
+
       const greenDays = allDays.filter(d => d.isGreen).sort((a, b) => a.day - b.day);
       const nonRedDays = allDays.filter(d => !d.isRed && !d.isYellow).sort((a, b) => a.day - b.day);
       const pool = greenDays.length > 0 ? greenDays : (nonRedDays.length > 0 ? nonRedDays : allDays);
-      
+
       if (pool.length > 0) {
         let target = null;
         if (tDay) target = pool.find(d => d.day === tDay);
-        // İlk yeşil gün yerine bir sonraki (2.) yeşil günü seç (varsa)
         if (!target) target = pool.length > 1 ? pool[1] : pool[0];
-        return { 
-          found: true, day: target.day, isGreen: target.isGreen,
-          x: target.x, y: target.y,
-          totalDays: allDays.length, greenCount: greenDays.length, bgColor: target.bgColor,
-          hasLink: target.hasLink, postbackTarget: target.postbackTarget, postbackArg: target.postbackArg,
-          linkHref: target.linkHref
+
+        return {
+          found: true,
+          day: target.day,
+          isGreen: target.isGreen,
+          x: target.x,
+          y: target.y,
+          totalDays: allDays.length,
+          greenCount: greenDays.length,
+          bgColor: target.bgColor,
+          hasLink: target.hasLink,
+          postbackTarget: target.postbackTarget,
+          postbackArg: target.postbackArg,
+          linkHref: target.linkHref,
+          calendarDistance: selectedCalendar.distance,
         };
       }
-      
-      return { found: false, totalDays: allDays.length };
-    }, targetDay);
+
+      return { found: false, totalDays: allDays.length, reason: "no_days_in_pool" };
+    }, targetDay, calIconClicked?.inputX ?? null, calIconClicked?.inputY ?? null);
 
     console.log(`  [BOOK] Tarih bilgisi: ${JSON.stringify(dateInfo)}`);
     
@@ -3216,36 +3279,35 @@ async function bookEarliestAppointment(page, account) {
     
     if (dateInfo.found) {
       console.log(`  [BOOK] Tarih bilgisi: hasLink=${dateInfo.hasLink} postbackTarget=${dateInfo.postbackTarget} linkHref=${dateInfo.linkHref}`);
-      
-      // İnsan taklidi: takvimde bezier mouse hareketleri yap + ortadan tıkla
+
+      const verifyDateSelection = async () => {
+        return await page.evaluate((dayNum) => {
+          const calContainers = document.querySelectorAll("[class*='datepicker'], [class*='calendar'], table.table-condensed");
+          for (const cal of calContainers) {
+            const tds = cal.querySelectorAll("td");
+            for (const d of tds) {
+              const text = (d.innerText || d.textContent || "").trim();
+              if (parseInt(text) === dayNum) {
+                const cls = (d.className || "").toLowerCase();
+                const isActive = cls.includes("active") || cls.includes("selected");
+                if (isActive) return { isActive: true, cls };
+              }
+            }
+          }
+          return { isActive: false, cls: "" };
+        }, dateInfo.day);
+      };
+
       try {
-        // Hedef güne insansı tıklama (bezier curve + pre-moves + mousedown/up)
         await humanClick(page, dateInfo.x, dateInfo.y, { preMovesNear: true });
         console.log(`  [BOOK] ✅ HumanClick tarih: Gün ${dateInfo.day} (x:${Math.round(dateInfo.x)}, y:${Math.round(dateInfo.y)})`);
-        dateSelected = { selected: true, day: dateInfo.day, isGreen: dateInfo.isGreen, greenCount: dateInfo.greenCount, bgColor: dateInfo.bgColor };
       } catch (mouseErr) {
         console.log(`  [BOOK] Mouse.click tarih hata: ${mouseErr.message}`);
       }
-      
+
       await delay(1500, 2500);
-      
-      // ASP.NET postback doğrulaması — eğer seçim gerçekleşmediyse __doPostBack çağır
-      const dateVerify = await page.evaluate((dayNum) => {
-        const calContainers = document.querySelectorAll("[class*='datepicker'], [class*='calendar'], table.table-condensed");
-        for (const cal of calContainers) {
-          const tds = cal.querySelectorAll("td");
-          for (const d of tds) {
-            const text = (d.innerText || d.textContent || "").trim();
-            if (parseInt(text) === dayNum) {
-              const cls = (d.className || "").toLowerCase();
-              return { isActive: cls.includes("active") || cls.includes("selected") };
-            }
-          }
-        }
-        return { isActive: false };
-      }, dateInfo.day);
-      
-      // Eğer hala aktif değilse, __doPostBack ile dene
+      let dateVerify = await verifyDateSelection();
+
       if (!dateVerify.isActive && dateInfo.postbackTarget) {
         console.log(`  [BOOK] Tarih aktif değil, __doPostBack çağrılıyor: ${dateInfo.postbackTarget}`);
         await page.evaluate((target, arg) => {
@@ -3253,10 +3315,10 @@ async function bookEarliestAppointment(page, account) {
             window.__doPostBack(target, arg);
           }
         }, dateInfo.postbackTarget, dateInfo.postbackArg || "");
-        await delay(2000, 3000);
+        await delay(1500, 2500);
+        dateVerify = await verifyDateSelection();
       }
-      
-      // Hala seçilmediyse — içindeki <a> etiketine tıkla
+
       if (!dateVerify.isActive && dateInfo.hasLink) {
         console.log("  [BOOK] Tarih aktif değil, inner <a> link'e tıklanıyor...");
         await page.evaluate((dayNum) => {
@@ -3278,14 +3340,13 @@ async function bookEarliestAppointment(page, account) {
           }
           return false;
         }, dateInfo.day);
-        await delay(2000, 3000);
+        await delay(1500, 2500);
+        dateVerify = await verifyDateSelection();
       }
-      
-      // Son fallback: element handle
+
       if (!dateVerify.isActive) {
         console.log("  [BOOK] Tarih aktif değil, element handle ile deneniyor...");
         try {
-          // Önce <a> etiketlerini dene (ASP.NET postback)
           const linkHandles = await page.$$("td a[href*='doPostBack'], td a[href*='javascript'], td a");
           for (const elHandle of linkHandles) {
             const parentText = await page.evaluate(el => {
@@ -3295,13 +3356,13 @@ async function bookEarliestAppointment(page, account) {
             if (parseInt(parentText) === dateInfo.day) {
               await elHandle.click();
               console.log(`  [BOOK] ✅ Element handle <a> tarih: Gün ${dateInfo.day}`);
-              dateSelected.selected = true;
               break;
             }
           }
-          
-          // Eğer link bulunamadıysa td'ye tıkla
-          if (!dateSelected.selected) {
+
+          dateVerify = await verifyDateSelection();
+
+          if (!dateVerify.isActive) {
             const tdElements = await page.$$("td");
             for (const elHandle of tdElements) {
               const elText = await page.evaluate(el => (el.innerText || el.textContent || "").trim(), elHandle);
@@ -3318,8 +3379,18 @@ async function bookEarliestAppointment(page, account) {
         } catch (ehErr) {
           console.log(`  [BOOK] Element handle tarih hata: ${ehErr.message}`);
         }
+
         await delay(1000, 1500);
+        dateVerify = await verifyDateSelection();
       }
+
+      dateSelected = {
+        selected: !!dateVerify.isActive,
+        day: dateInfo.day,
+        isGreen: dateInfo.isGreen,
+        greenCount: dateInfo.greenCount,
+        bgColor: dateInfo.bgColor,
+      };
     }
 
     console.log(`  [BOOK] Tarih seçimi: ${JSON.stringify(dateSelected)}`);
@@ -3359,18 +3430,34 @@ async function bookEarliestAppointment(page, account) {
     console.log("  [BOOK] Step 4: Turuncu saat butonu aranıyor...");
     await delay(2000, 3000);
 
-    // Önce saat butonlarının konumunu tespit et
+    // Önce saat butonlarının konumunu tespit et (sadece gerçekten tıklanabilir elemanlar)
     const timeButtonInfo = await page.evaluate(() => {
-      const candidates = Array.from(document.querySelectorAll("a, button, span, div, li, label, td"));
+      const candidates = Array.from(document.querySelectorAll("button, a, input[type='button'], input[type='submit'], [role='button'], .getdatebtnhour"));
       const timeButtons = [];
+
       for (const el of candidates) {
-        const text = (el.innerText || el.textContent || "").trim();
-        const timeMatch = text.match(/^(\d{2}:\d{2})$/);
+        const rawText = (el.innerText || el.textContent || el.value || "").trim();
+        const timeMatch = rawText.match(/(\d{2}:\d{2})/);
         if (!timeMatch) continue;
+
         const style = window.getComputedStyle(el);
         const isVisible = style.display !== "none" && style.visibility !== "hidden" && el.offsetParent !== null;
-        if (!isVisible || el.offsetHeight < 10) continue;
-        
+        if (!isVisible || el.offsetHeight < 10 || el.offsetWidth < 20) continue;
+
+        const cls = (el.className || "").toLowerCase();
+        const tag = el.tagName;
+        const role = (el.getAttribute("role") || "").toLowerCase();
+        const isLikelyClickable = tag === "BUTTON" || tag === "A" || tag === "INPUT" || role === "button" || cls.includes("btn") || cls.includes("getdatebtnhour");
+        if (!isLikelyClickable) continue;
+
+        // Konteyner div/span yerine gerçek kontrolü hedefle
+        const childControls = Array.from(el.querySelectorAll("button, a, input"));
+        const hasNestedTimeControl = childControls.some(child => {
+          const childTxt = (child.innerText || child.textContent || child.value || "").trim();
+          return childTxt.includes(timeMatch[1]);
+        });
+        if (hasNestedTimeControl && tag !== "BUTTON" && tag !== "A" && tag !== "INPUT") continue;
+
         const bgColor = style.backgroundColor;
         const rgbMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
         let isOrange = false;
@@ -3378,103 +3465,117 @@ async function bookEarliestAppointment(page, account) {
           const r = parseInt(rgbMatch[1]), g = parseInt(rgbMatch[2]), b = parseInt(rgbMatch[3]);
           isOrange = r > 180 && g > 80 && b < 100;
         }
-        const cls = (el.className || "").toLowerCase();
-        if (cls.includes("btn-warning") || cls.includes("btn-orange") || cls.includes("active")) isOrange = true;
-        
-        // ASP.NET postback bilgisi
+        if (cls.includes("btn-warning") || cls.includes("btn-orange") || cls.includes("warning") || cls.includes("active")) isOrange = true;
+
         const href = el.getAttribute("href") || "";
         let postbackTarget = null, postbackArg = null;
         const pbMatch = href.match(/__doPostBack\(['"](.*?)['"],\s*['"](.*?)['"]\)/);
         if (pbMatch) { postbackTarget = pbMatch[1]; postbackArg = pbMatch[2]; }
-        // İçindeki <a> etiketinde de ara
-        if (!postbackTarget && el.tagName !== "A") {
-          const innerA = el.querySelector("a[href*='doPostBack'], a[href*='javascript'], a");
-          if (innerA) {
-            const aHref = innerA.getAttribute("href") || "";
-            const aPb = aHref.match(/__doPostBack\(['"](.*?)['"],\s*['"](.*?)['"]\)/);
-            if (aPb) { postbackTarget = aPb[1]; postbackArg = aPb[2]; }
-          }
-        }
-        
+
         const rect = el.getBoundingClientRect();
-        timeButtons.push({ 
-          time: timeMatch[1], isOrange, bgColor, 
-          tag: el.tagName, cls: (el.className || "").substring(0, 100),
-          x: rect.x + rect.width / 2, 
+        timeButtons.push({
+          time: timeMatch[1],
+          isOrange,
+          bgColor,
+          tag,
+          cls: (el.className || "").substring(0, 120),
+          x: rect.x + rect.width / 2,
           y: rect.y + rect.height / 2,
-          postbackTarget, postbackArg
+          postbackTarget,
+          postbackArg,
         });
       }
-      
-      const orangeButtons = timeButtons.filter(t => t.isOrange);
-      const target = orangeButtons.length > 0 ? orangeButtons[0] : (timeButtons.length > 0 ? timeButtons[0] : null);
-      
-      return { 
-        found: !!target, target, totalSlots: timeButtons.length,
-        allSlots: timeButtons.map(t => ({ time: t.time, isOrange: t.isOrange, tag: t.tag, pb: !!t.postbackTarget }))
+
+      const sorted = [...timeButtons].sort((a, b) => {
+        if (a.isOrange !== b.isOrange) return a.isOrange ? -1 : 1;
+        const aPreferred = /getdatebtnhour|btn-warning|btn/.test(a.cls.toLowerCase());
+        const bPreferred = /getdatebtnhour|btn-warning|btn/.test(b.cls.toLowerCase());
+        if (aPreferred !== bPreferred) return aPreferred ? -1 : 1;
+        return 0;
+      });
+
+      const target = sorted.length > 0 ? sorted[0] : null;
+      return {
+        found: !!target,
+        target,
+        totalSlots: timeButtons.length,
+        allSlots: timeButtons.map(t => ({ time: t.time, isOrange: t.isOrange, tag: t.tag, cls: t.cls.substring(0, 40), pb: !!t.postbackTarget })),
       };
     });
 
     console.log(`  [BOOK] Saat butonları: ${JSON.stringify(timeButtonInfo)}`);
-    
+
     let timeButtonResult = { clicked: false };
-    
+
     if (timeButtonInfo.found && timeButtonInfo.target) {
       const t = timeButtonInfo.target;
-      
-      // İnsan taklidi: saat alanında rastgele mouse hareketleri
-      // İnsan benzeri tıklama: bezier curve + pre-moves + mousedown/up
+      let usedMethod = "human_click";
+
+      const verifyTimeSelection = async () => {
+        return await page.evaluate((targetTime) => {
+          const controls = Array.from(document.querySelectorAll("button, a, input[type='button'], input[type='submit'], [role='button'], .getdatebtnhour"));
+          for (const el of controls) {
+            const txt = (el.innerText || el.textContent || el.value || "").trim();
+            if (!txt.includes(targetTime)) continue;
+
+            const style = window.getComputedStyle(el);
+            const isVisible = style.display !== "none" && style.visibility !== "hidden" && el.offsetParent !== null;
+            if (!isVisible) continue;
+
+            const cls = (el.className || "").toLowerCase();
+            const ariaPressed = (el.getAttribute("aria-pressed") || "").toLowerCase();
+            const bg = style.backgroundColor;
+            const isActive =
+              cls.includes("active") ||
+              cls.includes("selected") ||
+              cls.includes("checked") ||
+              cls.includes("btn-success") ||
+              ariaPressed === "true";
+
+            return { isActive, cls: (el.className || "").substring(0, 100), bg };
+          }
+          return { isActive: false, cls: "", bg: "" };
+        }, t.time);
+      };
+
       try {
         await humanClick(page, t.x, t.y, { preMovesNear: true });
         console.log(`  [BOOK] ✅ HumanClick saat: ${t.time} (x:${Math.round(t.x)}, y:${Math.round(t.y)})`);
-        timeButtonResult = { clicked: true, time: t.time, isOrange: t.isOrange, method: "human_click" };
       } catch (mouseErr) {
+        usedMethod = "human_click_error";
         console.log(`  [BOOK] HumanClick saat hata: ${mouseErr.message}`);
       }
-      
+
       await delay(1500, 2500);
-      
-      // 2) Doğrulama — tıklama algılandı mı?
-      const timeVerify = await page.evaluate((targetTime) => {
-        const candidates = Array.from(document.querySelectorAll("a, button, span, div, li, label, td"));
-        let isActive = false;
-        for (const el of candidates) {
-          const text = (el.innerText || el.textContent || "").trim();
-          if (text === targetTime) {
-            const cls = (el.className || "").toLowerCase();
-            const bg = window.getComputedStyle(el).backgroundColor;
-            isActive = cls.includes("active") || cls.includes("selected") || cls.includes("checked");
-            return { isActive, cls: (el.className || "").substring(0, 80), bg };
-          }
-        }
-        return { isActive: false };
-      }, t.time);
-      
-      console.log(`  [BOOK] Saat doğrulama: ${JSON.stringify(timeVerify)}`);
-      
-      // 3) Seçilmediyse — __doPostBack ile dene
+      let timeVerify = await verifyTimeSelection();
+      console.log(`  [BOOK] Saat doğrulama-1: ${JSON.stringify(timeVerify)}`);
+
       if (!timeVerify.isActive && t.postbackTarget) {
+        usedMethod = "postback";
         console.log(`  [BOOK] Saat aktif değil, __doPostBack çağrılıyor: ${t.postbackTarget}`);
         await page.evaluate((target, arg) => {
           if (typeof window.__doPostBack === "function") {
             window.__doPostBack(target, arg);
           }
         }, t.postbackTarget, t.postbackArg || "");
-        timeButtonResult.method = "postback";
-        await delay(2000, 3000);
+        await delay(1500, 2500);
+        timeVerify = await verifyTimeSelection();
+        console.log(`  [BOOK] Saat doğrulama-2(postback): ${JSON.stringify(timeVerify)}`);
       }
-      
-      // 4) Element handle ile tıkla
+
       if (!timeVerify.isActive) {
+        usedMethod = "element_handle";
         console.log("  [BOOK] Saat aktif değil, element handle ile deneniyor...");
         try {
-          const timeElements = await page.$$("a, button, span, div, li, label, td");
+          const timeElements = await page.$$("button.getdatebtnhour, button.btn-warning, button, a, input[type='button'], input[type='submit']");
           for (const elHandle of timeElements) {
-            const elText = await page.evaluate(el => (el.innerText || el.textContent || "").trim(), elHandle);
-            if (elText === t.time) {
+            const meta = await page.evaluate(el => ({
+              text: (el.innerText || el.textContent || el.value || "").trim(),
+              cls: (el.className || "").toLowerCase(),
+            }), elHandle);
+            if (meta.text.includes(t.time) && (meta.cls.includes("getdatebtnhour") || meta.cls.includes("btn") || meta.cls.includes("warning"))) {
               await elHandle.click();
               console.log(`  [BOOK] ✅ Element handle click: ${t.time}`);
-              timeButtonResult.method = "element_handle";
               break;
             }
           }
@@ -3482,32 +3583,42 @@ async function bookEarliestAppointment(page, account) {
           console.log(`  [BOOK] Element handle hata: ${ehErr.message}`);
         }
         await delay(1000, 2000);
-        
-        // 5) Hala seçilmediyse — full event dispatch
+        timeVerify = await verifyTimeSelection();
+        console.log(`  [BOOK] Saat doğrulama-3(element): ${JSON.stringify(timeVerify)}`);
+      }
+
+      if (!timeVerify.isActive) {
+        usedMethod = "full_event_dispatch";
         await page.evaluate((targetTime) => {
-          const candidates = Array.from(document.querySelectorAll("a, button, span, div, li, label, td"));
-          for (const el of candidates) {
-            const text = (el.innerText || el.textContent || "").trim();
-            if (text === targetTime) {
-              // Tam olay zinciri: focus → pointer → mouse → click
-              el.dispatchEvent(new FocusEvent("focus", { bubbles: true }));
-              el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
-              el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
-              el.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true }));
-              el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true }));
-              el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-              // ASP.NET: anchor href varsa doğrudan çalıştır
-              const href = el.getAttribute && el.getAttribute("href");
-              if (href && href.includes("__doPostBack")) {
-                try { eval(href.replace("javascript:", "")); } catch(e) {}
-              }
-              break;
+          const controls = Array.from(document.querySelectorAll("button, a, input[type='button'], input[type='submit'], [role='button']"));
+          for (const el of controls) {
+            const text = (el.innerText || el.textContent || el.value || "").trim();
+            if (!text.includes(targetTime)) continue;
+            el.dispatchEvent(new FocusEvent("focus", { bubbles: true }));
+            el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
+            el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+            el.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true }));
+            el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true }));
+            el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+            if (typeof el.click === "function") el.click();
+            const href = el.getAttribute && el.getAttribute("href");
+            if (href && href.includes("__doPostBack")) {
+              try { eval(href.replace("javascript:", "")); } catch(e) {}
             }
+            break;
           }
         }, t.time);
-        timeButtonResult.method = "full_event_dispatch";
         await delay(1000, 1500);
+        timeVerify = await verifyTimeSelection();
+        console.log(`  [BOOK] Saat doğrulama-4(dispatch): ${JSON.stringify(timeVerify)}`);
       }
+
+      timeButtonResult = {
+        clicked: !!timeVerify.isActive,
+        time: t.time,
+        isOrange: t.isOrange,
+        method: usedMethod,
+      };
     } else {
       // Fallback: select dropdown
       const selectResult = await page.evaluate(() => {
@@ -3524,7 +3635,7 @@ async function bookEarliestAppointment(page, account) {
       });
       timeButtonResult = selectResult;
     }
-    
+
     console.log(`  [BOOK] Saat seçimi sonuç: ${JSON.stringify(timeButtonResult)}`);
     await delay(2000, 3000);
 
@@ -3833,6 +3944,7 @@ async function bookEarliestAppointment(page, account) {
           hasFatura: lower.includes("fatura bilgileri") || lower.includes("fatura bil"),
           hasSozlesme: lower.includes("okudum") || lower.includes("kabul ediyorum"),
           hasKrediKarti: lower.includes("bankamatik kart") || lower.includes("kredi kartı") || lower.includes("kart numarası") || lower.includes("cvv"),
+          hasDateWarning: lower.includes("bir randevu tarihi ve saati seçiniz") || lower.includes("lütfen başka bir tarih seçin") || lower.includes("başka bir tarih seçin"),
           hasError: lower.includes("hata") || lower.includes("error"),
           success: lower.includes("başarılı") || lower.includes("randevunuz oluşturulmuştur") || lower.includes("onaylandı") || lower.includes("tamamlandı"),
           checkboxCount: checkboxes.length,
@@ -3840,7 +3952,21 @@ async function bookEarliestAppointment(page, account) {
         };
       });
 
-      await idataLog(`appt_page_${pageIdx}`, `Sayfa ${pageIdx} | URL: ${pageState.url} | İleri: ${pageState.hasIleri} | Ödeme: ${pageState.hasPayment} | EkHizmet: ${pageState.hasEkHizmetler} | Fatura: ${pageState.hasFatura} | KrediKartı: ${pageState.hasKrediKarti} | Checkbox: ${pageState.checkboxCount} | Hesap: ${account.email}\n${pageState.bodyPreview.substring(0, 500)}`, ssPage);
+      await idataLog(`appt_page_${pageIdx}`, `Sayfa ${pageIdx} | URL: ${pageState.url} | İleri: ${pageState.hasIleri} | Ödeme: ${pageState.hasPayment} | EkHizmet: ${pageState.hasEkHizmetler} | Fatura: ${pageState.hasFatura} | KrediKartı: ${pageState.hasKrediKarti} | DateWarn: ${pageState.hasDateWarning} | Checkbox: ${pageState.checkboxCount} | Hesap: ${account.email}\n${pageState.bodyPreview.substring(0, 500)}`, ssPage);
+
+      // ===== Tarih/saat warning yakalandı — akışı resetle ve üst döngüden yeniden dene =====
+      if (pageState.hasDateWarning) {
+        await page.evaluate(() => {
+          const btns = Array.from(document.querySelectorAll('.swal2-confirm, .swal2-close, .modal .btn, button, a, [role="button"]'));
+          const ok = btns.find(b => {
+            const txt = (b.innerText || b.textContent || b.value || "").trim().toUpperCase();
+            return txt === "TAMAM" || txt === "OK" || txt === "KAPAT" || txt === "ANLADIM";
+          });
+          if (ok) ok.click();
+        }).catch(() => {});
+        await idataLog("appt_date_warning", `⚠️ Tarih/saat warning Step6'da yakalandı, booking akışı yeniden denenecek | Hesap: ${account.email}`, ssPage);
+        return { success: false, partial: true, error: "date_time_warning_after_ileri" };
+      }
 
       // ===== Başarılı =====
       if (pageState.success) {

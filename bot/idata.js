@@ -359,6 +359,58 @@ async function humanType(page, selector, text, options = {}) {
   return false;
 }
 
+// Bezier curve ile insansı mouse hareketi
+async function humanMouseMoveTo(page, targetX, targetY, options = {}) {
+  try {
+    const { jitter = true, speed = 'normal' } = options;
+    // Mevcut mouse konumunu al (yoksa rastgele başla)
+    const currentPos = await page.evaluate(() => {
+      return { x: window.__mouseX || Math.random() * 500 + 100, y: window.__mouseY || Math.random() * 300 + 100 };
+    });
+    
+    const startX = currentPos.x;
+    const startY = currentPos.y;
+    const dist = Math.sqrt((targetX - startX) ** 2 + (targetY - startY) ** 2);
+    
+    // Adım sayısı mesafeye göre (daha uzun = daha çok adım)
+    const baseSteps = speed === 'fast' ? 12 : speed === 'slow' ? 35 : 20;
+    const steps = Math.max(8, Math.floor(baseSteps + dist / 50 + Math.random() * 10));
+    
+    // Bezier kontrol noktaları (doğal eğri için)
+    const cp1x = startX + (targetX - startX) * (0.2 + Math.random() * 0.3) + (Math.random() - 0.5) * 80;
+    const cp1y = startY + (targetY - startY) * (0.1 + Math.random() * 0.2) + (Math.random() - 0.5) * 60;
+    const cp2x = startX + (targetX - startX) * (0.6 + Math.random() * 0.2) + (Math.random() - 0.5) * 40;
+    const cp2y = startY + (targetY - startY) * (0.7 + Math.random() * 0.2) + (Math.random() - 0.5) * 30;
+    
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      // Ease-in-out: hedefe yaklaşırken yavaşla
+      const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      
+      // Cubic bezier
+      const u = 1 - ease;
+      let x = u*u*u*startX + 3*u*u*ease*cp1x + 3*u*ease*ease*cp2x + ease*ease*ease*targetX;
+      let y = u*u*u*startY + 3*u*u*ease*cp1y + 3*u*ease*ease*cp2y + ease*ease*ease*targetY;
+      
+      // Küçük titreşim ekle (insan eli titremesi)
+      if (jitter && i < steps) {
+        x += (Math.random() - 0.5) * 3;
+        y += (Math.random() - 0.5) * 2;
+      }
+      
+      await page.mouse.move(Math.round(x), Math.round(y));
+      
+      // Değişken hız: başta hızlı, hedefe yakınken yavaş
+      const baseDelay = speed === 'fast' ? 5 : speed === 'slow' ? 20 : 10;
+      const slowdownFactor = t > 0.8 ? 2.5 : t > 0.6 ? 1.5 : 1;
+      await new Promise(r => setTimeout(r, baseDelay * slowdownFactor + Math.random() * 8));
+    }
+    
+    // Mouse konumunu kaydet
+    await page.evaluate((x, y) => { window.__mouseX = x; window.__mouseY = y; }, targetX, targetY);
+  } catch {}
+}
+
 async function humanMove(page) {
   try {
     const vp = page.viewport();
@@ -366,9 +418,36 @@ async function humanMove(page) {
     const h = vp?.height || 768;
     const x = Math.floor(Math.random() * w * 0.6 + w * 0.2);
     const y = Math.floor(Math.random() * h * 0.6 + h * 0.2);
-    await page.mouse.move(x, y, { steps: Math.floor(Math.random() * 15 + 5) });
-    await delay(200, 500);
+    await humanMouseMoveTo(page, x, y);
+    await delay(150, 400);
   } catch {}
+}
+
+// İnsan benzeri tıklama: mouse hareket et + küçük gecikme + tıkla
+async function humanClick(page, x, y, options = {}) {
+  const { preMovesNear = true } = options;
+  
+  // Hedefe yakın 2-3 rastgele nokta (göz gezdirme)
+  if (preMovesNear) {
+    const nearMoves = 2 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < nearMoves; i++) {
+      const rx = x + (Math.random() - 0.5) * 120;
+      const ry = y + (Math.random() - 0.5) * 80;
+      await humanMouseMoveTo(page, rx, ry, { speed: 'fast' });
+      await delay(100 + Math.random() * 300, 200 + Math.random() * 400);
+    }
+  }
+  
+  // Hedef noktaya yavaşça yaklaş
+  await humanMouseMoveTo(page, x, y, { speed: 'slow' });
+  
+  // Küçük gecikme (insanlar hemen tıklamaz)
+  await delay(50 + Math.random() * 150, 100 + Math.random() * 200);
+  
+  // Mouse down + küçük bekleme + mouse up (gerçek tıklama süresi)
+  await page.mouse.down();
+  await new Promise(r => setTimeout(r, 30 + Math.random() * 80)); // 30-110ms basılı tut
+  await page.mouse.up();
 }
 
 async function humanScroll(page, amount = null) {
@@ -3120,24 +3199,11 @@ async function bookEarliestAppointment(page, account) {
     let dateSelected = { selected: false, day: 0, greenCount: 0, bgColor: "" };
     
     if (dateInfo.found) {
-      // İnsan taklidi: takvimde rastgele mouse hareketleri yap
+      // İnsan taklidi: takvimde bezier mouse hareketleri yap + ortadan tıkla
       try {
-        const viewportSize = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
-        // Rastgele 3-5 noktaya mouse hareket ettir (takvim bölgesinde)
-        const humanMoves = 3 + Math.floor(Math.random() * 3);
-        for (let hm = 0; hm < humanMoves; hm++) {
-          const randX = dateInfo.x + (Math.random() - 0.5) * 200;
-          const randY = dateInfo.y + (Math.random() - 0.5) * 150;
-          const clampX = Math.max(50, Math.min(viewportSize.w - 50, randX));
-          const clampY = Math.max(50, Math.min(viewportSize.h - 50, randY));
-          await page.mouse.move(clampX, clampY, { steps: 5 + Math.floor(Math.random() * 10) });
-          await delay(200 + Math.random() * 600, 500 + Math.random() * 800);
-        }
-        // Hedef güne doğru yavaşça hareket et
-        await page.mouse.move(dateInfo.x, dateInfo.y, { steps: 10 + Math.floor(Math.random() * 15) });
-        await delay(300 + Math.random() * 500, 600 + Math.random() * 700);
-        await page.mouse.click(dateInfo.x, dateInfo.y);
-        console.log(`  [BOOK] ✅ Mouse.click tarih: Gün ${dateInfo.day} (x:${Math.round(dateInfo.x)}, y:${Math.round(dateInfo.y)})`);
+        // Hedef güne insansı tıklama (bezier curve + pre-moves + mousedown/up)
+        await humanClick(page, dateInfo.x, dateInfo.y, { preMovesNear: true });
+        console.log(`  [BOOK] ✅ HumanClick tarih: Gün ${dateInfo.day} (x:${Math.round(dateInfo.x)}, y:${Math.round(dateInfo.y)})`);
         dateSelected = { selected: true, day: dateInfo.day, isGreen: dateInfo.isGreen, greenCount: dateInfo.greenCount, bgColor: dateInfo.bgColor };
       } catch (mouseErr) {
         console.log(`  [BOOK] Mouse.click tarih hata: ${mouseErr.message}, DOM click deneniyor...`);
@@ -3284,26 +3350,13 @@ async function bookEarliestAppointment(page, account) {
       const t = timeButtonInfo.target;
       
       // İnsan taklidi: saat alanında rastgele mouse hareketleri
-      const randMoves = 3 + Math.floor(Math.random() * 3); // 3-5 hareket
-      for (let m = 0; m < randMoves; m++) {
-        const rx = t.x + (Math.random() - 0.5) * 200;
-        const ry = t.y + (Math.random() - 0.5) * 120;
-        await page.mouse.move(rx, ry);
-        await delay(200, 800);
-      }
-      
-      // Hedefe yavaş yaklaşma
-      const steps = 10 + Math.floor(Math.random() * 16);
-      await page.mouse.move(t.x, t.y, { steps });
-      await delay(300, 700);
-      
-      // 1) Puppeteer gerçek mouse tıklaması (DOM click yerine fiziksel)
+      // İnsan benzeri tıklama: bezier curve + pre-moves + mousedown/up
       try {
-        await page.mouse.click(t.x, t.y);
-        console.log(`  [BOOK] ✅ Mouse.click saat: ${t.time} (x:${Math.round(t.x)}, y:${Math.round(t.y)})`);
-        timeButtonResult = { clicked: true, time: t.time, isOrange: t.isOrange, method: "mouse_click" };
+        await humanClick(page, t.x, t.y, { preMovesNear: true });
+        console.log(`  [BOOK] ✅ HumanClick saat: ${t.time} (x:${Math.round(t.x)}, y:${Math.round(t.y)})`);
+        timeButtonResult = { clicked: true, time: t.time, isOrange: t.isOrange, method: "human_click" };
       } catch (mouseErr) {
-        console.log(`  [BOOK] Mouse.click hata: ${mouseErr.message}`);
+        console.log(`  [BOOK] HumanClick saat hata: ${mouseErr.message}`);
       }
       
       await delay(1500, 2500);
@@ -3452,16 +3505,112 @@ async function bookEarliestAppointment(page, account) {
           break;
         }
 
-        console.log(`  [BOOK] ⚠️ Tarih/Saat uyarısı tespit edildi! Hızlı retry ${warningRetry + 1}/${MAX_WARNING_RETRIES}`);
+        console.log(`  [BOOK] ⚠️ Tarih/Saat uyarısı tespit edildi! Retry ${warningRetry + 1}/${MAX_WARNING_RETRIES} — TAMAM→TARİH→SAAT→İLERİ`);
         const ssWarn = await takeScreenshotBase64(page);
         await idataLog(
           "appt_warning_retry",
-          `⚠️ Tarih/Saat uyarısı! Hızlı retry ${warningRetry + 1}/${MAX_WARNING_RETRIES} | Aksiyon: TAMAM→İLERİ | Hesap: ${account.email}`,
+          `⚠️ Tarih/Saat uyarısı! Retry ${warningRetry + 1}/${MAX_WARNING_RETRIES} | TAMAM→TARİH→SAAT→İLERİ | Hesap: ${account.email}`,
           ssWarn
         );
 
-        await delay(150, 450);
+        await delay(500, 1000);
 
+        // ===== TAMAM'dan sonra yeniden tarih seç (yeşil günün ortasından) =====
+        const retryDateInfo = await page.evaluate(() => {
+          const calContainers = document.querySelectorAll(
+            ".datepicker, .datepicker-dropdown, .bootstrap-datetimepicker-widget, " +
+            ".datepicker-days, .flatpickr-calendar, .ui-datepicker, " +
+            "[class*='datepicker'], [class*='calendar'], .picker-open, table.table-condensed"
+          );
+          let allDays = [];
+          for (const cal of calContainers) {
+            const style = window.getComputedStyle(cal);
+            if (style.display === "none" || style.visibility === "hidden") continue;
+            const tds = cal.querySelectorAll("td");
+            for (const d of tds) {
+              const text = (d.innerText || d.textContent || "").trim();
+              if (!/^\d{1,2}$/.test(text)) continue;
+              if (d.classList.contains("disabled") || d.classList.contains("off") || d.classList.contains("old")) continue;
+              const dayNum = parseInt(text);
+              const bgColor = window.getComputedStyle(d).backgroundColor;
+              const rgbMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+              let isGreen = false;
+              if (rgbMatch) {
+                const r = parseInt(rgbMatch[1]), g = parseInt(rgbMatch[2]), b = parseInt(rgbMatch[3]);
+                isGreen = g > 100 && g > r * 1.3 && g > b * 1.3;
+              }
+              if (d.classList.contains("bg-success") || d.classList.contains("success")) isGreen = true;
+              const rect = d.getBoundingClientRect();
+              if (rect.width > 0 && rect.height > 0) {
+                allDays.push({ day: dayNum, isGreen, x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
+              }
+            }
+          }
+          const greenDays = allDays.filter(d => d.isGreen).sort((a, b) => a.day - b.day);
+          const pool = greenDays.length > 0 ? greenDays : allDays;
+          // Rastgele yeşil gün seç (her seferinde farklı denemek için)
+          if (pool.length > 0) {
+            const idx = Math.floor(Math.random() * pool.length);
+            const target = pool[idx];
+            return { found: true, day: target.day, x: target.x, y: target.y, greenCount: greenDays.length };
+          }
+          return { found: false };
+        });
+
+        if (retryDateInfo.found) {
+          console.log(`  [BOOK] 📅 Retry tarih seçimi: Gün ${retryDateInfo.day} (${retryDateInfo.greenCount} yeşil)`);
+          await humanClick(page, retryDateInfo.x, retryDateInfo.y, { preMovesNear: true });
+          await delay(1500, 2500);
+        } else {
+          console.log(`  [BOOK] ⚠️ Retry'da takvimde gün bulunamadı`);
+        }
+
+        // ===== Yeniden saat seç =====
+        await delay(1000, 2000);
+        const retryTimeInfo = await page.evaluate(() => {
+          const candidates = Array.from(document.querySelectorAll("a, button, span, div, li, label, td"));
+          const timeButtons = [];
+          for (const el of candidates) {
+            const text = (el.innerText || el.textContent || "").trim();
+            const timeMatch = text.match(/^(\d{2}:\d{2})$/);
+            if (!timeMatch) continue;
+            const style = window.getComputedStyle(el);
+            const isVisible = style.display !== "none" && style.visibility !== "hidden" && el.offsetParent !== null;
+            if (!isVisible || el.offsetHeight < 10) continue;
+            const bgColor = style.backgroundColor;
+            const rgbMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+            let isOrange = false;
+            if (rgbMatch) {
+              const r = parseInt(rgbMatch[1]), g = parseInt(rgbMatch[2]), b = parseInt(rgbMatch[3]);
+              isOrange = r > 180 && g > 80 && b < 100;
+            }
+            const cls = (el.className || "").toLowerCase();
+            if (cls.includes("btn-warning") || cls.includes("btn-orange") || cls.includes("active")) isOrange = true;
+            const rect = el.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+              timeButtons.push({ time: timeMatch[1], isOrange, x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
+            }
+          }
+          const orangeButtons = timeButtons.filter(t => t.isOrange);
+          // Rastgele saat seç
+          const pool = orangeButtons.length > 0 ? orangeButtons : timeButtons;
+          if (pool.length > 0) {
+            const idx = Math.floor(Math.random() * pool.length);
+            return { found: true, ...pool[idx], totalSlots: timeButtons.length };
+          }
+          return { found: false };
+        });
+
+        if (retryTimeInfo.found) {
+          console.log(`  [BOOK] ⏰ Retry saat seçimi: ${retryTimeInfo.time}`);
+          await humanClick(page, retryTimeInfo.x, retryTimeInfo.y, { preMovesNear: true });
+          await delay(1500, 2500);
+        } else {
+          console.log(`  [BOOK] ⚠️ Retry'da saat butonu bulunamadı`);
+        }
+
+        // ===== Şimdi İLERİ'ye bas =====
+        await delay(500, 1000);
         const ileriRetry = await page.evaluate(() => {
           const candidates = Array.from(
             document.querySelectorAll("a, button, input[type='submit'], input[type='button'], [role='button']")
@@ -3470,30 +3619,20 @@ async function bookEarliestAppointment(page, account) {
             const txt = (el.innerText || el.value || el.textContent || "").trim().toUpperCase();
             return txt === "İLERİ" || txt === "ILERI" || txt === "DEVAM" || txt === "NEXT";
           });
-
           if (ileriBtn) {
             ileriBtn.click();
-            return {
-              clicked: true,
-              text: (ileriBtn.innerText || ileriBtn.value || ileriBtn.textContent || "").trim(),
-            };
+            return { clicked: true, text: (ileriBtn.innerText || ileriBtn.value || ileriBtn.textContent || "").trim() };
           }
-
           const greenBtn = document.querySelector(".btn-success, a.btn-success, button.btn-success");
           if (greenBtn) {
             greenBtn.click();
-            return {
-              clicked: true,
-              text: (greenBtn.innerText || greenBtn.value || greenBtn.textContent || "").trim(),
-              method: "green",
-            };
+            return { clicked: true, text: (greenBtn.innerText || greenBtn.value || greenBtn.textContent || "").trim(), method: "green" };
           }
-
           return { clicked: false };
         });
 
-        console.log(`  [BOOK] ▶️ Hızlı İLERİ sonucu: ${JSON.stringify(ileriRetry)}`);
-        await delay(350, 900);
+        console.log(`  [BOOK] ▶️ Retry İLERİ sonucu: ${JSON.stringify(ileriRetry)}`);
+        await delay(800, 1500);
       }
 
       // Normal popup kontrolü (diğer uyarılar)

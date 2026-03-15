@@ -150,10 +150,10 @@ Xvfb :98 -screen 0 1920x1080x24 &
 sleep 1
 
 # VNC & noVNC
-x11vnc -display :99 -forever -nopw -shared -rfbport 5999 -bg -o /dev/null
-x11vnc -display :98 -forever -nopw -shared -rfbport 5998 -bg -o /dev/null
-websockify --daemon --web /usr/share/novnc 6080 localhost:5999
-websockify --daemon --web /usr/share/novnc 6081 localhost:5998
+x11vnc -display :99 -forever -shared -rfbport 5900 -rfbauth /root/.vnc/passwd -noxdamage -bg -o /dev/null
+x11vnc -display :98 -forever -shared -rfbport 5901 -rfbauth /root/.vnc/passwd -noxdamage -bg -o /dev/null
+websockify --daemon --web /usr/share/novnc 6080 localhost:5900
+websockify --daemon --web /usr/share/novnc 6081 localhost:5901
 
 # ecosystem.config.cjs oluştur
 cat > /root/vfs-bot/bot/ecosystem.config.cjs << 'EOFCONFIG'

@@ -1769,7 +1769,7 @@ async function checkAppointments(config, account) {
     await humanMove(page);
     await solveTurnstile(page);
     await delay(1000, 2000);
-    const queueResult = await waitForLoginFormAfterQueue(page);
+    const queueResult = await waitForLoginFormAfterQueue(page, vfsLoginUrl);
     if (!queueResult.ok) {
       banIpImmediately(activeIp, "queue_or_login_form_timeout");
       const ss = await takeScreenshotBase64(page);

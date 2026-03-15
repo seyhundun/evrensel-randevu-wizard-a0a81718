@@ -3225,21 +3225,14 @@ async function bookEarliestAppointment(page, account) {
     console.log(`  [BOOK] Takvim ikonu: ${JSON.stringify(calIconClicked)}`);
     await delay(2000, 3000);
 
-    // ===== STEP 3: Takvimden en erken YEŞİL günü seç =====
-    // Yeşil = müsait, kırmızı = dolu, sarı/turuncu = bugün
-    const targetTravelDate = account.travel_date || null;
-    let targetDay = null;
-    let targetMonth = null;
-    let targetYear = null;
+    // ===== STEP 3: Takvimden sadece YEŞİL ve en erken günü seç =====
+    // Öncelik: Step 1'de ekranda listelenen en erken randevu tarihi
+    const targetAppointmentDate = preferredAppointmentDate || null;
+    let targetDay = targetAppointmentDate?.day ?? null;
+    let targetMonth = targetAppointmentDate?.month ?? null;
+    let targetYear = targetAppointmentDate?.year ?? null;
     
-    if (targetTravelDate) {
-      const ymd = targetTravelDate.match(/(\d{4})-(\d{2})-(\d{2})/);
-      const dmy = targetTravelDate.match(/(\d{2})[.\/-](\d{2})[.\/-](\d{4})/);
-      if (ymd) { targetYear = parseInt(ymd[1]); targetMonth = parseInt(ymd[2]); targetDay = parseInt(ymd[3]); }
-      else if (dmy) { targetDay = parseInt(dmy[1]); targetMonth = parseInt(dmy[2]); targetYear = parseInt(dmy[3]); }
-    }
-    
-    console.log(`  [BOOK] Step 3: Takvimden en erken yeşil gün seçiliyor... hedef: ${targetDay ? `${targetDay}/${targetMonth}/${targetYear}` : "ilk yeşil gün"}`);
+    console.log(`  [BOOK] Step 3: Sadece yeşil gün seçilecek... hedef: ${targetDay ? `${targetDay}/${targetMonth}/${targetYear}` : "ilk yeşil gün"}`);
     
     // Takvimi hedef aya navigate et (gerekirse)
     if (targetMonth && targetYear) {

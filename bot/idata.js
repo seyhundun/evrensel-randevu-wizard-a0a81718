@@ -3489,22 +3489,46 @@ async function bookEarliestAppointment(page, account) {
       console.log(`  [BOOK] Tarih bilgisi: hasLink=${dateInfo.hasLink} postbackTarget=${dateInfo.postbackTarget} linkHref=${dateInfo.linkHref}`);
 
       const verifyDateSelection = async () => {
-        return await page.evaluate((dayNum) => {
-          // Bootstrap datepicker + ASP.NET takvim desteği
+        return await page.evaluate((dayNum, targetNormalized) => {
+          const normalizeDateValue = (val) => {
+            const raw = String(val || "").trim();
+            if (!raw) return null;
+
+            let match = raw.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/);
+            if (match) {
+              return `${match[1]}-${String(parseInt(match[2], 10)).padStart(2, "0")}-${String(parseInt(match[3], 10)).padStart(2, "0")}`;
+            }
+
+            match = raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+            if (match) {
+              const year = match[3].length === 2 ? `20${match[3]}` : match[3];
+              return `${year}-${String(parseInt(match[2], 10)).padStart(2, "0")}-${String(parseInt(match[1], 10)).padStart(2, "0")}`;
+            }
+
+            return null;
+          };
+
+          const parsePickedDay = (val) => {
+            const normalized = normalizeDateValue(val);
+            if (normalized) return parseInt(normalized.slice(-2), 10);
+            const dayMatch = String(val || "").match(/(\d{1,2})/);
+            return dayMatch ? parseInt(dayMatch[1], 10) : NaN;
+          };
+
           const calContainers = document.querySelectorAll("[class*='datepicker'], [class*='calendar'], table.table-condensed, .datepicker-days table");
           for (const cal of calContainers) {
             const tds = cal.querySelectorAll("td");
             for (const d of tds) {
               const text = (d.innerText || d.textContent || "").trim();
-              if (parseInt(text) === dayNum) {
+              if (parseInt(text, 10) === dayNum) {
                 const cls = (d.className || "").toLowerCase();
                 const isActive = cls.includes("active") || cls.includes("selected") || cls.includes("focused") || cls.includes("highlighted");
-                if (isActive) return { isActive: true, cls };
+                const isMonthCell = !cls.includes("old") && !cls.includes("new") && !cls.includes("off") && !cls.includes("disabled");
+                if (isActive && isMonthCell) return { isActive: true, cls };
               }
             }
           }
-          // Date input değeri gerçekten seçilen günü yansıtıyor mu kontrol et
-          // ÖNEMLİ: Seyahat alanını dışla, yalnızca randevu inputunu doğrula
+
           const travelWords = ["seyahat", "gidiş", "gidis", "travel", "flight", "departure", "baslangic", "başlangıç"];
           const hasTravelWord = (txt) => travelWords.some((w) => txt.includes(w));
 
@@ -3543,32 +3567,34 @@ async function bookEarliestAppointment(page, account) {
               .sort((a, b) => a.dy - b.dy)[0]?.inp || null;
           }
 
-          const parsePickedDay = (val) => {
-            const dayMatch = val.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/) || val.match(/(\d{1,2})/);
-            return dayMatch ? parseInt(dayMatch[1]) : NaN;
-          };
-
           if (targetInput) {
             const v = (targetInput.value || "").trim();
             if (v) {
+              const normalized = normalizeDateValue(v);
+              if (targetNormalized && normalized === targetNormalized) {
+                return { isActive: true, cls: "appt-input-matched-date: " + v };
+              }
               const pickedDay = parsePickedDay(v);
-              if (!Number.isNaN(pickedDay) && pickedDay === dayNum) {
+              if (!targetNormalized && !Number.isNaN(pickedDay) && pickedDay === dayNum) {
                 return { isActive: true, cls: "appt-input-matched-day: " + v };
               }
             }
           }
 
-          // Fallback: seyahat dışı herhangi bir date input hedef günü tutuyorsa aktif say
           for (const inp of nonTravelInputs) {
             const v = (inp.value || "").trim();
             if (!v) continue;
+            const normalized = normalizeDateValue(v);
+            if (targetNormalized && normalized === targetNormalized) {
+              return { isActive: true, cls: "non-travel-input-matched-date: " + v };
+            }
             const pickedDay = parsePickedDay(v);
-            if (!Number.isNaN(pickedDay) && pickedDay === dayNum) {
+            if (!targetNormalized && !Number.isNaN(pickedDay) && pickedDay === dayNum) {
               return { isActive: true, cls: "non-travel-input-matched-day: " + v };
             }
           }
           return { isActive: false, cls: "" };
-        }, dateInfo.day);
+        }, dateInfo.day, dateInfo.normalizedDate || null);
       };
 
       // === DeepSeek simulateRealClick: tam mouse event chain ===

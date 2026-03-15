@@ -4105,8 +4105,16 @@ async function bookEarliestAppointment(page, account) {
         return { success: false, partial: true, error: "date_time_warning_after_ileri" };
       }
 
-      // ===== Başarılı =====
-      if (pageState.success) {
+      // ===== Dashboard/duyurular sayfasına geri atıldıysa booking'i yeniden başlat =====
+      if (pageState.hasDashboardHome) {
+        console.log("  [BOOK] ⚠️ Akış dashboard/duyurular sayfasına döndü (seçim backend'e işlenmemiş olabilir). Yeniden denenecek.");
+        await idataLog("appt_redirect_dashboard", `⚠️ Akış duyurular/dashboard sayfasına döndü, booking yeniden denenecek | URL: ${pageState.url} | Hesap: ${account.email}`, ssPage);
+        try {
+          await page.goto(CONFIG.APPOINTMENT_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
+          await delay(2000, 3500);
+        } catch (_) {}
+        return { success: false, partial: true, error: "redirected_dashboard_after_selection" };
+      }
         startAlarm();
         await idataLog("appt_booked", `🎉 ÖDEME BAŞARILI — RANDEVU ALINDI! | Hesap: ${account.email}`, ssPage);
         return { success: true, date: dateSelected?.day || "?" };

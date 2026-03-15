@@ -3347,80 +3347,177 @@ async function bookEarliestAppointment(page, account) {
         }, dateInfo.day);
       };
 
-      // === YÖNTEM 1: humanClick + jQuery datepicker setDate ===
+      // === DeepSeek simulateRealClick: tam mouse event chain ===
+      const simulateRealClickOnDay = async (targetX, targetY) => {
+        await page.evaluate((x, y) => {
+          const element = document.elementFromPoint(x, y);
+          if (!element) return false;
+
+          const opts = (bubbles, cancelable = true) => ({
+            view: window, bubbles, cancelable, clientX: x, clientY: y, button: 0, buttons: 1
+          });
+
+          element.dispatchEvent(new MouseEvent('mousemove', opts(true)));
+          element.dispatchEvent(new MouseEvent('mouseover', opts(true)));
+          element.dispatchEvent(new MouseEvent('mouseenter', { ...opts(false), buttons: 0 }));
+          element.dispatchEvent(new MouseEvent('mousedown', opts(true)));
+          element.focus();
+          element.dispatchEvent(new MouseEvent('mouseup', { ...opts(true), buttons: 0 }));
+          element.dispatchEvent(new MouseEvent('click', { ...opts(true), buttons: 0 }));
+          return true;
+        }, targetX, targetY);
+      };
+
+      // === DeepSeek forceDateSelection: datepicker internal state manipülasyonu ===
+      const forceDateSelectionInternal = async (dayNum) => {
+        return await page.evaluate((d) => {
+          // Tüm potansiyel datepicker input'larını bul
+          const inputs = document.querySelectorAll("input.calendarinput, input.flightDate, input[data-provide='datepicker'], input.datepicker");
+          if (!inputs.length || typeof window.jQuery === "undefined") return { success: false, reason: "no_inputs_or_jquery" };
+
+          for (const inp of inputs) {
+            const rect = inp.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) continue;
+
+            // Takvim header'ından ay/yıl oku
+            const header = document.querySelector(".datepicker-switch, .datepicker-days th.datepicker-switch, th.switch");
+            const headerText = header ? header.textContent.trim() : "";
+            const monthNames = {"January":0,"February":1,"March":2,"April":3,"May":4,"June":5,"July":6,"August":7,"September":8,"October":9,"November":10,"December":11,
+              "Ocak":0,"Şubat":1,"Mart":2,"Nisan":3,"Mayıs":4,"Haziran":5,"Temmuz":6,"Ağustos":7,"Eylül":8,"Ekim":9,"Kasım":10,"Aralık":11};
+            let month = new Date().getMonth(), year = new Date().getFullYear();
+            for (const [name, num] of Object.entries(monthNames)) {
+              if (headerText.includes(name)) { month = num; break; }
+            }
+            const ym = headerText.match(/(\d{4})/);
+            if (ym) year = parseInt(ym[1]);
+
+            const dateObj = new Date(year, month, d);
+            const dateStrDash = `${String(d).padStart(2, "0")}-${String(month + 1).padStart(2, "0")}-${year}`;
+
+            // 1) jQuery $.data ile datepicker instance'ını al
+            const dp = window.jQuery.data(inp, 'datepicker') || window.jQuery(inp).data('datepicker');
+            if (dp) {
+              console.log("[FORCE-DATE] datepicker instance bulundu, internal state güncelleniyor...");
+              
+              // viewDate güncelle
+              if (dp.viewDate !== undefined) dp.viewDate = new Date(year, month, d);
+              // selected güncelle
+              if (dp.selected !== undefined) dp.selected = new Date(year, month, d);
+              // date güncelle (bazı sürümlerde)
+              if (dp.date !== undefined) dp.date = new Date(year, month, d);
+              // dates array güncelle
+              if (dp.dates && typeof dp.dates.replace === "function") {
+                dp.dates.replace(dateObj);
+              }
+              
+              // setValue varsa çağır
+              if (typeof dp.setValue === "function") {
+                try { dp.setValue(dateStrDash); } catch(e) { console.log("[FORCE-DATE] setValue hata:", e.message); }
+              }
+              
+              // fill varsa çağır (takvimi yeniden çiz)
+              if (typeof dp.fill === "function") {
+                try { dp.fill(); } catch(e) {}
+              }
+              
+              // update varsa çağır
+              if (typeof dp.update === "function") {
+                try { dp.update(dateObj); } catch(e) {}
+              }
+              
+              // _updateDatepicker varsa çağır
+              if (typeof dp._updateDatepicker === "function") {
+                try { dp._updateDatepicker(); } catch(e) {}
+              }
+
+              // Picker DOM'unda active class güncelle
+              if (dp.picker) {
+                try {
+                  dp.picker.find("td.day").each(function() {
+                    const $this = window.jQuery(this);
+                    $this.removeClass("active");
+                    const dayText = parseInt($this.text());
+                    if (dayText === d && !$this.hasClass("old") && !$this.hasClass("new")) {
+                      $this.addClass("active");
+                    }
+                  });
+                } catch(e) {}
+              }
+            }
+
+            // 2) jQuery datepicker API metodları
+            try {
+              window.jQuery(inp).datepicker("setDate", dateObj);
+              console.log("[FORCE-DATE] datepicker setDate çağrıldı:", dateObj.toISOString());
+            } catch(e1) {
+              try {
+                window.jQuery(inp).datepicker("update", dateStrDash);
+                console.log("[FORCE-DATE] datepicker update çağrıldı:", dateStrDash);
+              } catch(e2) {}
+            }
+
+            // 3) Trigger events
+            window.jQuery(inp).trigger("changeDate");
+            window.jQuery(inp).trigger("change");
+            inp.dispatchEvent(new Event("change", { bubbles: true }));
+
+            // 4) Input değerini native setter ile de ayarla
+            if (!inp.value || !inp.value.includes(String(d))) {
+              const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+              nativeSetter.call(inp, dateStrDash);
+              inp.dispatchEvent(new Event("input", { bubbles: true }));
+              inp.dispatchEvent(new Event("change", { bubbles: true }));
+              inp.dispatchEvent(new Event("blur", { bubbles: true }));
+            }
+
+            // 5) Tüm görünür takvimlerde active class elle ekle
+            document.querySelectorAll("[class*='datepicker'] td.day, table.table-condensed td.day, .datepicker-days td.day").forEach(td => {
+              const text = parseInt((td.innerText || td.textContent || "").trim());
+              if (text === d && !td.classList.contains("old") && !td.classList.contains("new")) {
+                td.classList.add("active");
+              } else {
+                td.classList.remove("active");
+              }
+            });
+
+            return { success: true, inputValue: inp.value, dateStr: dateStrDash };
+          }
+          return { success: false, reason: "no_visible_input" };
+        }, dayNum);
+      };
+
+      // === YÖNTEM 1: humanClick (Puppeteer gerçek mouse) ===
       try {
         await humanClick(page, dateInfo.x, dateInfo.y, { preMovesNear: true });
         console.log(`  [BOOK] ✅ HumanClick tarih: Gün ${dateInfo.day} (x:${Math.round(dateInfo.x)}, y:${Math.round(dateInfo.y)})`);
       } catch (mouseErr) {
         console.log(`  [BOOK] Mouse.click tarih hata: ${mouseErr.message}`);
       }
+      await delay(1000, 1500);
 
-      await delay(1500, 2500);
-      
-      // HumanClick sonrası hemen jQuery datepicker API ile seçimi garanti altına al
-      await page.evaluate((dayNum) => {
-        // iDATA Bootstrap datepicker: td tıklanınca "active" class eklenmeli
-        // Eğer humanClick bunu yapmadıysa, jQuery API ile zorluyoruz
-        const dateInputs = document.querySelectorAll("input.calendarinput, input.flightDate, input[data-provide='datepicker'], input.datepicker");
-        for (const inp of dateInputs) {
-          const rect = inp.getBoundingClientRect();
-          if (rect.width <= 0 || rect.height <= 0) continue;
-          
-          // Mevcut takvim ayını header'dan al
-          const header = document.querySelector(".datepicker-switch, .datepicker-days th.datepicker-switch, th.switch");
-          const headerText = header ? header.textContent.trim() : "";
-          const monthNames = {"January":"01","February":"02","March":"03","April":"04","May":"05","June":"06","July":"07","August":"08","September":"09","October":"10","November":"11","December":"12",
-            "Ocak":"01","Şubat":"02","Mart":"03","Nisan":"04","Mayıs":"05","Haziran":"06","Temmuz":"07","Ağustos":"08","Eylül":"09","Ekim":"10","Kasım":"11","Aralık":"12"};
-          let month = "03", year = "2026";
-          for (const [name, num] of Object.entries(monthNames)) {
-            if (headerText.includes(name)) { month = num; break; }
-          }
-          const yearMatch = headerText.match(/(\d{4})/);
-          if (yearMatch) year = yearMatch[1];
-          
-          // iDATA format: DD-MM-YYYY (tire ile)
-          const dateStrDash = `${String(dayNum).padStart(2, "0")}-${month}-${year}`;
-          const dateStrDot = `${String(dayNum).padStart(2, "0")}.${month}.${year}`;
-
-          // iDATA için ana format her zaman tire
-          const dateStr = dateStrDash;
-          
-          if (typeof window.jQuery !== "undefined") {
-            try {
-              // Önce Date objesiyle setDate dene (en güvenilir)
-              const dateObj = new Date(parseInt(year), parseInt(month) - 1, dayNum);
-              window.jQuery(inp).datepicker("setDate", dateObj);
-              console.log("  [BOOK-jQuery] datepicker setDate çağrıldı:", dateObj.toISOString());
-            } catch (e1) {
-              try {
-                // Fallback: string ile update
-                window.jQuery(inp).datepicker("update", dateStr);
-                console.log("  [BOOK-jQuery] datepicker update çağrıldı:", dateStr);
-              } catch (e2) {
-                console.log("  [BOOK-jQuery] datepicker API başarısız:", e2.message);
-              }
-            }
-            // Event tetikle
-            window.jQuery(inp).trigger("changeDate");
-            window.jQuery(inp).trigger("change");
-          }
-          
-          // Input değerini de ayarla (güvenlik için)
-          if (!inp.value || !inp.value.includes(String(dayNum))) {
-            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-            nativeSetter.call(inp, dateStr);
-            inp.dispatchEvent(new Event("input", { bubbles: true }));
-            inp.dispatchEvent(new Event("change", { bubbles: true }));
-          }
-          break;
-        }
-      }, dateInfo.day);
-
-      await delay(1500, 2000);
       let dateVerify = await verifyDateSelection();
-      console.log(`  [BOOK] jQuery setDate sonrası doğrulama: ${JSON.stringify(dateVerify)}`);
+      console.log(`  [BOOK] humanClick sonrası doğrulama: ${JSON.stringify(dateVerify)}`);
 
-      // === YÖNTEM 2: __doPostBack varsa çağır ===
+      // === YÖNTEM 2: simulateRealClick (tam DOM event chain) ===
+      if (!dateVerify.isActive) {
+        console.log("  [BOOK] Tarih aktif değil, simulateRealClick deneniyor...");
+        await simulateRealClickOnDay(dateInfo.x, dateInfo.y);
+        await delay(1000, 1500);
+        dateVerify = await verifyDateSelection();
+        console.log(`  [BOOK] simulateRealClick sonrası doğrulama: ${JSON.stringify(dateVerify)}`);
+      }
+
+      // === YÖNTEM 3: forceDateSelection (datepicker internal state) ===
+      if (!dateVerify.isActive) {
+        console.log("  [BOOK] Tarih aktif değil, forceDateSelection (internal state) deneniyor...");
+        const forceResult = await forceDateSelectionInternal(dateInfo.day);
+        console.log(`  [BOOK] forceDateSelection sonuç: ${JSON.stringify(forceResult)}`);
+        await delay(1500, 2000);
+        dateVerify = await verifyDateSelection();
+        console.log(`  [BOOK] forceDateSelection sonrası doğrulama: ${JSON.stringify(dateVerify)}`);
+      }
+
+      // === YÖNTEM 4: __doPostBack varsa çağır ===
       if (!dateVerify.isActive && dateInfo.postbackTarget) {
         console.log(`  [BOOK] Tarih aktif değil, __doPostBack çağrılıyor: ${dateInfo.postbackTarget}`);
         await page.evaluate((target, arg) => {
@@ -3432,7 +3529,7 @@ async function bookEarliestAppointment(page, account) {
         dateVerify = await verifyDateSelection();
       }
 
-      // === YÖNTEM 3: Inner <a> link tıkla ===
+      // === YÖNTEM 5: Inner <a> link tıkla ===
       if (!dateVerify.isActive && dateInfo.hasLink) {
         console.log("  [BOOK] Tarih aktif değil, inner <a> link'e tıklanıyor...");
         await page.evaluate((dayNum) => {
@@ -3455,7 +3552,7 @@ async function bookEarliestAppointment(page, account) {
         dateVerify = await verifyDateSelection();
       }
 
-      // === YÖNTEM 4: Element handle + jQuery click ===
+      // === YÖNTEM 6: Element handle + jQuery click ===
       if (!dateVerify.isActive) {
         console.log("  [BOOK] Tarih aktif değil, element handle ile deneniyor...");
         try {
@@ -3476,27 +3573,9 @@ async function bookEarliestAppointment(page, account) {
             await targetGreen.handle.click();
             console.log(`  [BOOK] ✅ Element handle td.enabled-day: Gün ${targetGreen.day}`);
             await delay(500, 1000);
-            
-            // Element handle click sonrası da jQuery setDate çağır
-            await page.evaluate((dayNum) => {
-              const inp = document.querySelector("input.calendarinput, input.flightDate, input[data-provide='datepicker']");
-              if (inp && typeof window.jQuery !== "undefined") {
-                const header = document.querySelector(".datepicker-switch, th.datepicker-switch");
-                const headerText = header ? header.textContent.trim() : "";
-                const monthNames = {"January":"01","February":"02","March":"03","April":"04","May":"05","June":"06","July":"07","August":"08","September":"09","October":"10","November":"11","December":"12",
-                  "Ocak":"01","Şubat":"02","Mart":"03","Nisan":"04","Mayıs":"05","Haziran":"06","Temmuz":"07","Ağustos":"08","Eylül":"09","Ekim":"10","Kasım":"11","Aralık":"12"};
-                let month = 2, year = 2026;
-                for (const [name, num] of Object.entries(monthNames)) {
-                  if (headerText.includes(name)) { month = parseInt(num) - 1; break; }
-                }
-                const ym = headerText.match(/(\d{4})/);
-                if (ym) year = parseInt(ym[1]);
-                try {
-                  window.jQuery(inp).datepicker("setDate", new Date(year, month, dayNum));
-                  window.jQuery(inp).trigger("changeDate").trigger("change");
-                } catch(e) {}
-              }
-            }, dateInfo.day);
+            // Element handle sonrası da forceDateSelection çağır
+            const forceResult2 = await forceDateSelectionInternal(targetGreen.day);
+            console.log(`  [BOOK] Element handle + force sonuç: ${JSON.stringify(forceResult2)}`);
           }
           await delay(1000, 1500);
           dateVerify = await verifyDateSelection();

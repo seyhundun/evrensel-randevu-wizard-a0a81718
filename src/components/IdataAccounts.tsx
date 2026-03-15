@@ -46,6 +46,7 @@ interface IdataAccount {
   residence_city: string | null;
   idata_office: string | null;
   travel_purpose: string | null;
+  travel_date: string | null;
   invoice_type: string;
   invoice_city: string | null;
   invoice_district: string | null;

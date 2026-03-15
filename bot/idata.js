@@ -3452,7 +3452,19 @@ async function bookEarliestAppointment(page, account) {
       
       console.log(`  [BOOK] Saat doğrulama: ${JSON.stringify(timeVerify)}`);
       
-      // 3) Seçilmediyse — element handle ile tıkla
+      // 3) Seçilmediyse — __doPostBack ile dene
+      if (!timeVerify.isActive && t.postbackTarget) {
+        console.log(`  [BOOK] Saat aktif değil, __doPostBack çağrılıyor: ${t.postbackTarget}`);
+        await page.evaluate((target, arg) => {
+          if (typeof window.__doPostBack === "function") {
+            window.__doPostBack(target, arg);
+          }
+        }, t.postbackTarget, t.postbackArg || "");
+        timeButtonResult.method = "postback";
+        await delay(2000, 3000);
+      }
+      
+      // 4) Element handle ile tıkla
       if (!timeVerify.isActive) {
         console.log("  [BOOK] Saat aktif değil, element handle ile deneniyor...");
         try {
@@ -3471,18 +3483,24 @@ async function bookEarliestAppointment(page, account) {
         }
         await delay(1000, 2000);
         
-        // 4) Hala seçilmediyse — dispatch events
+        // 5) Hala seçilmediyse — full event dispatch
         await page.evaluate((targetTime) => {
           const candidates = Array.from(document.querySelectorAll("a, button, span, div, li, label, td"));
           for (const el of candidates) {
             const text = (el.innerText || el.textContent || "").trim();
             if (text === targetTime) {
+              // Tam olay zinciri: focus → pointer → mouse → click
+              el.dispatchEvent(new FocusEvent("focus", { bubbles: true }));
+              el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
               el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+              el.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true }));
               el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true }));
               el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-              el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
-              el.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
-              el.focus && el.focus();
+              // ASP.NET: anchor href varsa doğrudan çalıştır
+              const href = el.getAttribute && el.getAttribute("href");
+              if (href && href.includes("__doPostBack")) {
+                try { eval(href.replace("javascript:", "")); } catch(e) {}
+              }
               break;
             }
           }

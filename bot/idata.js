@@ -3060,7 +3060,7 @@ async function bookEarliestAppointment(page, account) {
       if (pageState.hasKrediKarti) {
         startAlarm();
         await idataLog("appt_payment_page", `💳 KREDİ KARTI SAYFASINA ULAŞILDI! Manuel ödeme gerekli. | Hesap: ${account.email}`, ssPage);
-        return { success: true, date: calDatePick.day || dateSelected?.day || "?", needsPayment: true };
+        return { success: true, date: dateSelected?.day || "?", needsPayment: true };
       }
 
       // ===== ÖDEME İŞLEMLERİ sayfası (Fatura + Sözleşme onayları) =====

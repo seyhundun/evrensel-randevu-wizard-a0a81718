@@ -157,6 +157,7 @@ export default function IdataAccounts() {
       residence_city: acc.residence_city || "",
       idata_office: acc.idata_office || "",
       travel_purpose: acc.travel_purpose || "",
+      travel_date: acc.travel_date || "",
       invoice_city: acc.invoice_city || "",
       invoice_district: acc.invoice_district || "",
       invoice_address: acc.invoice_address || "",

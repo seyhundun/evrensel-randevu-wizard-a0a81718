@@ -3944,6 +3944,7 @@ async function bookEarliestAppointment(page, account) {
           hasFatura: lower.includes("fatura bilgileri") || lower.includes("fatura bil"),
           hasSozlesme: lower.includes("okudum") || lower.includes("kabul ediyorum"),
           hasKrediKarti: lower.includes("bankamatik kart") || lower.includes("kredi kartı") || lower.includes("kart numarası") || lower.includes("cvv"),
+          hasDateWarning: lower.includes("bir randevu tarihi ve saati seçiniz") || lower.includes("lütfen başka bir tarih seçin") || lower.includes("başka bir tarih seçin"),
           hasError: lower.includes("hata") || lower.includes("error"),
           success: lower.includes("başarılı") || lower.includes("randevunuz oluşturulmuştur") || lower.includes("onaylandı") || lower.includes("tamamlandı"),
           checkboxCount: checkboxes.length,

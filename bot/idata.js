@@ -2806,6 +2806,163 @@ async function bookEarliestAppointment(page, account) {
       };
     };
 
+    const navigateVisibleCalendarToMonth = async ({
+      targetMonth,
+      targetYear,
+      anchorX = null,
+      anchorY = null,
+      maxSteps = 24,
+      label = "Takvim",
+    }) => {
+      if (!targetMonth || !targetYear) {
+        return { done: true, clicked: false, reason: "target_missing" };
+      }
+
+      for (let navAttempt = 0; navAttempt < maxSteps; navAttempt++) {
+        const navState = await page.evaluate(({ targetMonth, targetYear, anchorX, anchorY }) => {
+          const isVisible = (el) => {
+            if (!el) return false;
+            const rect = el.getBoundingClientRect();
+            const style = window.getComputedStyle(el);
+            return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+          };
+
+          const normalizeText = (value) => String(value || "")
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/ı/g, "i")
+            .replace(/ğ/g, "g")
+            .replace(/ş/g, "s")
+            .replace(/ü/g, "u")
+            .replace(/ö/g, "o")
+            .replace(/ç/g, "c")
+            .trim();
+
+          const monthNames = {
+            january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+            july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+            ocak: 1, subat: 2, mart: 3, nisan: 4, mayis: 5, haziran: 6,
+            temmuz: 7, agustos: 8, eylul: 9, ekim: 10, kasim: 11, aralik: 12,
+          };
+
+          const parseMonthYear = (text) => {
+            const normalized = normalizeText(text);
+            if (!normalized) return { month: null, year: null, headerText: "" };
+            const yearMatch = normalized.match(/(20\d{2})/);
+            let month = null;
+            for (const [name, num] of Object.entries(monthNames)) {
+              if (normalized.includes(name)) {
+                month = num;
+                break;
+              }
+            }
+            return {
+              month,
+              year: yearMatch ? parseInt(yearMatch[1], 10) : null,
+              headerText: String(text || "").trim(),
+            };
+          };
+
+          const calendarSelector = ".datepicker, .datepicker-dropdown, .bootstrap-datetimepicker-widget, .datepicker-days, .flatpickr-calendar, .ui-datepicker, [class*='datepicker'], [class*='calendar'], .picker-open, table.table-condensed";
+          const headerSelector = ".datepicker-switch, .picker-switch, .datepicker th.switch, .ui-datepicker-title, .month-year, caption, .datepicker-days .datepicker-switch, th";
+
+          const headerCandidates = Array.from(document.querySelectorAll(headerSelector))
+            .map((node) => {
+              if (!isVisible(node)) return null;
+              const parsed = parseMonthYear(node.innerText || node.textContent || "");
+              if (!parsed.month || !parsed.year) return null;
+
+              const calendar = node.closest(calendarSelector) || node.parentElement || document.body;
+              if (!isVisible(calendar)) return null;
+
+              const rect = node.getBoundingClientRect();
+              const calRect = calendar.getBoundingClientRect();
+              const centerX = calRect.x + calRect.width / 2;
+              const centerY = calRect.y + calRect.height / 2;
+              const distance = (anchorX != null && anchorY != null)
+                ? Math.hypot(centerX - anchorX, centerY - anchorY)
+                : Math.hypot(centerX, centerY);
+
+              return {
+                ...parsed,
+                rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+                calendarRect: { x: calRect.x, y: calRect.y, width: calRect.width, height: calRect.height },
+              };
+            })
+            .filter(Boolean)
+            .sort((a, b) => a.calendarRect.y - b.calendarRect.y || a.distance - b.distance);
+
+          if (!headerCandidates.length) {
+            return { done: true, clicked: false, reason: "header_not_found" };
+          }
+
+          const chosen = headerCandidates[0];
+          const deltaMonths = (targetYear - chosen.year) * 12 + (targetMonth - chosen.month);
+          if (deltaMonths === 0) {
+            return {
+              done: true,
+              clicked: false,
+              reason: "aligned",
+              headerText: chosen.headerText,
+              currentMonth: chosen.month,
+              currentYear: chosen.year,
+            };
+          }
+
+          const direction = deltaMonths > 0 ? "next" : "prev";
+          const buttonSelector = direction === "next"
+            ? ".datepicker .next, .next, th.next, button[aria-label='Next'], button[title*='Next'], button[aria-label*='Sonraki'], button[title*='Sonraki'], a.next"
+            : ".datepicker .prev, .prev, th.prev, button[aria-label='Previous'], button[title*='Prev'], button[aria-label*='Önceki'], button[title*='Önceki'], a.prev";
+
+          const headerCenterX = chosen.rect.x + chosen.rect.width / 2;
+          const headerCenterY = chosen.rect.y + chosen.rect.height / 2;
+          const navButtons = Array.from(document.querySelectorAll(buttonSelector))
+            .filter(isVisible)
+            .map((btn) => {
+              const rect = btn.getBoundingClientRect();
+              const cx = rect.x + rect.width / 2;
+              const cy = rect.y + rect.height / 2;
+              const distance = Math.hypot(cx - headerCenterX, cy - headerCenterY);
+              return { btn, distance };
+            })
+            .sort((a, b) => a.distance - b.distance);
+
+          const bestButton = navButtons[0]?.btn || null;
+          if (!bestButton) {
+            return {
+              done: true,
+              clicked: false,
+              reason: `${direction}_button_not_found`,
+              headerText: chosen.headerText,
+              currentMonth: chosen.month,
+              currentYear: chosen.year,
+            };
+          }
+
+          bestButton.click();
+          return {
+            done: false,
+            clicked: true,
+            direction,
+            headerText: chosen.headerText,
+            currentMonth: chosen.month,
+            currentYear: chosen.year,
+          };
+        }, { targetMonth, targetYear, anchorX, anchorY });
+
+        console.log(`  [BOOK] ${label} nav ${navAttempt + 1}: ${JSON.stringify(navState)}`);
+
+        if (navState.done || !navState.clicked) {
+          return navState;
+        }
+
+        await delay(500, 1000);
+      }
+
+      return { done: false, clicked: false, reason: "max_nav_reached" };
+    };
+
     const announcedAppointmentDates = (step1Result.dates || [])
       .map(parseAnnouncedAppointmentDate)
       .filter(Boolean)
@@ -2924,54 +3081,11 @@ async function bookEarliestAppointment(page, account) {
       if (tymd) { travelDay = parseInt(tymd[1]); travelMonth = parseInt(tymd[2]); travelYear = parseInt(tymd[3]); }
       
       if (travelMonth && travelYear) {
-        // Takvimi hedef aya navigate et
-        for (let navAttempt = 0; navAttempt < 12; navAttempt++) {
-          const calInfo = await page.evaluate(() => {
-            const headers = document.querySelectorAll(
-              ".datepicker-switch, .picker-switch, .datepicker th.switch, " +
-              ".ui-datepicker-title, [class*='datepicker'] th, [class*='calendar'] th, " +
-              ".month-year, caption, .datepicker-days .datepicker-switch"
-            );
-            for (const h of headers) {
-              const text = (h.innerText || h.textContent || "").trim();
-              if (text.length > 3 && /\d{4}/.test(text)) return { headerText: text };
-            }
-            return { headerText: "" };
-          });
-          
-          if (!calInfo.headerText) break;
-          
-          const monthNames = {
-            "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
-            "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
-            "ocak": 1, "şubat": 2, "mart": 3, "nisan": 4, "mayıs": 5, "haziran": 6,
-            "temmuz": 7, "ağustos": 8, "eylül": 9, "ekim": 10, "kasım": 11, "aralık": 12
-          };
-          
-          const headerLower = calInfo.headerText.toLowerCase();
-          let currentMonth = 0, currentYear = 0;
-          const yearMatch = calInfo.headerText.match(/(\d{4})/);
-          if (yearMatch) currentYear = parseInt(yearMatch[1]);
-          for (const [name, num] of Object.entries(monthNames)) {
-            if (headerLower.includes(name)) { currentMonth = num; break; }
-          }
-          
-          if (currentMonth === travelMonth && currentYear === travelYear) break;
-          
-          const nextClicked = await page.evaluate(() => {
-            const nextBtns = document.querySelectorAll(".datepicker .next, .next, th.next, button[aria-label='Next'], a.next");
-            for (const btn of nextBtns) {
-              const text = (btn.innerText || btn.textContent || btn.title || "").trim();
-              if (text === "»" || text === "›" || text === ">" || text === "→" || btn.classList.contains("next")) {
-                btn.click();
-                return true;
-              }
-            }
-            return false;
-          });
-          if (!nextClicked) break;
-          await delay(500, 1000);
-        }
+        await navigateVisibleCalendarToMonth({
+          targetMonth: travelMonth,
+          targetYear: travelYear,
+          label: "Seyahat tarihi takvimi",
+        });
       }
       
       // Hedef günü seç
@@ -3238,53 +3352,13 @@ async function bookEarliestAppointment(page, account) {
     
     // Takvimi hedef aya navigate et (gerekirse)
     if (targetMonth && targetYear) {
-      for (let navAttempt = 0; navAttempt < 12; navAttempt++) {
-        const calInfo = await page.evaluate(() => {
-          const headers = document.querySelectorAll(
-            ".datepicker-switch, .picker-switch, .datepicker th.switch, " +
-            ".ui-datepicker-title, [class*='datepicker'] th, [class*='calendar'] th, " +
-            ".month-year, caption, .datepicker-days .datepicker-switch"
-          );
-          for (const h of headers) {
-            const text = (h.innerText || h.textContent || "").trim();
-            if (text.length > 3 && /\d{4}/.test(text)) return { headerText: text };
-          }
-          return { headerText: "" };
-        });
-        
-        if (!calInfo.headerText) break;
-        
-        const monthNames = {
-          "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
-          "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
-          "ocak": 1, "şubat": 2, "mart": 3, "nisan": 4, "mayıs": 5, "haziran": 6,
-          "temmuz": 7, "ağustos": 8, "eylül": 9, "ekim": 10, "kasım": 11, "aralık": 12
-        };
-        
-        const headerLower = calInfo.headerText.toLowerCase();
-        let currentMonth = 0, currentYear = 0;
-        const yearMatch = calInfo.headerText.match(/(\d{4})/);
-        if (yearMatch) currentYear = parseInt(yearMatch[1]);
-        for (const [name, num] of Object.entries(monthNames)) {
-          if (headerLower.includes(name)) { currentMonth = num; break; }
-        }
-        
-        if (currentMonth === targetMonth && currentYear === targetYear) break;
-        
-        const nextClicked = await page.evaluate(() => {
-          const nextBtns = document.querySelectorAll(".datepicker .next, .next, th.next, button[aria-label='Next'], a.next");
-          for (const btn of nextBtns) {
-            const text = (btn.innerText || btn.textContent || btn.title || "").trim();
-            if (text === "»" || text === "›" || text === ">" || text === "→" || btn.classList.contains("next")) {
-              btn.click();
-              return true;
-            }
-          }
-          return false;
-        });
-        if (!nextClicked) break;
-        await delay(500, 1000);
-      }
+      await navigateVisibleCalendarToMonth({
+        targetMonth,
+        targetYear,
+        anchorX: calIconClicked?.inputX ?? null,
+        anchorY: calIconClicked?.inputY ?? null,
+        label: "Randevu takvimi",
+      });
     }
     
     // Yeşil günleri tespit et — sadece whitelist içindeki açık tarihlerden seç

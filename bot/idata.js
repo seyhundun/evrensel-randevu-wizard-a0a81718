@@ -3489,19 +3489,45 @@ async function bookEarliestAppointment(page, account) {
     console.log(`  [BOOK] Tarih seçimi: ${JSON.stringify(dateSelected)}`);
 
     if (!dateSelected.selected) {
-      // Takvim açılmamış olabilir — input'a tarih yaz
+      // Takvim click seçimini doğrulayamadık — input fallback (seçilen güne öncelik ver)
+      const headerText = await page.evaluate(() => {
+        const header = document.querySelector(".datepicker-switch, .datepicker-days th.datepicker-switch, th.switch");
+        return header ? (header.textContent || "").trim() : "";
+      }).catch(() => "");
+
+      const monthMap = {
+        january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+        ocak: 1, şubat: 2, subat: 2, mart: 3, nisan: 4, mayıs: 5, mayis: 5, haziran: 6, temmuz: 7, ağustos: 8, agustos: 8, eylül: 9, eylul: 9, ekim: 10, kasım: 11, kasim: 11, aralık: 12, aralik: 12,
+      };
+
+      let headerMonth = null;
+      let headerYear = null;
+      const headerLower = (headerText || "").toLowerCase();
+      for (const [name, num] of Object.entries(monthMap)) {
+        if (headerLower.includes(name)) { headerMonth = num; break; }
+      }
+      const ym = headerText.match(/(\d{4})/);
+      if (ym) headerYear = parseInt(ym[1]);
+
+      const fallbackDay = dateInfo?.found ? dateInfo.day : targetDay;
       let dateStr;
-      if (targetDay && targetMonth && targetYear) {
+      if (fallbackDay && headerMonth && headerYear) {
+        dateStr = `${String(fallbackDay).padStart(2, "0")}.${String(headerMonth).padStart(2, "0")}.${headerYear}`;
+      } else if (fallbackDay && targetMonth && targetYear) {
+        dateStr = `${String(fallbackDay).padStart(2, "0")}.${String(targetMonth).padStart(2, "0")}.${targetYear}`;
+      } else if (targetDay && targetMonth && targetYear) {
         dateStr = `${String(targetDay).padStart(2, "0")}.${String(targetMonth).padStart(2, "0")}.${targetYear}`;
       } else {
         const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
         dateStr = `${String(futureDate.getDate()).padStart(2, "0")}.${String(futureDate.getMonth() + 1).padStart(2, "0")}.${futureDate.getFullYear()}`;
       }
+
       await page.evaluate((val) => {
         const inputs = Array.from(document.querySelectorAll("input"));
         const dateInput = inputs.find(inp => {
           const ph = (inp.placeholder || "").toLowerCase();
-          return ph.includes("randevu") || ph.includes("tarih");
+          const nm = (inp.name || "").toLowerCase();
+          return ph.includes("randevu") || ph.includes("tarih") || nm.includes("date") || nm.includes("tarih");
         });
         if (dateInput) {
           dateInput.value = "";
@@ -3510,6 +3536,12 @@ async function bookEarliestAppointment(page, account) {
           dateInput.dispatchEvent(new Event("input", { bubbles: true }));
           dateInput.dispatchEvent(new Event("change", { bubbles: true }));
           dateInput.dispatchEvent(new Event("blur", { bubbles: true }));
+          if (typeof window.jQuery !== "undefined") {
+            try {
+              window.jQuery(dateInput).datepicker("update", val);
+              window.jQuery(dateInput).trigger("changeDate");
+            } catch (_) {}
+          }
         }
       }, dateStr);
       console.log(`  [BOOK] Manuel tarih girildi: ${dateStr}`);

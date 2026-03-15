@@ -105,10 +105,10 @@ echo "✅ Xvfb ekranları başlatıldı"`}
           <CopyBlock
             label="2. VNC & noVNC başlat"
             description="x11vnc → websockify → noVNC (VFS: 6080, iDATA: 6081)"
-            command={`x11vnc -display :99 -forever -nopw -shared -rfbport 5999 -bg -o /dev/null
-x11vnc -display :98 -forever -nopw -shared -rfbport 5998 -bg -o /dev/null
-websockify --daemon --web /usr/share/novnc 6080 localhost:5999
-websockify --daemon --web /usr/share/novnc 6081 localhost:5998
+            command={`x11vnc -display :99 -forever -shared -rfbport 5900 -rfbauth /root/.vnc/passwd -noxdamage -bg -o /dev/null
+x11vnc -display :98 -forever -shared -rfbport 5901 -rfbauth /root/.vnc/passwd -noxdamage -bg -o /dev/null
+websockify --daemon --web /usr/share/novnc 6080 localhost:5900
+websockify --daemon --web /usr/share/novnc 6081 localhost:5901
 echo "✅ VNC/noVNC başlatıldı"`}
           />
           <CopyBlock

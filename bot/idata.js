@@ -3880,13 +3880,13 @@ async function bookEarliestAppointment(page, account) {
 
       // === YÖNTEM 6: Element handle + gerçek mouse + postback ===
       if (!dateVerify.isActive) {
-        console.log("  [BOOK] Tarih aktif değil, element handle + gerçek mouse ile deneniyor...");
+        console.log("  [BOOK] Tarih aktif değil, aynı açık hücreye element handle ile yeniden vuruluyor...");
         try {
           const tdElements = await page.$$("td, td a");
           const dayPool = [];
 
           for (const elHandle of tdElements) {
-            const elInfo = await elHandle.evaluate((el) => {
+            const elInfo = await elHandle.evaluate((el, wantedDay, targetX, targetY) => {
               const cell = el.tagName === "TD" ? el : (el.closest("td") || el);
               if (!cell) return null;
 
@@ -3897,30 +3897,47 @@ async function bookEarliestAppointment(page, account) {
 
               const text = (cell.innerText || cell.textContent || "").trim();
               const day = parseInt(text, 10);
-              if (Number.isNaN(day)) return null;
+              if (Number.isNaN(day) || day !== wantedDay) return null;
 
-              const cls = (cell.className || "").toLowerCase();
-              const disabled = cls.includes("disabled") || cls.includes("old") || cls.includes("new") || cls.includes("off");
+              const childFlagEl = cell.querySelector("a, span, div");
+              const classBlob = `${cell.className || ""} ${childFlagEl?.className || ""}`.toLowerCase();
+              const disabled = classBlob.includes("disabled") || classBlob.includes("old") || classBlob.includes("new") || classBlob.includes("off");
               if (disabled) return null;
+
+              const tdBg = window.getComputedStyle(cell).backgroundColor;
+              const childBg = childFlagEl ? window.getComputedStyle(childFlagEl).backgroundColor : "";
+              const bgColor = childBg && childBg !== "rgba(0, 0, 0, 0)" ? childBg : tdBg;
+              const rgbMatch = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+              let isGreen = classBlob.includes("enabled-day") || classBlob.includes("success") || classBlob.includes("bg-success");
+              let isYellow = classBlob.includes("warning") || classBlob.includes("bg-warning") || classBlob.includes("today") || classBlob.includes("active");
+              let isRed = classBlob.includes("danger") || classBlob.includes("bg-danger") || classBlob.includes("disabled-day");
+              if (rgbMatch) {
+                const r = parseInt(rgbMatch[1], 10), g = parseInt(rgbMatch[2], 10), b = parseInt(rgbMatch[3], 10);
+                if (g > 100 && g > r * 1.2 && g > b * 1.2) isGreen = true;
+                if (r > 200 && g > 150 && b < 120) isYellow = true;
+                if (r > 150 && r > g * 1.4 && r > b * 1.4) isRed = true;
+              }
+              if (!isGreen || isYellow || isRed) return null;
 
               const link = cell.querySelector("a") || cell;
               const href = (link.getAttribute && link.getAttribute("href")) || "";
               const onclick = `${(link.getAttribute && link.getAttribute("onclick")) || ""} ${(cell.getAttribute && cell.getAttribute("onclick")) || ""}`;
+              const centerX = rect.x + rect.width / 2;
+              const centerY = rect.y + rect.height / 2;
+              const distance = Math.hypot(centerX - targetX, centerY - targetY);
 
               let score = 0;
-              if (cls.includes("enabled-day") || cls.includes("success") || cls.includes("bg-success")) score += 40;
               if (href.includes("__doPostBack") || onclick.includes("__doPostBack")) score += 50;
               if (link.tagName === "A") score += 20;
 
-              return { day, score, hasPostback: href.includes("__doPostBack") || onclick.includes("__doPostBack") };
-            });
+              return { day, score, distance, hasPostback: href.includes("__doPostBack") || onclick.includes("__doPostBack") };
+            }, dateInfo.day, dateInfo.x, dateInfo.y);
 
             if (elInfo) dayPool.push({ handle: elHandle, ...elInfo });
           }
 
-          dayPool.sort((a, b) => b.score - a.score);
-          const exactPool = dayPool.filter((d) => d.day === dateInfo.day);
-          const targetDay = exactPool[0] || dayPool.find((d) => d.day === dateInfo.day) || null;
+          dayPool.sort((a, b) => a.distance - b.distance || b.score - a.score);
+          const targetDay = dayPool[0] || null;
 
           if (targetDay) {
             const box = await targetDay.handle.boundingBox();
@@ -3948,7 +3965,7 @@ async function bookEarliestAppointment(page, account) {
               }
             });
 
-            console.log(`  [BOOK] ✅ Element handle güçlü tıklama: Gün ${targetDay.day}`);
+            console.log(`  [BOOK] ✅ Element handle güçlü tıklama: Gün ${targetDay.day} mesafe=${Math.round(targetDay.distance)}`);
             await delay(800, 1300);
             const forceResult2 = await forceDateSelectionInternal(targetDay.day);
             console.log(`  [BOOK] Element handle + force sonuç: ${JSON.stringify(forceResult2)}`);

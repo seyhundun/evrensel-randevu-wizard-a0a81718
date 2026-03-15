@@ -340,6 +340,7 @@ export default function IdataTrackingLogs() {
                 key={log.id}
                 className={`flex items-start gap-2.5 rounded-lg bg-card border border-border/50 px-3 py-2 text-xs transition-colors hover:bg-secondary/30 ${
                   log.status === "appt_found" || log.status === "appt_booked" ? "ring-2 ring-green-500/30 bg-green-500/5" : ""
+                } ${log.status === "appt_payment_page" ? "ring-2 ring-amber-500/30 bg-amber-500/5" : ""
                 } ${log.status === "error" || log.status.includes("fail") || log.status === "ip_blocked" ? "bg-destructive/5" : ""
                 } ${log.status === "ip_change" ? "bg-cyan-500/5" : ""}`}
               >

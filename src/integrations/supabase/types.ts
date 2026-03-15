@@ -117,6 +117,7 @@ export type Database = {
           registration_status: string | null
           residence_city: string | null
           status: string
+          travel_date: string | null
           travel_purpose: string | null
           updated_at: string
         }
@@ -151,6 +152,7 @@ export type Database = {
           registration_status?: string | null
           residence_city?: string | null
           status?: string
+          travel_date?: string | null
           travel_purpose?: string | null
           updated_at?: string
         }
@@ -185,6 +187,7 @@ export type Database = {
           registration_status?: string | null
           residence_city?: string | null
           status?: string
+          travel_date?: string | null
           travel_purpose?: string | null
           updated_at?: string
         }

@@ -1,0 +1,1 @@
+ALTER TABLE public.idata_accounts ADD COLUMN travel_date text NULL;

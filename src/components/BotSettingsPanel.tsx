@@ -39,8 +39,6 @@ export default function BotSettingsPanel() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [showCaptchaKey, setShowCaptchaKey] = useState(false);
-  const [currentIp, setCurrentIp] = useState<string | null>(null);
-  const [lastIpReset, setLastIpReset] = useState<string | null>(null);
   const [evomiRegions, setEvomiRegions] = useState<{ id: string; name: string }[]>([]);
   const [evomiCities, setEvomiCities] = useState<{ name: string; region?: string }[]>([]);
   const [evomiCountries, setEvomiCountries] = useState<{ code: string; name: string }[]>([]);
@@ -60,12 +58,12 @@ export default function BotSettingsPanel() {
       .channel("bot-settings-sync")
       .on("postgres_changes", { event: "*", schema: "public", table: "vfs_countries" }, () => loadCountries())
       .on("postgres_changes", { event: "*", schema: "public", table: "bot_settings" }, () => loadSettings())
-      .on("postgres_changes", { event: "*", schema: "public", table: "tracking_logs" }, () => loadCurrentIp())
+      
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, []);
 
-  const loadData = () => { loadCountries(); loadSettings(); loadCurrentIp(); };
+  const loadData = () => { loadCountries(); loadSettings(); };
 
   const loadCountries = async () => {
     const { data } = await supabase.from("vfs_countries").select("*").order("sort_order");
@@ -86,21 +84,6 @@ export default function BotSettingsPanel() {
     }
   };
 
-  const loadCurrentIp = async () => {
-    const { data } = await supabase
-      .from("tracking_logs")
-      .select("message, created_at")
-      .eq("status", "ip_change")
-      .order("created_at", { ascending: false })
-      .limit(1);
-    if (data && data.length > 0) {
-      const match = data[0].message?.match(/Aktif IP:\\s*([^\s|]+)/);
-      if (match) {
-        setCurrentIp(match[1]);
-        setLastIpReset(data[0].created_at);
-      }
-    }
-  };
 
   const getDraft = (key: string) => draft[key] ?? settings.find(s => s.key === key)?.value ?? "";
 
@@ -224,21 +207,6 @@ export default function BotSettingsPanel() {
         <h3 className="text-sm font-semibold text-foreground">Panel ve Hesap Bot Proxy Ayarları</h3>
       </div>
 
-      {/* Current IP & Reset Date (read-only) */}
-      <div className="space-y-3">
-        <div className="space-y-1">
-          <Label className="text-[11px] text-muted-foreground">IP</Label>
-          <Input className="h-8 text-xs font-mono bg-muted/50" value={currentIp || "—"} readOnly />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-[11px] text-muted-foreground">Reset Tarihi</Label>
-          <Input
-            className="h-8 text-xs font-mono bg-muted/50"
-            value={lastIpReset ? new Date(lastIpReset).toLocaleString("tr-TR") : "—"}
-            readOnly
-          />
-        </div>
-      </div>
 
       {/* Captcha Solver */}
       <div className="space-y-3 border-t border-border pt-4">

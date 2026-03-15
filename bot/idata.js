@@ -3561,10 +3561,8 @@ async function bookEarliestAppointment(page, account) {
           return ph.includes("randevu") || ph.includes("tarih") || nm.includes("date") || nm.includes("tarih");
         });
         if (dateInput) {
-          // Mevcut format tespiti (tire mi nokta mı)
-          const existingVal = (dateInput.value || "").trim();
-          const usesDash = existingVal.includes("-");
-          const finalVal = usesDash ? val : val.replace(/-/g, ".");
+          // iDATA için ana format her zaman tire
+          const finalVal = val;
           
           dateInput.value = "";
           dateInput.focus();

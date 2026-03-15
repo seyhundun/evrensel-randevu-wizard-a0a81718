@@ -3381,11 +3381,9 @@ async function bookEarliestAppointment(page, account) {
           // iDATA format: DD-MM-YYYY (tire ile)
           const dateStrDash = `${String(dayNum).padStart(2, "0")}-${month}-${year}`;
           const dateStrDot = `${String(dayNum).padStart(2, "0")}.${month}.${year}`;
-          
-          // Mevcut input değerinden format tespit et
-          const existingVal = (inp.value || "").trim();
-          const usesDash = existingVal.includes("-");
-          const dateStr = usesDash ? dateStrDash : dateStrDot;
+
+          // iDATA için ana format her zaman tire
+          const dateStr = dateStrDash;
           
           if (typeof window.jQuery !== "undefined") {
             try {

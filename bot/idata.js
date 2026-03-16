@@ -4029,7 +4029,7 @@ async function bookEarliestAppointment(page, account) {
       // Slotlar yüklenmediyse seçilen güne fiziksel tıklamayı bir kez daha tetikle
       if (scanAttempt === 1 && dateInfo?.found) {
         try {
-          await humanClick(page, dateInfo.x, dateInfo.y, { preMovesNear: true });
+          await humanClick(page, dateInfo.cellX ?? dateInfo.x, dateInfo.cellY ?? dateInfo.y, { preMovesNear: true });
           console.log("  [BOOK] Saat listesi için tarih tekrar tıklandı (humanClick)");
         } catch (_) {}
       }
@@ -4038,6 +4038,15 @@ async function bookEarliestAppointment(page, account) {
     }
 
     console.log(`  [BOOK] Saat butonları: ${JSON.stringify(timeButtonInfo)}`);
+
+    // Kritik düzeltme: saat slotu görünüyorsa tarih seçimi aslında başarılıdır.
+    if (!dateSelected.selected && timeButtonInfo.found) {
+      dateSelected = {
+        ...dateSelected,
+        selected: true,
+      };
+      console.log("  [BOOK] Tarih doğrulama geç geldi; görünür saat slotu tarih seçimi kanıtı olarak kabul edildi.");
+    }
 
     let timeButtonResult = { clicked: false };
 
@@ -4170,6 +4179,15 @@ async function bookEarliestAppointment(page, account) {
         isOrange: t.isOrange,
         method: usedMethod,
       };
+
+      // Saat seçilebildiyse tarih seçimi de fiilen başarılıdır.
+      if (timeButtonResult.clicked && !dateSelected.selected) {
+        dateSelected = {
+          ...dateSelected,
+          selected: true,
+        };
+        console.log("  [BOOK] Saat seçimi başarılı olduğu için tarih seçimi de başarılı kabul edildi.");
+      }
     } else {
       // Fallback: select dropdown
       const selectResult = await page.evaluate(() => {
@@ -4185,6 +4203,14 @@ async function bookEarliestAppointment(page, account) {
         return { clicked: false };
       });
       timeButtonResult = selectResult;
+
+      if (timeButtonResult.clicked && !dateSelected.selected) {
+        dateSelected = {
+          ...dateSelected,
+          selected: true,
+        };
+        console.log("  [BOOK] Select fallback sonrası tarih seçimi başarılı kabul edildi.");
+      }
     }
 
     console.log(`  [BOOK] Saat seçimi sonuç: ${JSON.stringify(timeButtonResult)}`);

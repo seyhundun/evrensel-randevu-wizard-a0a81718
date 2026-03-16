@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
     // Send SMS to each recipient
     const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
     const credentials = btoa(`${accountSid}:${authToken}`);
-    const smsBody = message || "Randevu bulundu! 🎉";
+    const smsBody = toGsm7(message || "Randevu bulundu!");
 
     const results = await Promise.allSettled(
       recipients.map(async (toNumber) => {

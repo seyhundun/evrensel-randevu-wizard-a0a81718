@@ -2204,10 +2204,39 @@ async function checkAppointments(config, account) {
     const hasAppointment = appointmentFoundPhrases.some((p) => lowerText.includes(p));
     const ss = await takeScreenshotBase64(page);
 
+    // Tüm açık tarihleri çek
+    const availableDates = await page.evaluate(() => {
+      const dates = [];
+      // Mat-calendar hücreleri
+      const cells = document.querySelectorAll(
+        '.mat-calendar-body-cell:not(.mat-calendar-body-disabled), ' +
+        '.available-date, td.day:not(.disabled), .datepicker-day:not(.disabled), ' +
+        'button.day:not([disabled]), [class*="available"]:not([class*="unavailable"]), ' +
+        '.calendar-day.active, .slot-available'
+      );
+      cells.forEach(c => {
+        const txt = (c.textContent || "").trim();
+        const aria = c.getAttribute("aria-label") || "";
+        dates.push(aria || txt);
+      });
+      // Regex ile tarih formatlarını da tara
+      const bodyText = document.body.innerText || "";
+      const dateRegex = /\b\d{1,2}[\/.\\-]\d{1,2}[\/.\\-]\d{2,4}\b/g;
+      const regexDates = bodyText.match(dateRegex) || [];
+      regexDates.forEach(d => { if (!dates.includes(d)) dates.push(d); });
+      return dates;
+    });
+
+    // Başvuru sahibi adı (applicant) — hesap emaili yerine
+    const applicantName = (config.applicants && config.applicants.length > 0)
+      ? `${config.applicants[0].first_name || ""} ${config.applicants[0].last_name || ""}`.trim() || account.email
+      : account.email;
+    const allDatesStr = availableDates.length > 0 ? availableDates.join(", ") : "tarih bilgisi yok";
+
     if (hasAppointment && !noAppointment) {
-      console.log("  ✅ RANDEVU BULUNDU! Otomatik alma başlıyor...");
-      await logStep(id, "found", `🎉 RANDEVU BULUNDU! | ${account.email}`);
-      await reportResult(id, "found", `Randevu müsait! Hesap: ${account.email}`, 1, ss);
+      console.log(`  ✅ RANDEVU BULUNDU! Açık tarihler: ${allDatesStr}`);
+      await logStep(id, "found", `🎉 RANDEVU BULUNDU! | ${applicantName} | Açık tarihler: ${allDatesStr}`);
+      await reportResult(id, "found", `Randevu müsait! ${applicantName} | Açık tarihler: ${allDatesStr}`, availableDates.length || 1, ss);
 
       // ========== OTOMATİK RANDEVU ALMA ==========
       try {

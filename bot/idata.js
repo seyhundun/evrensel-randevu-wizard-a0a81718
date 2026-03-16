@@ -3583,8 +3583,10 @@ async function bookEarliestAppointment(page, account) {
           const pbMatch = hrefPb || onclickPb;
           if (pbMatch) { postbackTarget = pbMatch[1]; postbackArg = pbMatch[2]; }
 
-          const clickableEl = innerLink || d;
-          const rect = clickableEl.getBoundingClientRect();
+          const cellRect = d.getBoundingClientRect();
+          const clickRect = cellRect.width > 8 && cellRect.height > 8
+            ? cellRect
+            : (innerLink ? innerLink.getBoundingClientRect() : cellRect);
           const normalizedDate = displayedMonth && displayedYear
             ? `${displayedYear}-${String(displayedMonth).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`
             : null;
@@ -3595,8 +3597,10 @@ async function bookEarliestAppointment(page, account) {
             isRed,
             isYellow,
             bgColor,
-            x: rect.x + rect.width / 2,
-            y: rect.y + rect.height / 2,
+            x: clickRect.x + clickRect.width / 2,
+            y: clickRect.y + clickRect.height / 2,
+            cellX: cellRect.x + cellRect.width / 2,
+            cellY: cellRect.y + cellRect.height / 2,
             hasLink: !!innerLink,
             postbackTarget,
             postbackArg,

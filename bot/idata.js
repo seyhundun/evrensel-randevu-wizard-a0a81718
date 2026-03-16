@@ -2694,7 +2694,7 @@ async function checkAppointments(page, account) {
           found: false, 
           status: "no_appointment",
           text: "Uygun randevu tarihi bulunmamaktadır",
-          openUntil: dateMatch ? dateMatch[dateMatch.length - 1] : null 
+          openUntil: dateMatch && dateMatch.length > 0 ? dateMatch.join(", ") : null 
         };
       }
 

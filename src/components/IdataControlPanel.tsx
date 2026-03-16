@@ -15,6 +15,7 @@ export default function IdataControlPanel() {
   const [cfBlockedSince, setCfBlockedSince] = useState<string | null>(null);
   const [lastLogAt, setLastLogAt] = useState<string | null>(null);
   const [serverAlive, setServerAlive] = useState(false);
+  const [checkInterval, setCheckInterval] = useState(300);
 
   useEffect(() => {
     loadConfig();

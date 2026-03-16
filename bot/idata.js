@@ -2736,7 +2736,8 @@ async function checkAppointments(page, account) {
 
     if (result.found) {
       console.log("  [CHECK] 🎉 RANDEVU BULUNDU!");
-      return { found: true, screenshot: ss, message: result.text };
+      const datesStr = (result.dates && result.dates.length > 0) ? result.dates.join(", ") : "";
+      return { found: true, screenshot: ss, message: result.text, dates: result.dates || [], datesStr };
     }
 
     const extraInfo = result.openUntil ? ` | Açık tarih: ${result.openUntil}` : "";
@@ -5103,7 +5104,9 @@ async function mainLoop() {
               }
               
               if (apptResult.found) {
-                await idataLog("appt_found", `🎉 RANDEVU BULUNDU! Manuel ilerleyin! | Hesap: ${account.email}`, apptResult.screenshot);
+                const datesInfo = apptResult.datesStr ? ` | Açık tarihler: ${apptResult.datesStr}` : "";
+                const loginLink = CONFIG.LOGIN_URL;
+                await idataLog("appt_found", `🎉 RANDEVU BULUNDU! Manuel ilerleyin!${datesInfo} | Giriş: ${loginLink} | Hesap: ${account.email}`, apptResult.screenshot);
                 startAlarm();
                 
                 // Manuel mod — otomatik booking devre dışı, tarayıcıyı açık tut

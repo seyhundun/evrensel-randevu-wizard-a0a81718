@@ -276,10 +276,19 @@ Deno.serve(async (req) => {
           if (["appt_found", "appt_booked", "appt_payment_page"].includes(logStatus)) {
             try {
               const funcUrl = `${supabaseUrl}/functions/v1/send-sms`;
+              const loginUrl = "https://it-tr-appointment.idata.com.tr/tr/membership/login";
+              let smsText = "";
+              if (logStatus === "appt_booked") {
+                smsText = `🎉 iDATA Randevu Alındı!\n${message || ""}\n\nGiriş: ${loginUrl}`;
+              } else if (logStatus === "appt_payment_page") {
+                smsText = `💳 iDATA Ödeme Sayfası!\n${message || ""}\n\nGiriş: ${loginUrl}`;
+              } else {
+                smsText = `🎉 iDATA Randevu Açıldı!\n${message || ""}\n\nHemen giriş yapın: ${loginUrl}`;
+              }
               await fetch(funcUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
-                body: JSON.stringify({ message: `🎉 iDATA ${logStatus === "appt_booked" ? "Randevu Alındı!" : logStatus === "appt_payment_page" ? "Ödeme Sayfası!" : "Randevu Bulundu!"}\n${message || "Hemen kontrol edin!"}` }),
+                body: JSON.stringify({ message: smsText }),
               });
             } catch (smsErr) { console.error("iDATA SMS hatası:", smsErr); }
           }

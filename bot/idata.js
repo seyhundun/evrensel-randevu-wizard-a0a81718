@@ -3071,7 +3071,7 @@ async function bookEarliestAppointment(page, account) {
     }
 
     const ss1 = await takeScreenshotBase64(page);
-    await idataLog("appt_step1_ileri", `✅ İLERİ tıklandı | Tarihler: ${(step1Result.dates || []).join(", ")} | Hedef: ${preferredAppointmentDate?.raw || "ilk yeşil"} | Hesap: ${account.email}`, ss1);
+    await idataLog("appt_step1_ileri", `✅ İLERİ tıklandı | Tarihler: ${(step1Result.dates || []).join(", ")} | Hedef: ${preferredAppointmentDate?.raw || "ilk yeşil"} | ${getAccountName(account)}`, ss1);
     
     await delay(3000, 5000);
 

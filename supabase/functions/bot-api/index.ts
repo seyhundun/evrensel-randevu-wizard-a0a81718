@@ -271,6 +271,19 @@ Deno.serve(async (req) => {
             .from("idata_tracking_logs")
             .insert({ status: logStatus || "info", message, screenshot_url });
           if (logErr) throw logErr;
+
+          // Send SMS for appointment-related statuses
+          if (["appt_found", "appt_booked", "appt_payment_page"].includes(logStatus)) {
+            try {
+              const funcUrl = `${supabaseUrl}/functions/v1/send-sms`;
+              await fetch(funcUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
+                body: JSON.stringify({ message: `🎉 iDATA ${logStatus === "appt_booked" ? "Randevu Alındı!" : logStatus === "appt_payment_page" ? "Ödeme Sayfası!" : "Randevu Bulundu!"}\n${message || "Hemen kontrol edin!"}` }),
+              });
+            } catch (smsErr) { console.error("iDATA SMS hatası:", smsErr); }
+          }
+
           return new Response(
             JSON.stringify({ ok: true, screenshot_url }),
             { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -380,6 +393,15 @@ Deno.serve(async (req) => {
 
         if (status === "found") {
           await supabase.from("tracking_configs").update({ is_active: false }).eq("id", config_id);
+          // Send SMS notification
+          try {
+            const funcUrl = `${supabaseUrl}/functions/v1/send-sms`;
+            await fetch(funcUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${supabaseKey}` },
+              body: JSON.stringify({ message: `🎉 VFS Randevu Bulundu!\n${message || "Hemen kontrol edin!"}` }),
+            });
+          } catch (smsErr) { console.error("SMS gönderim hatası:", smsErr); }
         }
 
         return new Response(

@@ -595,14 +595,25 @@ async function idataLog(status, message = "", screenshotBase64 = null) {
   }
 }
 
-// iDATA config'i kontrol et (is_active)
+// iDATA config'i kontrol et (is_active + check_interval)
+let dynamicCheckInterval = CONFIG.CHECK_INTERVAL_MS;
+
 async function isIdataActive() {
   try {
-    const res = await fetch(CONFIG.API_URL + "/idata", {
-      method: "GET", headers: apiHeaders,
+    const supabaseUrl = "https://ocrpzwrsyiprfuzsyivf.supabase.co";
+    const res = await fetch(`${supabaseUrl}/rest/v1/idata_config?select=is_active,check_interval&limit=1`, {
+      method: "GET",
+      headers: apiHeaders,
     });
     const data = await res.json();
-    return data?.config?.is_active === true;
+    if (data?.[0]) {
+      const ci = data[0].check_interval;
+      if (ci && ci > 0) {
+        dynamicCheckInterval = ci * 1000; // DB'de saniye cinsinden
+      }
+      return data[0].is_active === true;
+    }
+    return false;
   } catch (err) {
     console.error("  [API] Config kontrol hatası:", err.message);
     return false;

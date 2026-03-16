@@ -161,6 +161,38 @@ export default function IdataControlPanel() {
         </div>
       </div>
 
+      {/* Check Interval Slider */}
+      <div className="flex flex-col gap-2 p-3 rounded-lg border border-border bg-muted/30">
+        <Label className="text-xs font-medium flex items-center gap-1.5">
+          <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+          Kontrol Aralığı
+          <span className="ml-auto tabular-nums text-primary font-semibold text-xs">
+            {checkInterval >= 60 ? `${Math.floor(checkInterval / 60)}dk ${checkInterval % 60 > 0 ? `${checkInterval % 60}s` : ""}` : `${checkInterval}s`}
+          </span>
+        </Label>
+        <Slider
+          value={[checkInterval]}
+          onValueChange={async ([v]) => {
+            setCheckInterval(v);
+            if (configId) {
+              await supabase
+                .from("idata_config" as any)
+                .update({ check_interval: v } as any)
+                .eq("id", configId);
+            }
+          }}
+          min={30}
+          max={600}
+          step={30}
+          className="w-full"
+        />
+        <div className="flex justify-between text-[10px] text-muted-foreground">
+          <span>30s</span>
+          <span>5dk</span>
+          <span>10dk</span>
+        </div>
+      </div>
+
       {/* Control Buttons */}
       <div className="flex items-center gap-3">
         <Button

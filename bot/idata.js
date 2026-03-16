@@ -3684,7 +3684,8 @@ async function bookEarliestAppointment(page, account) {
       console.log(`  [BOOK] Tarih bilgisi: hasLink=${dateInfo.hasLink} postbackTarget=${dateInfo.postbackTarget} linkHref=${dateInfo.linkHref}`);
 
       const verifyDateSelection = async () => {
-        return await page.evaluate((dayNum, targetNormalized) => {
+        return await page.evaluate((dayNum, targetNormalized, anchorX, anchorY) => {
+          const calendarSelector = ".datepicker, .datepicker-dropdown, .bootstrap-datetimepicker-widget, .datepicker-days, .flatpickr-calendar, .ui-datepicker, [class*='datepicker'], [class*='calendar'], .picker-open, table.table-condensed";
           const normalizeDateValue = (val) => {
             const raw = String(val || "").trim();
             if (!raw) return null;
@@ -3710,9 +3711,50 @@ async function bookEarliestAppointment(page, account) {
             return dayMatch ? parseInt(dayMatch[1], 10) : NaN;
           };
 
-          const calContainers = document.querySelectorAll("[class*='datepicker'], [class*='calendar'], table.table-condensed, .datepicker-days table");
-          for (const cal of calContainers) {
-            const tds = cal.querySelectorAll("td");
+          const isVisible = (el) => {
+            if (!el) return false;
+            const r = el.getBoundingClientRect();
+            const s = window.getComputedStyle(el);
+            return r.width > 0 && r.height > 0 && s.display !== "none" && s.visibility !== "hidden";
+          };
+
+          const findCalendarRoot = (startNode) => {
+            let node = startNode;
+            let best = null;
+            let depth = 0;
+            while (node && node !== document.body && depth < 8) {
+              if (node.matches?.(calendarSelector) && isVisible(node)) {
+                const rect = node.getBoundingClientRect();
+                const dayCount = node.querySelectorAll?.("td").length || 0;
+                if (rect.width >= 140 && rect.height >= 120 && dayCount >= 20) best = node;
+              }
+              node = node.parentElement;
+              depth += 1;
+            }
+            return best;
+          };
+
+          const calendarRoots = Array.from(document.querySelectorAll(calendarSelector))
+            .map((node) => findCalendarRoot(node) || node)
+            .filter((node, idx, arr) => node && isVisible(node) && arr.indexOf(node) === idx);
+
+          const scopedCalendar = calendarRoots
+            .map((cal) => {
+              const rect = cal.getBoundingClientRect();
+              const centerX = rect.x + rect.width / 2;
+              const centerY = rect.y + rect.height / 2;
+              const distance = (anchorX != null && anchorY != null)
+                ? Math.hypot(centerX - anchorX, centerY - anchorY)
+                : 9999;
+              const insideX = anchorX != null && anchorX >= rect.x - 24 && anchorX <= rect.x + rect.width + 24;
+              const belowAnchor = anchorY != null ? rect.y >= anchorY - 90 : true;
+              const score = (insideX ? 220 : -Math.min(220, Math.abs(centerX - (anchorX ?? centerX)))) + (belowAnchor ? 180 : -260) - Math.round(distance);
+              return { cal, score, distance };
+            })
+            .sort((a, b) => b.score - a.score || a.distance - b.distance)[0]?.cal || null;
+
+          if (scopedCalendar) {
+            const tds = scopedCalendar.querySelectorAll("td");
             for (const d of tds) {
               const text = (d.innerText || d.textContent || "").trim();
               if (parseInt(text, 10) === dayNum) {
@@ -3740,19 +3782,12 @@ async function bookEarliestAppointment(page, account) {
           const hint = window.__idataApptInputHint || null;
           let targetInput = null;
 
-          if (hint?.id) {
-            targetInput = nonTravelInputs.find((inp) => (inp.id || "") === hint.id) || null;
-          }
-
-          if (!targetInput && hint?.name) {
-            targetInput = nonTravelInputs.find((inp) => (inp.name || "") === hint.name) || null;
-          }
-
+          if (hint?.id) targetInput = nonTravelInputs.find((inp) => (inp.id || "") === hint.id) || null;
+          if (!targetInput && hint?.name) targetInput = nonTravelInputs.find((inp) => (inp.name || "") === hint.name) || null;
           if (!targetInput && hint?.placeholder) {
             const ph = (hint.placeholder || "").toLowerCase();
             targetInput = nonTravelInputs.find((inp) => (inp.placeholder || "").toLowerCase() === ph) || null;
           }
-
           if (!targetInput && hint?.y != null && nonTravelInputs.length > 0) {
             targetInput = nonTravelInputs
               .map((inp) => {
@@ -3766,13 +3801,9 @@ async function bookEarliestAppointment(page, account) {
             const v = (targetInput.value || "").trim();
             if (v) {
               const normalized = normalizeDateValue(v);
-              if (targetNormalized && normalized === targetNormalized) {
-                return { isActive: true, cls: "appt-input-matched-date: " + v };
-              }
+              if (targetNormalized && normalized === targetNormalized) return { isActive: true, cls: "appt-input-matched-date: " + v };
               const pickedDay = parsePickedDay(v);
-              if (!targetNormalized && !Number.isNaN(pickedDay) && pickedDay === dayNum) {
-                return { isActive: true, cls: "appt-input-matched-day: " + v };
-              }
+              if (!targetNormalized && !Number.isNaN(pickedDay) && pickedDay === dayNum) return { isActive: true, cls: "appt-input-matched-day: " + v };
             }
           }
 
@@ -3780,16 +3811,12 @@ async function bookEarliestAppointment(page, account) {
             const v = (inp.value || "").trim();
             if (!v) continue;
             const normalized = normalizeDateValue(v);
-            if (targetNormalized && normalized === targetNormalized) {
-              return { isActive: true, cls: "non-travel-input-matched-date: " + v };
-            }
+            if (targetNormalized && normalized === targetNormalized) return { isActive: true, cls: "non-travel-input-matched-date: " + v };
             const pickedDay = parsePickedDay(v);
-            if (!targetNormalized && !Number.isNaN(pickedDay) && pickedDay === dayNum) {
-              return { isActive: true, cls: "non-travel-input-matched-day: " + v };
-            }
+            if (!targetNormalized && !Number.isNaN(pickedDay) && pickedDay === dayNum) return { isActive: true, cls: "non-travel-input-matched-day: " + v };
           }
           return { isActive: false, cls: "" };
-        }, dateInfo.day, dateInfo.normalizedDate || null);
+        }, dateInfo.day, dateInfo.normalizedDate || null, calIconClicked?.inputX ?? null, calIconClicked?.inputY ?? null);
       };
 
       // === DeepSeek simulateRealClick: tam mouse event chain ===

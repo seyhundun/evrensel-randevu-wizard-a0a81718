@@ -3241,7 +3241,7 @@ async function bookEarliestAppointment(page, account) {
     
     await delay(2000, 3000);
     const ssTravelDate = await takeScreenshotBase64(page);
-    await idataLog("appt_travel_date", `🗓️ Seyahat Başlangıç Tarihi: ${travelDateStr} | Hesap: ${account.email}`, ssTravelDate);
+    await idataLog("appt_travel_date", `🗓️ Seyahat Başlangıç Tarihi: ${travelDateStr} | ${getAccountName(account)}`, ssTravelDate);
 
     // ===== STEP 2: TARİH sayfası — "Randevu Tarihinizi Seçiniz" takvim ikonuna tıkla =====
     console.log("  [BOOK] Step 2: TARİH sayfası — 'Randevu Tarihinizi Seçiniz' takvim ikonu aranıyor...");

@@ -4649,7 +4649,7 @@ async function bookEarliestAppointment(page, account) {
           });
           if (ok) ok.click();
         }).catch(() => {});
-        await idataLog("appt_date_warning", `⚠️ Tarih/saat warning Step6'da yakalandı, booking akışı yeniden denenecek | Hesap: ${account.email}`, ssPage);
+        await idataLog("appt_date_warning", `⚠️ Tarih/saat warning Step6'da yakalandı, booking akışı yeniden denenecek | ${getAccountName(account)}`, ssPage);
         return { success: false, partial: true, error: "date_time_warning_after_ileri" };
       }
 

@@ -2705,15 +2705,20 @@ async function checkAppointments(page, account) {
                                   lower.includes("randevu tarihini seçiniz") ||
                                   lower.includes("en yakın randevu tarihleri");
       
-      // Tarih input'larından tarihleri çek
+      // Tarih input'larından VE sayfa metninden tarihleri çek
       const dateInputs = Array.from(document.querySelectorAll('input[type="date"], input[type="text"]'));
       const dates = [];
       for (const inp of dateInputs) {
         const val = inp.value || "";
-        // DD-MM-YYYY or DD.MM.YYYY or YYYY-MM-DD formatları
         if (/\d{2}[-/.]\d{2}[-/.]\d{4}/.test(val) || /\d{4}[-/.]\d{2}[-/.]\d{2}/.test(val)) {
           dates.push(val);
         }
+      }
+      
+      // Sayfa metninden tarihleri de çek (DD.MM.YYYY, DD/MM/YYYY, DD-MM-YYYY)
+      const textDates = Array.from(new Set(body.match(/\b\d{2}[./-]\d{2}[./-]\d{4}\b/g) || []));
+      for (const td of textDates) {
+        if (!dates.includes(td)) dates.push(td);
       }
       
       if (hasDatePicker || hasAvailableSlots || dates.length > 0) {

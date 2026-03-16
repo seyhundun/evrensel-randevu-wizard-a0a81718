@@ -15,7 +15,7 @@ const CONFIG = {
   REGISTER_URL: "https://it-tr-appointment.idata.com.tr/tr/membership/register",
   LOGIN_URL: "https://it-tr-appointment.idata.com.tr/tr/membership/login",
   APPOINTMENT_URL: "https://it-tr-appointment.idata.com.tr/tr/membership/dashboard/application/availability",
-  CHECK_INTERVAL_MS: Number(process.env.IDATA_CHECK_INTERVAL_MS || 10000),
+  CHECK_INTERVAL_MS: Number(process.env.IDATA_CHECK_INTERVAL_MS || 300000),
   OTP_WAIT_MS: Number(process.env.OTP_WAIT_MS || 120000),
   OTP_POLL_MS: Number(process.env.OTP_POLL_MS || 5000),
 };

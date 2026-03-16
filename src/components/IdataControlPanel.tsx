@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Play, Square, ShieldAlert, RotateCcw, Server, ServerOff } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
+import { Label } from "@/components/ui/label";
+import { Play, Square, ShieldAlert, RotateCcw, Server, ServerOff, Clock } from "lucide-react";
 import { toast } from "sonner";
 
 export default function IdataControlPanel() {

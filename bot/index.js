@@ -2420,30 +2420,30 @@ async function checkAppointments(config, account) {
           
           if (bookingSuccess) {
             console.log("  🎉✅ RANDEVU BAŞARIYLA ALINDI!");
-            await logStep(id, "appt_confirm", `✅ RANDEVU ALINDI! | ${account.email}`);
-            await reportResult(id, "found", `✅ RANDEVU ALINDI! | Hesap: ${account.email}`, 1, finalSs);
+            await logStep(id, "appt_confirm", `✅ RANDEVU ALINDI! | ${applicantName}`);
+            await reportResult(id, "found", `✅ RANDEVU ALINDI! | ${applicantName} | Açık tarihler: ${allDatesStr}`, availableDates.length || 1, finalSs);
           } else {
             console.log("  ⚠ Randevu bulundu ama otomatik alma sonucu belirsiz");
-            await logStep(id, "appt_fail", `Randevu bulundu ama otomatik alma başarısız olabilir | ${account.email}`);
-            await reportResult(id, "found", `🎉 Randevu bulundu! Otomatik alma sonucu belirsiz | Hesap: ${account.email}`, 1, finalSs);
+            await logStep(id, "appt_fail", `Randevu bulundu ama otomatik alma başarısız olabilir | ${applicantName}`);
+            await reportResult(id, "found", `🎉 Randevu bulundu! Otomatik alma sonucu belirsiz | ${applicantName}`, 1, finalSs);
           }
         } else {
           console.log("  ⚠ Tarih seçilemedi, sadece bildirim gönderildi");
-          await logStep(id, "appt_fail", `Tarih seçilemedi — manuel müdahale gerekebilir | ${account.email}`);
+          await logStep(id, "appt_fail", `Tarih seçilemedi — manuel müdahale gerekebilir | ${applicantName}`);
         }
       } catch (bookErr) {
         console.error("  [BOOKING] Otomatik alma hatası:", bookErr.message);
-        await logStep(id, "appt_fail", `Booking hatası: ${bookErr.message} | ${account.email}`);
+        await logStep(id, "appt_fail", `Booking hatası: ${bookErr.message} | ${applicantName}`);
         const errSs = await takeScreenshotBase64(page);
-        await reportResult(id, "found", `🎉 Randevu bulundu ama otomatik alma başarısız: ${bookErr.message} | Hesap: ${account.email}`, 1, errSs);
+        await reportResult(id, "found", `🎉 Randevu bulundu ama otomatik alma başarısız: ${bookErr.message} | ${applicantName}`, 1, errSs);
       }
 
       return { found: true, accountBanned: false, hadError: false };
     } else {
       console.log("  ❌ Randevu yok.");
-      await logStep(id, "no_slots", `Müsait randevu yok | ${account.email}`);
+      await logStep(id, "no_slots", `Müsait randevu yok | ${applicantName}`);
       const msg = noAppointment ? "Müsait randevu yok." : "Dashboard yüklendi, randevu yok.";
-      await reportResult(id, "checking", `${msg} | Hesap: ${account.email}`, 0, ss);
+      await reportResult(id, "checking", `${msg} | ${applicantName}`, 0, ss);
       return { found: false, accountBanned: false, hadError: false };
     }
   } catch (err) {

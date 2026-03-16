@@ -216,7 +216,7 @@ const CONFIG = {
   OTP_WAIT_MS: Number(process.env.OTP_WAIT_MS || 120000),
   OTP_POLL_MS: Number(process.env.OTP_POLL_MS || 5000),
   MIN_ACCOUNT_GAP_MS: Number(process.env.MIN_ACCOUNT_GAP_MS || 600000),
-  BASE_INTERVAL_MS: Number(process.env.BASE_INTERVAL_MS || 180000),
+  BASE_INTERVAL_MS: Number(process.env.BASE_INTERVAL_MS || 60000),
   MAX_BACKOFF_MS: Number(process.env.MAX_BACKOFF_MS || 900000),
 };
 
@@ -2204,10 +2204,39 @@ async function checkAppointments(config, account) {
     const hasAppointment = appointmentFoundPhrases.some((p) => lowerText.includes(p));
     const ss = await takeScreenshotBase64(page);
 
+    // Tüm açık tarihleri çek
+    const availableDates = await page.evaluate(() => {
+      const dates = [];
+      // Mat-calendar hücreleri
+      const cells = document.querySelectorAll(
+        '.mat-calendar-body-cell:not(.mat-calendar-body-disabled), ' +
+        '.available-date, td.day:not(.disabled), .datepicker-day:not(.disabled), ' +
+        'button.day:not([disabled]), [class*="available"]:not([class*="unavailable"]), ' +
+        '.calendar-day.active, .slot-available'
+      );
+      cells.forEach(c => {
+        const txt = (c.textContent || "").trim();
+        const aria = c.getAttribute("aria-label") || "";
+        dates.push(aria || txt);
+      });
+      // Regex ile tarih formatlarını da tara
+      const bodyText = document.body.innerText || "";
+      const dateRegex = /\b\d{1,2}[\/.\\-]\d{1,2}[\/.\\-]\d{2,4}\b/g;
+      const regexDates = bodyText.match(dateRegex) || [];
+      regexDates.forEach(d => { if (!dates.includes(d)) dates.push(d); });
+      return dates;
+    });
+
+    // Başvuru sahibi adı (applicant) — hesap emaili yerine
+    const applicantName = (config.applicants && config.applicants.length > 0)
+      ? `${config.applicants[0].first_name || ""} ${config.applicants[0].last_name || ""}`.trim() || account.email
+      : account.email;
+    const allDatesStr = availableDates.length > 0 ? availableDates.join(", ") : "tarih bilgisi yok";
+
     if (hasAppointment && !noAppointment) {
-      console.log("  ✅ RANDEVU BULUNDU! Otomatik alma başlıyor...");
-      await logStep(id, "found", `🎉 RANDEVU BULUNDU! | ${account.email}`);
-      await reportResult(id, "found", `Randevu müsait! Hesap: ${account.email}`, 1, ss);
+      console.log(`  ✅ RANDEVU BULUNDU! Açık tarihler: ${allDatesStr}`);
+      await logStep(id, "found", `🎉 RANDEVU BULUNDU! | ${applicantName} | Açık tarihler: ${allDatesStr}`);
+      await reportResult(id, "found", `Randevu müsait! ${applicantName} | Açık tarihler: ${allDatesStr}`, availableDates.length || 1, ss);
 
       // ========== OTOMATİK RANDEVU ALMA ==========
       try {
@@ -2391,30 +2420,30 @@ async function checkAppointments(config, account) {
           
           if (bookingSuccess) {
             console.log("  🎉✅ RANDEVU BAŞARIYLA ALINDI!");
-            await logStep(id, "appt_confirm", `✅ RANDEVU ALINDI! | ${account.email}`);
-            await reportResult(id, "found", `✅ RANDEVU ALINDI! | Hesap: ${account.email}`, 1, finalSs);
+            await logStep(id, "appt_confirm", `✅ RANDEVU ALINDI! | ${applicantName}`);
+            await reportResult(id, "found", `✅ RANDEVU ALINDI! | ${applicantName} | Açık tarihler: ${allDatesStr}`, availableDates.length || 1, finalSs);
           } else {
             console.log("  ⚠ Randevu bulundu ama otomatik alma sonucu belirsiz");
-            await logStep(id, "appt_fail", `Randevu bulundu ama otomatik alma başarısız olabilir | ${account.email}`);
-            await reportResult(id, "found", `🎉 Randevu bulundu! Otomatik alma sonucu belirsiz | Hesap: ${account.email}`, 1, finalSs);
+            await logStep(id, "appt_fail", `Randevu bulundu ama otomatik alma başarısız olabilir | ${applicantName}`);
+            await reportResult(id, "found", `🎉 Randevu bulundu! Otomatik alma sonucu belirsiz | ${applicantName}`, 1, finalSs);
           }
         } else {
           console.log("  ⚠ Tarih seçilemedi, sadece bildirim gönderildi");
-          await logStep(id, "appt_fail", `Tarih seçilemedi — manuel müdahale gerekebilir | ${account.email}`);
+          await logStep(id, "appt_fail", `Tarih seçilemedi — manuel müdahale gerekebilir | ${applicantName}`);
         }
       } catch (bookErr) {
         console.error("  [BOOKING] Otomatik alma hatası:", bookErr.message);
-        await logStep(id, "appt_fail", `Booking hatası: ${bookErr.message} | ${account.email}`);
+        await logStep(id, "appt_fail", `Booking hatası: ${bookErr.message} | ${applicantName}`);
         const errSs = await takeScreenshotBase64(page);
-        await reportResult(id, "found", `🎉 Randevu bulundu ama otomatik alma başarısız: ${bookErr.message} | Hesap: ${account.email}`, 1, errSs);
+        await reportResult(id, "found", `🎉 Randevu bulundu ama otomatik alma başarısız: ${bookErr.message} | ${applicantName}`, 1, errSs);
       }
 
       return { found: true, accountBanned: false, hadError: false };
     } else {
       console.log("  ❌ Randevu yok.");
-      await logStep(id, "no_slots", `Müsait randevu yok | ${account.email}`);
+      await logStep(id, "no_slots", `Müsait randevu yok | ${applicantName}`);
       const msg = noAppointment ? "Müsait randevu yok." : "Dashboard yüklendi, randevu yok.";
-      await reportResult(id, "checking", `${msg} | Hesap: ${account.email}`, 0, ss);
+      await reportResult(id, "checking", `${msg} | ${applicantName}`, 0, ss);
       return { found: false, accountBanned: false, hadError: false };
     }
   } catch (err) {

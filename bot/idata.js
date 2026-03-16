@@ -3824,221 +3824,57 @@ async function bookEarliestAppointment(page, account) {
         }, dateInfo.day, dateInfo.normalizedDate || null, calIconClicked?.inputX ?? null, calIconClicked?.inputY ?? null);
       };
 
-      // === DeepSeek simulateRealClick: tam mouse event chain ===
-      const simulateRealClickOnDay = async (targetX, targetY) => {
+      const clickDateCellAt = async (targetX, targetY, label = "date-cell") => {
+        const roundedX = Math.round(targetX);
+        const roundedY = Math.round(targetY);
+
+        await humanClick(page, targetX, targetY, { preMovesNear: true });
+        console.log(`  [BOOK] ✅ ${label} humanClick: x:${roundedX}, y:${roundedY}`);
+        await delay(900, 1400);
+
+        let verify = await verifyDateSelection();
+        console.log(`  [BOOK] ${label} humanClick doğrulama: ${JSON.stringify(verify)}`);
+        if (verify.isActive) return verify;
+
         await page.evaluate((x, y) => {
           const element = document.elementFromPoint(x, y);
           if (!element) return false;
 
           const opts = (bubbles, cancelable = true) => ({
-            view: window, bubbles, cancelable, clientX: x, clientY: y, button: 0, buttons: 1
+            view: window, bubbles, cancelable, clientX: x, clientY: y, button: 0, buttons: 1,
           });
 
-          element.dispatchEvent(new MouseEvent('mousemove', opts(true)));
-          element.dispatchEvent(new MouseEvent('mouseover', opts(true)));
-          element.dispatchEvent(new MouseEvent('mouseenter', { ...opts(false), buttons: 0 }));
-          element.dispatchEvent(new MouseEvent('mousedown', opts(true)));
-          element.focus();
-          element.dispatchEvent(new MouseEvent('mouseup', { ...opts(true), buttons: 0 }));
-          element.dispatchEvent(new MouseEvent('click', { ...opts(true), buttons: 0 }));
+          element.dispatchEvent(new MouseEvent("mousemove", opts(true)));
+          element.dispatchEvent(new MouseEvent("mouseover", opts(true)));
+          element.dispatchEvent(new MouseEvent("mouseenter", { ...opts(false), buttons: 0 }));
+          element.dispatchEvent(new MouseEvent("mousedown", opts(true)));
+          element.focus?.();
+          element.dispatchEvent(new MouseEvent("mouseup", { ...opts(true), buttons: 0 }));
+          element.dispatchEvent(new MouseEvent("click", { ...opts(true), buttons: 0 }));
           return true;
         }, targetX, targetY);
+
+        await delay(900, 1400);
+        verify = await verifyDateSelection();
+        console.log(`  [BOOK] ${label} domClick doğrulama: ${JSON.stringify(verify)}`);
+        return verify;
       };
 
-      // === DeepSeek forceDateSelection: datepicker internal state manipülasyonu ===
-      const forceDateSelectionInternal = async (dayNum, targetNormalized = null) => {
-        return await page.evaluate((d, expectedNormalized) => {
-          const calendarSelector = ".datepicker, .datepicker-dropdown, .bootstrap-datetimepicker-widget, .datepicker-days, .flatpickr-calendar, .ui-datepicker, [class*='datepicker'], [class*='calendar'], .picker-open, table.table-condensed";
-          const inputList = Array.from(document.querySelectorAll("input.calendarinput, input.flightDate, input[data-provide='datepicker'], input.datepicker"));
-          if (!inputList.length || typeof window.jQuery === "undefined") return { success: false, reason: "no_inputs_or_jquery" };
-
-          const isVisible = (el) => {
-            const r = el.getBoundingClientRect();
-            const s = window.getComputedStyle(el);
-            return r.width > 0 && r.height > 0 && s.display !== "none" && s.visibility !== "hidden";
-          };
-
-          const hint = window.__idataApptInputHint || null;
-          const travelWords = ["seyahat", "gidiş", "gidis", "travel", "flight", "departure", "baslangic", "başlangıç"];
-          const hasTravelWord = (txt) => travelWords.some((w) => txt.includes(w));
-          const anchorX = window.__idataApptAnchorX ?? null;
-          const anchorY = window.__idataApptAnchorY ?? null;
-
-          const normalizeText = (value) => String(value || "")
-            .toLowerCase()
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "")
-            .replace(/ı/g, "i")
-            .replace(/ğ/g, "g")
-            .replace(/ş/g, "s")
-            .replace(/ü/g, "u")
-            .replace(/ö/g, "o")
-            .replace(/ç/g, "c")
-            .trim();
-
-          const monthNames = { january:0, february:1, march:2, april:3, may:4, june:5, july:6, august:7, september:8, october:9, november:10, december:11,
-            ocak:0, subat:1, mart:2, nisan:3, mayis:4, haziran:5, temmuz:6, agustos:7, eylul:8, ekim:9, kasim:10, aralik:11 };
-
-          const parseHeaderDate = (text) => {
-            const normalized = normalizeText(text);
-            const ym = normalized.match(/(20\d{2})/);
-            let month = null;
-            for (const [name, num] of Object.entries(monthNames)) {
-              if (normalized.includes(name)) { month = num; break; }
-            }
-            return { month, year: ym ? parseInt(ym[1], 10) : null, headerText: String(text || "").trim() };
-          };
-
-          const findCalendarRoot = (startNode) => {
-            let node = startNode;
-            let best = null;
-            let depth = 0;
-            while (node && node !== document.body && depth < 8) {
-              if (node.matches?.(calendarSelector) && isVisible(node)) {
-                const rect = node.getBoundingClientRect();
-                const dayCount = node.querySelectorAll?.("td").length || 0;
-                if (rect.width >= 140 && rect.height >= 120 && dayCount >= 20) best = node;
-              }
-              node = node.parentElement;
-              depth += 1;
-            }
-            return best;
-          };
-
-          const scoreInput = (inp) => {
-            const ph = (inp.placeholder || "").toLowerCase();
-            const nm = (inp.name || inp.id || "").toLowerCase();
-            const cls = (inp.className || "").toLowerCase();
-            const rect = inp.getBoundingClientRect();
-            const blob = `${ph} ${nm} ${cls}`;
-            let score = 0;
-            if (ph.includes("randevu")) score += 100;
-            if (nm.includes("randevu") || nm.includes("appointment")) score += 100;
-            if (blob.includes("calendarinput")) score += 20;
-            if (travelWords.some((w) => blob.includes(w))) score -= 140;
-            if ((inp.value || "").trim()) score += 10;
-            if (hint?.id && inp.id === hint.id) score += 260;
-            if (hint?.name && inp.name === hint.name) score += 220;
-            if (hint?.placeholder && (inp.placeholder || "") === hint.placeholder) score += 160;
-            if (hint?.y != null) score -= Math.abs(rect.y - hint.y);
-            return score;
-          };
-
-          const inputs = inputList.filter(isVisible).sort((a, b) => scoreInput(b) - scoreInput(a));
-          for (const inp of inputs) {
-            const calendarRoot = findCalendarRoot(inp) || Array.from(document.querySelectorAll(calendarSelector))
-              .filter(isVisible)
-              .map((cal) => {
-                const rect = cal.getBoundingClientRect();
-                const centerX = rect.x + rect.width / 2;
-                const centerY = rect.y + rect.height / 2;
-                const distance = (anchorX != null && anchorY != null)
-                  ? Math.hypot(centerX - anchorX, centerY - anchorY)
-                  : 9999;
-                const insideX = anchorX != null && anchorX >= rect.x - 24 && anchorX <= rect.x + rect.width + 24;
-                const belowAnchor = anchorY != null ? rect.y >= anchorY - 90 : true;
-                const score = (insideX ? 220 : -Math.min(220, Math.abs(centerX - (anchorX ?? centerX)))) + (belowAnchor ? 180 : -260) - Math.round(distance);
-                return { cal, score, distance };
-              })
-              .sort((a, b) => b.score - a.score || a.distance - b.distance)[0]?.cal || null;
-
-            const headerNode = calendarRoot ? Array.from(calendarRoot.querySelectorAll(".datepicker-switch, .datepicker-days th.datepicker-switch, th.switch, .ui-datepicker-title, caption")).find(Boolean) : null;
-            const headerParsed = parseHeaderDate(headerNode ? headerNode.textContent : "");
-            let month = headerParsed.month;
-            let year = headerParsed.year;
-
-            if ((month == null || year == null) && expectedNormalized) {
-              const m = String(expectedNormalized).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-              if (m) {
-                year = parseInt(m[1], 10);
-                month = parseInt(m[2], 10) - 1;
-              }
-            }
-
-            if (month == null || year == null) {
-              month = new Date().getMonth();
-              year = new Date().getFullYear();
-            }
-
-            const dateObj = new Date(year, month, d);
-            const dateStrDash = `${String(d).padStart(2, "0")}-${String(month + 1).padStart(2, "0")}-${year}`;
-            const dp = window.jQuery.data(inp, 'datepicker') || window.jQuery(inp).data('datepicker');
-            if (dp) {
-              if (dp.viewDate !== undefined) dp.viewDate = new Date(year, month, d);
-              if (dp.selected !== undefined) dp.selected = new Date(year, month, d);
-              if (dp.date !== undefined) dp.date = new Date(year, month, d);
-              if (dp.dates && typeof dp.dates.replace === "function") dp.dates.replace(dateObj);
-              if (typeof dp.setValue === "function") { try { dp.setValue(dateStrDash); } catch(_) {} }
-              if (typeof dp.fill === "function") { try { dp.fill(); } catch(_) {} }
-              if (typeof dp.update === "function") { try { dp.update(dateObj); } catch(_) {} }
-              if (typeof dp._updateDatepicker === "function") { try { dp._updateDatepicker(); } catch(_) {} }
-            }
-
-            try { window.jQuery(inp).datepicker("setDate", dateObj); } catch(_) {
-              try { window.jQuery(inp).datepicker("update", dateStrDash); } catch(__) {}
-            }
-
-            window.jQuery(inp).trigger("changeDate");
-            window.jQuery(inp).trigger("change");
-            inp.dispatchEvent(new Event("change", { bubbles: true }));
-
-            if (!inp.value || !inp.value.includes(String(d))) {
-              const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
-              nativeSetter.call(inp, dateStrDash);
-              inp.dispatchEvent(new Event("input", { bubbles: true }));
-              inp.dispatchEvent(new Event("change", { bubbles: true }));
-              inp.dispatchEvent(new Event("blur", { bubbles: true }));
-            }
-
-            const scopedCells = calendarRoot
-              ? calendarRoot.querySelectorAll("td.day, td")
-              : document.querySelectorAll("[class*='datepicker'] td.day, table.table-condensed td.day, .datepicker-days td.day");
-            scopedCells.forEach((td) => {
-              const text = parseInt((td.innerText || td.textContent || "").trim(), 10);
-              if (text === d && !td.classList.contains("old") && !td.classList.contains("new")) {
-                td.classList.add("active");
-              } else {
-                td.classList.remove("active");
-              }
-            });
-
-            return { success: true, inputValue: inp.value, dateStr: dateStrDash, headerText: headerParsed.headerText || "" };
-          }
-          return { success: false, reason: "no_visible_input" };
-        }, dayNum, targetNormalized || null);
-      };
-
-      // === YÖNTEM 1: sadece yeşil gün hücresinin merkezine tıkla ===
+      // === Tek yol: sadece görünür yeşil hücrenin merkezine bas ===
       const primaryClickX = dateInfo.cellX ?? dateInfo.x;
       const primaryClickY = dateInfo.cellY ?? dateInfo.y;
+      let dateVerify = { isActive: false, cls: "" };
       try {
-        await humanClick(page, primaryClickX, primaryClickY, { preMovesNear: true });
-        console.log(`  [BOOK] ✅ Green-cell click tarih: Gün ${dateInfo.day} (x:${Math.round(primaryClickX)}, y:${Math.round(primaryClickY)})`);
+        dateVerify = await clickDateCellAt(primaryClickX, primaryClickY, `green-cell day-${dateInfo.day}`);
       } catch (mouseErr) {
-        console.log(`  [BOOK] Mouse.click tarih hata: ${mouseErr.message}`);
-      }
-      await delay(1000, 1500);
-
-      let dateVerify = await verifyDateSelection();
-      console.log(`  [BOOK] humanClick sonrası doğrulama: ${JSON.stringify(dateVerify)}`);
-
-      // === YÖNTEM 2: simulateRealClick (tam DOM event chain) ===
-      if (!dateVerify.isActive) {
-        console.log("  [BOOK] Tarih aktif değil, simulateRealClick deneniyor...");
-        await simulateRealClickOnDay(dateInfo.x, dateInfo.y);
-        await delay(1000, 1500);
-        dateVerify = await verifyDateSelection();
-        console.log(`  [BOOK] simulateRealClick sonrası doğrulama: ${JSON.stringify(dateVerify)}`);
+        console.log(`  [BOOK] Green-cell click hata: ${mouseErr.message}`);
       }
 
-      // === YÖNTEM 3+: tarihi ileri/geri oynatan zorlayıcı fallbackler kapatıldı ===
       if (!dateVerify.isActive) {
-        console.log("  [BOOK] Tarih aktif değil, aynı yeşil hücreye son bir kez tıklanıyor...");
+        console.log("  [BOOK] Tarih aktif değil, aynı yeşil hücreye son bir kez basılıyor...");
         try {
-          await humanClick(page, primaryClickX, primaryClickY, { preMovesNear: true });
+          dateVerify = await clickDateCellAt(primaryClickX, primaryClickY, `green-cell retry day-${dateInfo.day}`);
         } catch (_) {}
-        await delay(900, 1400);
-        dateVerify = await verifyDateSelection();
       }
 
       if (!dateVerify.isActive) {
@@ -4615,7 +4451,9 @@ async function bookEarliestAppointment(page, account) {
           const retryClickX = retryDateInfo.cellX ?? retryDateInfo.x;
           const retryClickY = retryDateInfo.cellY ?? retryDateInfo.y;
           await humanClick(page, retryClickX, retryClickY, { preMovesNear: true });
-          await delay(1500, 2500);
+          await delay(900, 1400);
+          const retryDateVerify = await verifyDateSelection();
+          console.log(`  [BOOK] Retry tarih doğrulama: ${JSON.stringify(retryDateVerify)}`);
         } else {
           console.log(`  [BOOK] ⚠️ Retry'da takvimde gün bulunamadı`);
         }

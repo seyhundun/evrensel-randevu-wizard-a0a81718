@@ -4104,36 +4104,43 @@ async function main() {
         await logStep(config.id, "account_switch", `Hesap: ${account.email} | IP: sıradaki proxy`);
         const result = await checkAppointments(config, account);
 
-        // IP engellendiyse — CF retry mekanizması
+        // IP engellendiyse — CF otomatik recovery mekanizması
         if (result.ipBlocked) {
           consecutiveErrors++;
           const ip = getCurrentIp();
           
-          // 3 ardışık CF hatası → dashboard'a bildir ve bekle
-          if (consecutiveErrors >= 3) {
-            await logStep(config.id, "cloudflare", `🚫 Ardışık CF engeli (${consecutiveErrors}x) | IP: ${ip || "?"}`);
-            await vfsSignalCfBlocked(config.id, ip);
-            console.log(`\n  🚫 [CF] ${consecutiveErrors} ardışık engel! Dashboard'dan retry bekleniyor...`);
+          // Dashboard'dan manuel retry isteği gelmiş mi kontrol et
+          const retryRequested = await vfsCheckCfRetryRequested(config.id);
+          if (retryRequested) {
+            console.log("  ✅ [CF] Dashboard'dan retry isteği alındı!");
+            await logStep(config.id, "cf_retry", "Dashboard'dan retry isteği alındı, yeni IP ile deneniyor");
+            ipBannedUntil.clear();
+            ipFailCounts.clear();
+            consecutiveErrors = 0;
+            continue;
+          }
+
+          // Her 3 ardışık CF engelde otomatik recovery: tüm ban listesini temizle, yeni bölge/session dene
+          if (consecutiveErrors % 3 === 0) {
+            const cycle = consecutiveErrors / 3;
+            console.log(`\n  🔄 [CF] Otomatik recovery (döngü ${cycle}) — IP ban listesi temizleniyor, yeni bölge deneniyor`);
+            await logStep(config.id, "cf_auto_retry", `🔄 Otomatik CF recovery (${consecutiveErrors}x engel, döngü ${cycle}) — yeni bölge/IP ile devam`);
+            ipBannedUntil.clear();
+            ipFailCounts.clear();
+            residentialSessionId += 10; // Tamamen yeni session bloğu
             
-            while (true) {
-              const retryRequested = await vfsCheckCfRetryRequested(config.id);
-              if (retryRequested) {
-                console.log("  ✅ [CF] Dashboard'dan retry isteği alındı!");
-                await logStep(config.id, "cf_retry", "Dashboard'dan retry isteği alındı, yeni IP ile deneniyor");
-                ipBannedUntil.clear();
-                consecutiveErrors = 0;
-                break;
-              }
-              // Config hala aktif mi?
-              try {
-                const freshData = await apiGet("cf_wait_check");
-                const activeConfig = (freshData.configs || []).find(c => c.id === config.id);
-                if (!activeConfig) {
-                  await vfsClearCfBlocked(config.id);
-                  break;
-                }
-              } catch {}
-              await new Promise((r) => setTimeout(r, 5000));
+            // Proxy ayarlarını DB'den tazele
+            await loadProxySettingsFromDB();
+            
+            // 9+ ardışık başarısızlık → dashboard'a bildir ama durmadan devam et
+            if (consecutiveErrors >= 9) {
+              await logStep(config.id, "cloudflare", `🚫 Ardışık CF engeli (${consecutiveErrors}x) | Otomatik recovery devam ediyor`);
+              await vfsSignalCfBlocked(config.id, ip);
+              // 60s bekle — belki VFS tarafı açılır
+              await new Promise((r) => setTimeout(r, 60000));
+            } else {
+              // 20s bekle, sonra devam
+              await new Promise((r) => setTimeout(r, 20000));
             }
             continue;
           }

@@ -175,10 +175,14 @@ export default function IdataControlPanel() {
           onValueChange={async ([v]) => {
             setCheckInterval(v);
             if (configId) {
-              await supabase
+              const { error } = await supabase
                 .from("idata_config" as any)
                 .update({ check_interval: v } as any)
                 .eq("id", configId);
+              if (!error) {
+                const label = v >= 60 ? `${Math.floor(v / 60)}dk ${v % 60 > 0 ? `${v % 60}s` : ""}` : `${v}s`;
+                toast.success(`Kontrol aralığı ${label} olarak ayarlandı`);
+              }
             }
           }}
           min={30}

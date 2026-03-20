@@ -4241,6 +4241,15 @@ async function main() {
           lastIpRotationTime = now;
         }
 
+        // Proxy ülkesini hedef ülkeye otomatik eşle
+        const targetProxyCode = COUNTRY_TO_PROXY_CODE[config.country] || null;
+        if (targetProxyCode && targetProxyCode !== EVOMI_PROXY_COUNTRY && PROXY_MODE === "residential") {
+          console.log(`  [PROXY] 🌍 Proxy ülkesi hedefle eşleniyor: ${EVOMI_PROXY_COUNTRY} → ${targetProxyCode} (hedef: ${config.country})`);
+          await logStep(config.id, "ip_change", `Proxy ülkesi değişti: ${EVOMI_PROXY_COUNTRY} → ${targetProxyCode} (hedef: ${config.country})`);
+          EVOMI_PROXY_COUNTRY = targetProxyCode;
+          currentRegionIndex = -1; // Bölge rotasyonunu sıfırla
+        }
+
         const availableAccounts = accounts.filter(acc => {
           const lastUsed = accountLastUsed.get(acc.id) || 0;
           return (now - lastUsed) >= CONFIG.MIN_ACCOUNT_GAP_MS;

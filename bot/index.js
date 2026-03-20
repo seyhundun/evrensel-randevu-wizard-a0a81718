@@ -288,7 +288,7 @@ function getVfsLoginUrl(country) {
 }
 
 function getVfsRegisterUrl(country) {
-  const code = COUNTRY_VFS_CODES[country] || "fra";
+  const code = getVfsCountryCode(country) || "fra";
   return `https://visa.vfsglobal.com/tur/tr/${code}/register`;
 }
 

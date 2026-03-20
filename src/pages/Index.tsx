@@ -103,11 +103,11 @@ const Index = () => {
             {/* LEFT SIDEBAR — Settings */}
             <aside
               className={`shrink-0 border-r border-border bg-card/50 overflow-hidden transition-[width] duration-300 ease-in-out ${
-                sidebarOpen ? "w-[280px]" : "w-0 border-r-0"
+                sidebarOpen ? "w-[340px]" : "w-0 border-r-0"
               }`}
               style={{ height: "calc(100vh - 105px)" }}
             >
-              <div className="w-[280px] h-full overflow-y-auto overflow-x-hidden">
+              <div className="w-[340px] h-full overflow-y-auto overflow-x-hidden">
                 <div className="p-3 space-y-1">
                   <SidebarSection icon={<Network className="w-3.5 h-3.5" />} title="Proxy & Durum" defaultOpen>
                     <ProxySettings configId={t.configId} />
@@ -200,11 +200,11 @@ const Index = () => {
             {/* LEFT SIDEBAR */}
             <aside
               className={`shrink-0 border-r border-border bg-card/50 overflow-hidden transition-[width] duration-300 ease-in-out ${
-                sidebarOpen ? "w-[280px]" : "w-0 border-r-0"
+                sidebarOpen ? "w-[340px]" : "w-0 border-r-0"
               }`}
               style={{ height: "calc(100vh - 105px)" }}
             >
-              <div className="w-[280px] h-full overflow-y-auto overflow-x-hidden">
+              <div className="w-[340px] h-full overflow-y-auto overflow-x-hidden">
                 <div className="p-3 space-y-1">
                   <SidebarSection icon={<Settings className="w-3.5 h-3.5" />} title="iDATA Kontrol Paneli" defaultOpen>
                     <IdataControlPanel />

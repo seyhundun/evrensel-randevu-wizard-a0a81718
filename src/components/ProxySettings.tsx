@@ -207,11 +207,27 @@ export default function ProxySettings({ configId }: ProxySettingsProps) {
       ? "text-amber-500"
       : "text-destructive";
 
-  const healthBg = health.successRate >= 80
-    ? "bg-emerald-500/10 border-emerald-500/20"
-    : health.successRate >= 50
-      ? "bg-amber-500/10 border-amber-500/20"
-      : "bg-destructive/10 border-destructive/20";
+  const handleProxyTypeChange = async (type: string) => {
+    const config: Record<string, { host: string; port: string; label: string }> = {
+      mobile: { host: "mp.evomi.com", port: "3000", label: "Mobile" },
+      core: { host: "rp.evomi.com", port: "1000", label: "Core Residential" },
+      premium: { host: "rp.evomi.com", port: "1001", label: "Premium Residential" },
+    };
+    const c = config[type];
+    if (!c) return;
+
+    setProxyType(type);
+    // Update host and port in bot_settings
+    for (const [key, value] of [["proxy_host", c.host], ["proxy_port", c.port]]) {
+      const { data: existing } = await supabase.from("bot_settings").select("id").eq("key", key).maybeSingle();
+      if (existing) {
+        await supabase.from("bot_settings").update({ value }).eq("key", key);
+      } else {
+        await supabase.from("bot_settings").insert({ key, value, label: key === "proxy_host" ? "Proxy Host" : "Proxy Port" });
+      }
+    }
+    toast.success(`Proxy türü ${c.label} olarak değiştirildi (${c.host}:${c.port})`);
+  };
 
   return (
     <div className="space-y-3">

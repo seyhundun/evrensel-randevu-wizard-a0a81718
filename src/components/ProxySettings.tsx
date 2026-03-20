@@ -218,13 +218,18 @@ export default function ProxySettings({ configId }: ProxySettingsProps) {
     if (!c) return;
 
     setProxyType(type);
-    // Update host and port in bot_settings
-    for (const [key, value] of [["proxy_host", c.host], ["proxy_port", c.port]]) {
+    // Update host, port, and proxy_type in bot_settings
+    const updates: [string, string, string][] = [
+      ["proxy_host", c.host, "Proxy Host"],
+      ["proxy_port", c.port, "Proxy Port"],
+      ["proxy_type", type, "Proxy Type"],
+    ];
+    for (const [key, value, label] of updates) {
       const { data: existing } = await supabase.from("bot_settings").select("id").eq("key", key).maybeSingle();
       if (existing) {
         await supabase.from("bot_settings").update({ value }).eq("key", key);
       } else {
-        await supabase.from("bot_settings").insert({ key, value, label: key === "proxy_host" ? "Proxy Host" : "Proxy Port" });
+        await supabase.from("bot_settings").insert({ key, value, label });
       }
     }
     toast.success(`Proxy türü ${c.label} olarak değiştirildi (${c.host}:${c.port})`);

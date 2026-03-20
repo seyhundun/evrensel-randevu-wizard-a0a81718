@@ -275,7 +275,6 @@ export default function ProxySettings({ configId }: ProxySettingsProps) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="mobile">📱 Mobile (3G/4G/5G) — En güçlü</SelectItem>
               <SelectItem value="core">🏠 Core Residential — Ekonomik</SelectItem>
               <SelectItem value="premium">⭐ Premium Residential — Kaliteli</SelectItem>
             </SelectContent>

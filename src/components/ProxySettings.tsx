@@ -209,7 +209,6 @@ export default function ProxySettings({ configId }: ProxySettingsProps) {
 
   const handleProxyTypeChange = async (type: string) => {
     const config: Record<string, { host: string; port: string; label: string }> = {
-      mobile: { host: "mp.evomi.com", port: "3000", label: "Mobile" },
       core: { host: "rp.evomi.com", port: "1000", label: "Core Residential" },
       premium: { host: "rp.evomi.com", port: "1001", label: "Premium Residential" },
     };

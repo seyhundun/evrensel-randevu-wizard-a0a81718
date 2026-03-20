@@ -164,11 +164,61 @@ function banIpImmediately(ip, reason = "") {
 function isPageBlocked(pageContent) {
   if (!pageContent || pageContent.trim().length < 100) return true; // boş sayfa
   const lower = pageContent.toLowerCase();
+  // "just a moment" ve "ray id" Cloudflare challenge sayfası — engel değil, çözülmeli
+  // Sadece gerçek engel durumlarını tespit et
   return lower.includes("access denied") || 
-         lower.includes("blocked") ||
          lower.includes("403 forbidden") ||
-         lower.includes("just a moment") ||
-         lower.includes("ray id");
+         (lower.includes("blocked") && !lower.includes("just a moment"));
+}
+
+// Cloudflare challenge sayfasında mı kontrol et
+function isCloudflareChallenge(pageContent) {
+  if (!pageContent) return false;
+  const lower = pageContent.toLowerCase();
+  return lower.includes("just a moment") ||
+         lower.includes("ray id") ||
+         lower.includes("checking your browser") ||
+         lower.includes("verify you are human") ||
+         lower.includes("enable javascript and cookies");
+}
+
+// Cloudflare challenge'ın çözülmesini bekle
+async function waitForCloudflareChallengeResolve(page, timeoutMs = 60000) {
+  const startedAt = Date.now();
+  let attempt = 0;
+  
+  while (Date.now() - startedAt < timeoutMs) {
+    attempt++;
+    const content = await page.evaluate(() => document.body?.innerText || "").catch(() => "");
+    
+    if (!isCloudflareChallenge(content) && content.trim().length > 200) {
+      console.log(`  [CF] ✅ Cloudflare challenge geçildi (${attempt}. deneme, ${Math.round((Date.now() - startedAt) / 1000)}s)`);
+      return true;
+    }
+    
+    // puppeteer-real-browser'ın turnstile: true özelliği otomatik çözecek
+    // Ek olarak manuel checkbox tıklama dene
+    if (attempt % 3 === 0) {
+      await tryClickTurnstileCheckbox(page).catch(() => {});
+    }
+    
+    // Her 5 denemede bir sayfayı yenile (challenge takılmışsa)
+    if (attempt % 10 === 0 && attempt < 30) {
+      console.log(`  [CF] 🔄 Sayfa yenileniyor (${attempt}. deneme)...`);
+      await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
+      await delay(3000, 5000);
+    }
+    
+    const elapsed = Math.round((Date.now() - startedAt) / 1000);
+    if (attempt % 5 === 0) {
+      console.log(`  [CF] ⏳ Cloudflare challenge bekleniyor... ${elapsed}s`);
+    }
+    
+    await delay(2000, 4000);
+  }
+  
+  console.log(`  [CF] ❌ Cloudflare challenge timeout (${Math.round(timeoutMs / 1000)}s)`);
+  return false;
 }
 
 let Solver;
@@ -194,6 +244,7 @@ const COUNTRY_VFS_CODES = {
   france: "fra",
   netherlands: "nld",
   denmark: "dnk",
+  poland: "pol",
 };
 
 function getVfsLoginUrl(country) {
@@ -1713,7 +1764,7 @@ async function checkAppointments(config, account) {
   const ts = new Date().toLocaleTimeString("tr-TR");
   // Her kontrolde sıradaki IP'yi kullan (datacenter) veya residential proxy
   const activeIp = (PROXY_MODE !== "residential" && IP_LIST.length > 0) ? getNextIp() : null;
-  const countryLabels = { france: "Fransa", netherlands: "Hollanda", denmark: "Danimarka" };
+  const countryLabels = { france: "Fransa", netherlands: "Hollanda", denmark: "Danimarka", poland: "Polonya" };
   const countryLabel = countryLabels[country] || country;
   const proxyLabel = PROXY_MODE === "residential" ? "residential proxy" : (activeIp || "doğrudan");
   console.log(`\n[${ts}] Kontrol: ${countryLabel} ${city} | Hesap: ${account.email} | ${proxyLabel}`);
@@ -1744,11 +1795,29 @@ async function checkAppointments(config, account) {
     const vfsLoginUrl = getVfsLoginUrl(country);
     console.log(`  [1/6] URL: ${vfsLoginUrl}`);
     await page.goto(vfsLoginUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
-    await humanIdle(4000, 8000); // Sayfa yüklendikten sonra okuyormuş gibi bekle
+    await humanIdle(3000, 5000);
+    
+    // Cloudflare challenge kontrolü — "Just a moment" sayfasını bekle
+    let pageContent = await page.evaluate(() => document.body?.innerText || "").catch(() => "");
+    if (isCloudflareChallenge(pageContent)) {
+      console.log("  [1/6] ⏳ Cloudflare challenge algılandı, çözülmesi bekleniyor...");
+      await logStep(id, "login_captcha", "Cloudflare challenge algılandı, otomatik çözülüyor...");
+      const cfResolved = await waitForCloudflareChallengeResolve(page, 60000);
+      if (!cfResolved) {
+        console.log(`  [CF] ❌ Cloudflare challenge aşılamadı, IP değiştiriliyor...`);
+        banIpImmediately(activeIp, "cloudflare_challenge_timeout");
+        const ss = await takeScreenshotBase64(page);
+        await logStep(id, "cloudflare", `CF challenge aşılamadı | IP: ${activeIp || realIp}`);
+        await reportResult(id, "error", `Cloudflare challenge aşılamadı | IP: ${activeIp || realIp} | ${account.email}`, 0, ss);
+        return { found: false, accountBanned: false, ipBlocked: true, hadError: true };
+      }
+      // Challenge geçildikten sonra içeriği tekrar oku
+      pageContent = await page.evaluate(() => document.body?.innerText || "").catch(() => "");
+    }
+    
     await humanMove(page);
     
-    // IP engel kontrolü
-    const pageContent = await page.evaluate(() => document.body?.innerText || "").catch(() => "");
+    // IP engel kontrolü (gerçek engel — access denied, 403)
     const pageHtml = await page.evaluate(() => document.documentElement?.outerHTML || "").catch(() => "");
     if (isPageBlocked(pageContent) || pageHtml.trim().length < 500) {
       console.log(`  [IP] 🚫 Sayfa yüklenemedi / engellendi! IP: ${activeIp}`);

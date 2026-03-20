@@ -101,8 +101,12 @@ const Index = () => {
         <TabsContent value="vfs" className="mt-0 flex-1 min-h-0">
           <div className="flex h-[calc(100vh-105px)]">
             {/* LEFT SIDEBAR — Settings */}
-            {sidebarOpen && (
-              <aside className="w-[320px] shrink-0 border-r border-border bg-card/50">
+            <aside
+              className={`shrink-0 border-r border-border bg-card/50 overflow-hidden transition-all duration-300 ease-in-out ${
+                sidebarOpen ? "w-[320px] opacity-100" : "w-0 opacity-0 border-r-0"
+              }`}
+            >
+              <div className="w-[320px]">
                 <ScrollArea className="h-full">
                   <div className="p-3 space-y-1">
                     <SidebarSection icon={<Network className="w-3.5 h-3.5" />} title="Proxy & Durum" defaultOpen>
@@ -136,8 +140,8 @@ const Index = () => {
                     </SidebarSection>
                   </div>
                 </ScrollArea>
-              </aside>
-            )}
+              </div>
+            </aside>
 
             {/* MAIN CONTENT */}
             <main className="flex-1 min-w-0">
@@ -195,8 +199,12 @@ const Index = () => {
         <TabsContent value="idata" className="mt-0 flex-1 min-h-0">
           <div className="flex h-[calc(100vh-105px)]">
             {/* LEFT SIDEBAR */}
-            {sidebarOpen && (
-              <aside className="w-[320px] shrink-0 border-r border-border bg-card/50">
+            <aside
+              className={`shrink-0 border-r border-border bg-card/50 overflow-hidden transition-all duration-300 ease-in-out ${
+                sidebarOpen ? "w-[320px] opacity-100" : "w-0 opacity-0 border-r-0"
+              }`}
+            >
+              <div className="w-[320px]">
                 <ScrollArea className="h-full">
                   <div className="p-3 space-y-1">
                     <SidebarSection icon={<Settings className="w-3.5 h-3.5" />} title="iDATA Kontrol Paneli" defaultOpen>
@@ -207,8 +215,8 @@ const Index = () => {
                     </SidebarSection>
                   </div>
                 </ScrollArea>
-              </aside>
-            )}
+              </div>
+            </aside>
 
             {/* MAIN CONTENT */}
             <main className="flex-1 min-w-0">

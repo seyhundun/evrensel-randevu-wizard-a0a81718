@@ -2576,6 +2576,7 @@ async function checkAppointments(config, account) {
         await logStep(id, "appt_fail", `Booking hatası: ${bookErr.message} | ${applicantName}`);
         const errSs = await takeScreenshotBase64(page);
         await reportResult(id, "found", `🎉 Randevu bulundu ama otomatik alma başarısız: ${bookErr.message} | ${applicantName}`, 1, errSs);
+        await sendSmsNotification(`VFS RANDEVU BULUNDU ama otoalma basarisiz: ${bookErr.message} | ${applicantName} | Tarihler: ${allDatesStr} | Manuel kontrol edin!`);
       }
 
       return { found: true, accountBanned: false, hadError: false };

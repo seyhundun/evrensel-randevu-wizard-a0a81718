@@ -36,8 +36,10 @@ function timeAgo(dateStr: string): string {
 
 export default function ProxySettings({ configId }: ProxySettingsProps) {
   const [proxyHost, setProxyHost] = useState("—");
+  const [proxyPort, setProxyPort] = useState("—");
   const [proxyCountry, setProxyCountry] = useState("—");
   const [proxyEnabled, setProxyEnabled] = useState(true);
+  const [proxyType, setProxyType] = useState("mobile"); // mobile, core, premium
   const [cfStatus, setCfStatus] = useState<{ blocked: boolean; ip: string | null; since: string | null }>({
     blocked: false, ip: null, since: null,
   });
@@ -48,13 +50,22 @@ export default function ProxySettings({ configId }: ProxySettingsProps) {
     region: null, totalChecks: 0, errorCount: 0, successRate: 100,
   });
 
+  // Derive proxy type from host/port
+  const deriveProxyType = (host: string, port: string) => {
+    if (host.startsWith("mp.")) return "mobile";
+    if (port === "1001") return "premium";
+    return "core";
+  };
+
   const loadBotSettings = useCallback(async () => {
     const { data } = await supabase.from("bot_settings").select("key, value");
     if (data) {
       const map = Object.fromEntries(data.map(d => [d.key, d.value]));
       setProxyHost(map.proxy_host || "—");
+      setProxyPort(map.proxy_port || "—");
       setProxyCountry(map.proxy_country || "—");
       setProxyEnabled(map.proxy_enabled !== "false");
+      setProxyType(deriveProxyType(map.proxy_host || "", map.proxy_port || ""));
       setHealth(prev => ({ ...prev, region: map.proxy_region || null }));
     }
   }, []);

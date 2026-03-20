@@ -103,43 +103,42 @@ const Index = () => {
             {/* LEFT SIDEBAR — Settings */}
             <aside
               className={`shrink-0 border-r border-border bg-card/50 overflow-hidden transition-all duration-300 ease-in-out ${
-                sidebarOpen ? "w-[320px] opacity-100" : "w-0 opacity-0 border-r-0"
+                sidebarOpen ? "w-[280px] opacity-100" : "w-0 opacity-0 border-r-0"
               }`}
+              style={{ height: "calc(100vh - 105px)" }}
             >
-              <div className="w-[320px]">
-                <ScrollArea className="h-full">
-                  <div className="p-3 space-y-1">
-                    <SidebarSection icon={<Network className="w-3.5 h-3.5" />} title="Proxy & Durum" defaultOpen>
-                      <ProxySettings configId={t.configId} />
-                    </SidebarSection>
+              <div className="w-[280px] h-full overflow-y-auto">
+                <div className="p-3 space-y-1">
+                  <SidebarSection icon={<Network className="w-3.5 h-3.5" />} title="Proxy & Durum" defaultOpen>
+                    <ProxySettings configId={t.configId} />
+                  </SidebarSection>
 
-                    <SidebarSection icon={<Globe className="w-3.5 h-3.5" />} title="Randevu Ayarları" defaultOpen>
-                      <ControlPanel
-                        country={t.country}
-                        setCountry={t.setCountry}
-                        city={t.city}
-                        setCity={t.setCity}
-                        visaCategory={t.visaCategory}
-                        setVisaCategory={t.setVisaCategory}
-                        visaSubcategory={t.visaSubcategory}
-                        setVisaSubcategory={t.setVisaSubcategory}
-                        personCount={t.personCount}
-                        setPersonCount={t.setPersonCount}
-                        interval={t.interval}
-                        setIntervalValue={t.setIntervalValue}
-                        keepAlive={t.keepAlive}
-                        setKeepAlive={t.setKeepAlive}
-                        status={t.status}
-                        onStart={t.startTracking}
-                        onStop={t.stopTracking}
-                      />
-                    </SidebarSection>
+                  <SidebarSection icon={<Globe className="w-3.5 h-3.5" />} title="Randevu Ayarları" defaultOpen>
+                    <ControlPanel
+                      country={t.country}
+                      setCountry={t.setCountry}
+                      city={t.city}
+                      setCity={t.setCity}
+                      visaCategory={t.visaCategory}
+                      setVisaCategory={t.setVisaCategory}
+                      visaSubcategory={t.visaSubcategory}
+                      setVisaSubcategory={t.setVisaSubcategory}
+                      personCount={t.personCount}
+                      setPersonCount={t.setPersonCount}
+                      interval={t.interval}
+                      setIntervalValue={t.setIntervalValue}
+                      keepAlive={t.keepAlive}
+                      setKeepAlive={t.setKeepAlive}
+                      status={t.status}
+                      onStart={t.startTracking}
+                      onStop={t.stopTracking}
+                    />
+                  </SidebarSection>
 
-                    <SidebarSection icon={<Settings className="w-3.5 h-3.5" />} title="Bot & Ülke Ayarları">
-                      <BotSettingsPanel />
-                    </SidebarSection>
-                  </div>
-                </ScrollArea>
+                  <SidebarSection icon={<Settings className="w-3.5 h-3.5" />} title="Bot & Ülke Ayarları">
+                    <BotSettingsPanel />
+                  </SidebarSection>
+                </div>
               </div>
             </aside>
 

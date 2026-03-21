@@ -272,6 +272,8 @@ const Index = () => {
                     onSimulateFound={t.simulateFound}
                     configId={t.configId}
                   />
+                  <TrackingLogs configId={t.configId} />
+                </div>
                 </div>
               </ScrollArea>
             </main>

@@ -3354,9 +3354,12 @@ async function tryForceRegistrationSubmit(page, options = {}) {
     const form = best.closest("form") || document.querySelector("form");
 
     try {
-      best.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-      best.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-      best.click();
+      // 3 kez üst üste tıkla (Angular algılaması için)
+      for (let clickRound = 0; clickRound < 3; clickRound++) {
+        best.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        best.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+        best.click();
+      }
 
       if (form) {
         form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));

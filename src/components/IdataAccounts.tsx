@@ -464,7 +464,12 @@ export default function IdataAccounts() {
             </div>
             <div>
               <Label className="text-xs">IMAP Şifre (App Password)</Label>
-              <Input type="password" placeholder="Gmail App Password" value={form.imap_password} onChange={e => updateForm("imap_password", e.target.value)} />
+              <div className="relative">
+                <Input type={showImapPass ? "text" : "password"} placeholder="Gmail App Password" value={form.imap_password} onChange={e => updateForm("imap_password", e.target.value)} className="pr-9" />
+                <button type="button" onClick={() => setShowImapPass(p => !p)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  {showImapPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
               <p className="text-[10px] text-muted-foreground mt-0.5">Gmail için: Hesap → Güvenlik → Uygulama Şifreleri</p>
             </div>
           </div>

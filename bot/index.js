@@ -909,20 +909,26 @@ async function handleOtpVerification(page, account) {
     let otp = await readManualOtp(account.id);
     if (otp) {
       const filled = await page.evaluate((code) => {
-        const singleInput = document.querySelector('input[type="text"][name*="otp"], input[type="text"][name*="code"], input[type="number"], input[type="tel"]');
+        const singleInput = document.querySelector('input[type="text"][name*="otp"], input[type="text"][name*="code"], input[type="number"], input[type="tel"], input[type="password"]');
+        const setValue = (el, value) => {
+          if (!el) return;
+          const proto = Object.getPrototypeOf(el);
+          const descriptor = Object.getOwnPropertyDescriptor(proto, 'value') || Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+          if (descriptor?.set) descriptor.set.call(el, value);
+          else el.value = value;
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+          el.dispatchEvent(new Event("blur", { bubbles: true }));
+        };
         if (singleInput) {
-          singleInput.value = code;
-          singleInput.dispatchEvent(new Event("input", { bubbles: true }));
-          singleInput.dispatchEvent(new Event("change", { bubbles: true }));
+          setValue(singleInput, code);
           return true;
         }
-        const inputs = document.querySelectorAll('input[type="text"], input[type="tel"]');
+        const inputs = document.querySelectorAll('input[type="text"], input[type="tel"], input[type="password"]');
         const otpInputs = [...inputs].filter(inp => inp.maxLength === 1 || inp.maxLength === -1);
         if (otpInputs.length >= 4 && otpInputs.length <= 8) {
           for (let i = 0; i < Math.min(code.length, otpInputs.length); i++) {
-            otpInputs[i].value = code[i];
-            otpInputs[i].dispatchEvent(new Event("input", { bubbles: true }));
-            otpInputs[i].dispatchEvent(new Event("change", { bubbles: true }));
+            setValue(otpInputs[i], code[i]);
           }
           return true;
         }

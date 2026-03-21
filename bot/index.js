@@ -3247,11 +3247,9 @@ async function registerVfsAccount(account) {
   let browser;
   let page;
   try {
-    const fp = generateFingerprint();
     const launched = await launchBrowser();
     browser = launched.browser;
     page = launched.page;
-    await applyFingerprint(page, fp);
     await humanMove(page);
 
     const regUrl = getVfsRegisterUrl(regCountry);

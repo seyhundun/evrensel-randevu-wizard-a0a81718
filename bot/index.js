@@ -1631,6 +1631,38 @@ async function _solve(page, context) {
 
 // ==================== APPLY FINGERPRINT ====================
 async function applyFingerprint(page, fp) {
+  // Playwright Firefox: bu methodlar page wrapper'da yönetiliyor
+  if (page._isPlaywright) {
+    // Firefox'ta UA, viewport, timezone context düzeyinde ayarlanıyor (launchBrowser'da)
+    // evaluateOnNewDocument yerine addInitScript kullanılacak
+    try {
+      await page.addInitScript((fp) => {
+        Object.defineProperty(navigator, "webdriver", { get: () => false });
+        Object.defineProperty(navigator, "platform", { get: () => fp.platform });
+        Object.defineProperty(navigator, "languages", { get: () => fp.languages });
+        Object.defineProperty(navigator, "language", { get: () => fp.languages[0] });
+        Object.defineProperty(navigator, "deviceMemory", { get: () => fp.deviceMemory });
+        Object.defineProperty(navigator, "hardwareConcurrency", { get: () => fp.hardwareConcurrency });
+        Object.defineProperty(screen, "colorDepth", { get: () => fp.screenDepth });
+        Object.defineProperty(screen, "pixelDepth", { get: () => fp.screenDepth });
+        Object.defineProperty(navigator, "maxTouchPoints", { get: () => fp.maxTouchPoints });
+        if (navigator.connection) {
+          Object.defineProperty(navigator.connection, "effectiveType", { get: () => "4g" });
+          Object.defineProperty(navigator.connection, "rtt", { get: () => Math.floor(Math.random() * 50 + 25) });
+          Object.defineProperty(navigator.connection, "downlink", { get: () => Math.random() * 5 + 5 });
+        }
+        if (navigator.getBattery) {
+          navigator.getBattery = () => Promise.resolve({
+            charging: true, chargingTime: 0, dischargingTime: Infinity, level: 1,
+            addEventListener: () => {}, removeEventListener: () => {},
+          });
+        }
+      }, fp);
+    } catch (e) { console.warn("  [FP] Playwright init script hatası:", e.message); }
+    console.log(`  [FP] Firefox | VP: ${fp.viewport.width}x${fp.viewport.height} | TZ: ${fp.timezone}`);
+    return;
+  }
+  // Puppeteer (Chromium) yolu — eski davranış korunuyor
   try { await page.emulateTimezone(fp.timezone); } catch {}
   await page.setUserAgent(fp.userAgent);
   await page.setViewport(fp.viewport);

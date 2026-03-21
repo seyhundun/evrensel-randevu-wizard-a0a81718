@@ -3377,23 +3377,33 @@ async function registerVfsAccount(account) {
     await humanMove(page);
     await humanScroll(page);
 
-    // Cookie banner
-    console.log("  [REG 2/7] Cookie banner...");
+    // Cookie banner — önce yüklenmesini bekle
+    console.log("  [REG 2/7] Cookie banner bekleniyor...");
     try {
-      const cookieBtn = await page.evaluateHandle(() => {
-        const btns = [...document.querySelectorAll("button")];
-        return btns.find((b) => {
-          const txt = b.textContent.toLowerCase();
-          return txt.includes("accept all") || txt.includes("kabul") || txt.includes("tümünü kabul") || txt.includes("tüm tanımlama");
-        }) || document.getElementById('onetrust-accept-btn-handler') || null;
-      });
-      if (cookieBtn && cookieBtn.asElement()) {
-        await humanIdle(1500, 3500); // Cookie uyarısını okuyormuş gibi
-        await cookieBtn.asElement().click();
-        console.log("  [REG 2/7] ✅ Cookie kabul edildi");
-        await delay(2000, 4000);
+      let cookieClicked = false;
+      for (let attempt = 0; attempt < 8 && !cookieClicked; attempt++) {
+        cookieClicked = await page.evaluate(() => {
+          const onetrust = document.getElementById('onetrust-accept-btn-handler');
+          if (onetrust && onetrust.offsetParent !== null) { onetrust.click(); return true; }
+          const btns = [...document.querySelectorAll("button, a")];
+          const match = btns.find(b => {
+            const txt = (b.textContent || "").toLowerCase();
+            return (txt.includes("accept all") || txt.includes("kabul") || txt.includes("tümünü kabul") || txt.includes("tüm tanımlama") || txt.includes("tüm çerezleri kabul")) && b.offsetParent !== null;
+          });
+          if (match) { match.click(); return true; }
+          return false;
+        });
+        if (!cookieClicked) await delay(1000, 1000);
       }
-    } catch (e) {}
+      if (cookieClicked) {
+        console.log("  [REG 2/7] ✅ Cookie kabul edildi");
+        await delay(1000, 1500);
+      } else {
+        console.log("  [REG 2/7] ⚠ Cookie banner bulunamadı, devam ediliyor");
+      }
+    } catch (e) {
+      console.log("  [REG 2/7] Cookie hatası:", e.message);
+    }
 
     // CAPTCHA
     console.log("  [REG 3/7] CAPTCHA...");

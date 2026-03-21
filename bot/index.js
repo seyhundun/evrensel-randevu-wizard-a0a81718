@@ -2898,15 +2898,11 @@ async function tickAllCheckboxes(page) {
 
     // Fiziksel tıklama #1 — aktif et
     await page.mouse.click(cb.x, cb.y);
-    await delay(300, 600);
+    await delay(400, 700);
 
-    // Fiziksel tıklama #2 — pasif et (Angular change detect)
+    // Fiziksel tıklama #2 — Angular algılasın (2 tıklama yeterli)
     await page.mouse.click(cb.x, cb.y);
-    await delay(300, 600);
-
-    // Fiziksel tıklama #3 — tekrar aktif et (son durum: checked)
-    await page.mouse.click(cb.x, cb.y);
-    await delay(200, 400);
+    await delay(400, 700);
 
     // Event'leri de tetikle
     await page.evaluate(({ x, y }) => {

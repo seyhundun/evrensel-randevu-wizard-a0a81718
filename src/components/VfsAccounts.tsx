@@ -413,8 +413,7 @@ export default function VfsAccounts() {
             </Button>
           </div>
         ) : (
-        <div className={`grid grid-cols-1 ${addMode === "register" ? "sm:grid-cols-3" : "sm:grid-cols-2"} gap-3`}>
-
+        <>
         <div className={`grid grid-cols-1 ${addMode === "register" ? "sm:grid-cols-3" : "sm:grid-cols-2"} gap-3`}>
           <div>
             <Label className="text-xs">VFS Email</Label>
@@ -465,7 +464,6 @@ export default function VfsAccounts() {
                 placeholder="5xxxxxxxxx"
                 value={newPhone}
                 onChange={(e) => {
-                  // Sadece rakam kabul et, başındaki 0 ve +90'ı otomatik kaldır
                   let val = e.target.value.replace(/\D/g, "");
                   val = val.replace(/^90/, "").replace(/^0+/, "");
                   setNewPhone(val);
@@ -485,6 +483,8 @@ export default function VfsAccounts() {
           {addMode === "register" ? <UserPlus className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
           {addMode === "register" ? "Kayıt Talebi Oluştur" : "Hesap Ekle"}
         </Button>
+        </>
+        )}
       </Card>
 
       {/* Account list */}

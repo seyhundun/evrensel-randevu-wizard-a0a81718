@@ -996,7 +996,13 @@ async function handleOtpVerification(page, account) {
 
   const startTime = Date.now();
   while (Date.now() - startTime < CONFIG.OTP_WAIT_MS) {
-    let otp = await readManualOtp(account.id);
+    // IMAP ve manuel OTP'yi paralel dene (iDATA gibi race)
+    let otp = null;
+    const [imapOtp, manualOtp] = await Promise.all([
+      tryImapOtp(account.id).catch(() => null),
+      readManualOtp(account.id),
+    ]);
+    otp = imapOtp || manualOtp;
     if (otp) {
       const filled = await page.evaluate((code) => {
         const singleInput = document.querySelector('input[type="text"][name*="otp"], input[type="text"][name*="code"], input[type="number"], input[type="tel"], input[type="password"]');

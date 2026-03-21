@@ -4072,9 +4072,7 @@ async function main() {
         if (config.screenshot_requested) {
           console.log(`\n📸 Screenshot talebi algılandı (${config.id.substring(0, 8)}...)`);
           try {
-            const fp = generateFingerprint();
             const { browser: ssBrowser, page: ssPage } = await launchBrowser();
-            await applyFingerprint(ssPage, fp);
             await ssPage.goto(getVfsLoginUrl(config.country), { waitUntil: "domcontentloaded", timeout: 60000 });
             await delay(3000, 5000);
             const ss = await takeScreenshotBase64(ssPage);

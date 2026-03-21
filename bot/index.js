@@ -3422,30 +3422,20 @@ async function registerVfsAccount(account) {
 
     // Angular uyumlu input doldurma helper
     async function fillAngularInput(page, element, value) {
-      await humanIdle(600, 1500); // Alana tıklamadan önce düşünme süresi
+      await delay(200, 400);
       await element.click({ clickCount: 3 });
-      await delay(400, 800);
+      await delay(100, 200);
       await page.keyboard.press("Backspace");
-      await delay(200, 500);
+      await delay(100, 200);
 
-      // Daha yavaş ve insansı yazma
+      // Hızlı yazma — karakter başı 15-40ms
       for (const ch of String(value)) {
-        await page.keyboard.type(ch, { delay: Math.floor(Math.random() * 200) + 80 });
-        if (Math.random() < 0.15) await delay(300, 900);
-        // Typo simülasyonu
-        if (Math.random() < 0.04 && value.length > 5) {
-          const wrongKey = String.fromCharCode(97 + Math.floor(Math.random() * 26));
-          await page.keyboard.type(wrongKey, { delay: 100 });
-          await delay(400, 1000);
-          await page.keyboard.press("Backspace");
-          await delay(200, 500);
-        }
+        await page.keyboard.type(ch, { delay: Math.floor(Math.random() * 25) + 15 });
       }
-      await delay(500, 1200);
+      await delay(100, 300);
 
       // Angular reactive form event dispatch
       await page.evaluate((el, val) => {
-        // Native setter ile value ata (Angular change detection tetikler)
         const nativeSetter = Object.getOwnPropertyDescriptor(
           window.HTMLInputElement.prototype, 'value'
         )?.set;
@@ -3457,22 +3447,12 @@ async function registerVfsAccount(account) {
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
         el.dispatchEvent(new Event('blur', { bubbles: true }));
-
-        // Angular NgModel / FormControl
-        const ngModelCtrl = el.__ngContext__ || el.ng;
-        if (ngModelCtrl) {
-          try {
-            el.dispatchEvent(new Event('ngModelChange', { bubbles: true }));
-          } catch {}
-        }
       }, element, value);
 
       // Doğrulama: değer gerçekten girilmiş mi?
       const actualValue = await page.evaluate(el => el.value, element);
       if (actualValue !== value) {
-        console.log(`  [REG] ⚠ Değer uyumsuz (beklenen: ${value.substring(0,10)}..., gerçek: ${actualValue.substring(0,10)}...), tekrar deneniyor`);
-        await element.click({ clickCount: 3 });
-        await delay(100, 200);
+        console.log(`  [REG] ⚠ Değer uyumsuz, direkt set yapılıyor`);
         await page.evaluate((el, val) => {
           const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
           if (setter) setter.call(el, val);

@@ -199,7 +199,7 @@ export default function ControlPanel({
           <Clock className="w-3 h-3 text-muted-foreground" />
           Kontrol Aralığı
           <span className="ml-auto tabular-nums text-primary font-semibold text-xs">
-            {interval}s
+            {interval >= 60 ? `${Math.floor(interval / 60)}dk ${interval % 60 ? (interval % 60) + "s" : ""}`.trim() : `${interval}s`}
           </span>
         </Label>
         <Slider

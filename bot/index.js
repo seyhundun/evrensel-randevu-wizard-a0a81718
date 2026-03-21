@@ -355,46 +355,8 @@ async function vfsClearCfBlocked(configId) {
 console.log(`🔐 CAPTCHA API key: ${CONFIG.CAPTCHA_API_KEY ? `var (${CONFIG.CAPTCHA_API_KEY.length} karakter)` : "yok"}`);
 
 // ==================== FINGERPRINT ====================
-const USER_AGENTS = [
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-];
-const VIEWPORTS = [
-  { width: 1920, height: 1080 },
-];
-const TIMEZONES = ["Europe/Istanbul", "Europe/Berlin", "Europe/Paris", "Europe/London"];
-const LANGUAGES = [
-  ["tr-TR", "tr", "en-US", "en"], ["en-US", "en", "tr-TR", "tr"],
-  ["fr-FR", "fr", "en-US", "en"], ["de-DE", "de", "en-US", "en"],
-];
-const PLATFORMS = ["Win32", "MacIntel", "Linux x86_64"];
-const WEBGL_VENDORS = ["Google Inc. (NVIDIA)", "Google Inc. (Intel)", "Google Inc. (AMD)", "Intel Inc."];
-const WEBGL_RENDERERS = [
-  "ANGLE (NVIDIA, NVIDIA GeForce GTX 1060, OpenGL 4.5)",
-  "ANGLE (Intel, Intel(R) UHD Graphics 630, OpenGL 4.5)",
-  "ANGLE (AMD, AMD Radeon RX 580, OpenGL 4.5)",
-  "ANGLE (Intel, Intel(R) Iris(TM) Plus Graphics 640, OpenGL 4.1)",
-];
-
-function getRandomItem(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
-
-function generateFingerprint() {
-  return {
-    userAgent: getRandomItem(USER_AGENTS),
-    viewport: getRandomItem(VIEWPORTS),
-    timezone: getRandomItem(TIMEZONES),
-    languages: getRandomItem(LANGUAGES),
-    platform: getRandomItem(PLATFORMS),
-    webglVendor: getRandomItem(WEBGL_VENDORS),
-    webglRenderer: getRandomItem(WEBGL_RENDERERS),
-    deviceMemory: getRandomItem([4, 8, 16]),
-    hardwareConcurrency: getRandomItem([4, 6, 8, 12, 16]),
-    screenDepth: getRandomItem([24, 32]),
-    maxTouchPoints: 0,
-  };
-}
+// puppeteer-real-browser kendi stealth/fingerprint'ini yönetir
+// Manuel override'lar CF tespitini tetikler — iDATA gibi temiz bırakıyoruz
 
 // ==================== HELPERS ====================
 const accountLastUsed = new Map();

@@ -205,15 +205,15 @@ export default function ControlPanel({
         <Slider
           value={[interval]}
           onValueChange={([v]) => setIntervalValue(v)}
-          min={60}
-          max={300}
+          min={20}
+          max={1800}
           step={10}
           disabled={isActive}
           className="w-full"
         />
         <div className="flex justify-between text-[10px] text-muted-foreground">
-          <span>60s</span>
-          <span>300s</span>
+          <span>20s</span>
+          <span>30dk</span>
         </div>
       </div>
 

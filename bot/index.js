@@ -1702,7 +1702,7 @@ async function checkAppointments(config, account) {
 
   let browser;
   try {
-    const { browser: br, page, proxyAuth } = await launchBrowser(activeIp);
+    const { browser: br, page } = await launchBrowser(activeIp);
     browser = br;
     await humanMove(page);
 

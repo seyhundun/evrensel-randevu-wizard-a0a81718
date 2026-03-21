@@ -110,7 +110,6 @@ function VfsRightSidebarContent({ t }: { t: ReturnType<typeof useTracking> }) {
         setPersonCount={t.setPersonCount}
       />
       <VfsAccounts />
-      <TrackingLogs configId={t.configId} />
     </div>
   );
 }

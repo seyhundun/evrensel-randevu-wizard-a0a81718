@@ -346,7 +346,74 @@ export default function VfsAccounts() {
           >
             <UserPlus className="w-3.5 h-3.5" /> Yeni Kayıt
           </Button>
+          <Button
+            size="sm"
+            variant={addMode === "bulk" ? "default" : "outline"}
+            onClick={() => setAddMode("bulk")}
+            className="gap-1"
+          >
+            <Users className="w-3.5 h-3.5" /> Toplu Gmail Alias
+          </Button>
         </div>
+
+        {addMode === "bulk" ? (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Gmail +alias ile toplu hesap oluşturun. Örn: <code>user@gmail.com</code> → <code>user+vfs1@gmail.com</code>, <code>user+vfs2@gmail.com</code>...
+              Tüm mailler aynı Gmail kutusuna düşer.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Gmail Adresi</Label>
+                <Input
+                  type="email"
+                  placeholder="kullanici@gmail.com"
+                  value={bulkBaseEmail}
+                  onChange={(e) => setBulkBaseEmail(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Telefon Numarası</Label>
+                <Input
+                  type="tel"
+                  placeholder="5xxxxxxxxx"
+                  value={bulkPhone}
+                  onChange={(e) => {
+                    let val = e.target.value.replace(/\D/g, "");
+                    val = val.replace(/^90/, "").replace(/^0+/, "");
+                    setBulkPhone(val);
+                  }}
+                  maxLength={10}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Hesap Sayısı</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={bulkCount}
+                  onChange={(e) => setBulkCount(parseInt(e.target.value) || 1)}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Gmail Uygulama Şifresi (IMAP)</Label>
+                <Input
+                  type="password"
+                  placeholder="xxxx xxxx xxxx xxxx"
+                  value={bulkImapPassword}
+                  onChange={(e) => setBulkImapPassword(e.target.value)}
+                />
+                <p className="text-[10px] text-muted-foreground mt-0.5">OTP otomatik okuma için gerekli</p>
+              </div>
+            </div>
+            <Button onClick={bulkCreateAliasAccounts} disabled={bulkCreating} size="sm" className="gap-1.5">
+              {bulkCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
+              {bulkCreating ? "Oluşturuluyor..." : `${bulkCount} Hesap Oluştur`}
+            </Button>
+          </div>
+        ) : (
+        <div className={`grid grid-cols-1 ${addMode === "register" ? "sm:grid-cols-3" : "sm:grid-cols-2"} gap-3`}>
 
         <div className={`grid grid-cols-1 ${addMode === "register" ? "sm:grid-cols-3" : "sm:grid-cols-2"} gap-3`}>
           <div>

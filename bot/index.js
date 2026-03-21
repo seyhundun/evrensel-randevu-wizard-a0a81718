@@ -846,6 +846,96 @@ async function waitForRegistrationFormAfterQueue(page, registerUrl) {
 }
 
 // ==================== OTP HANDLING ====================
+
+// IMAP ile otomatik OTP okuma (iDATA ile aynı mantık)
+async function tryImapOtp(accountId) {
+  try {
+    const { ImapFlow } = require("imapflow");
+    const fetch = (await import("node-fetch")).default;
+
+    const res = await fetch(
+      `${CONFIG.API_URL.replace("/bot-api", "/rest/v1")}/vfs_accounts?id=eq.${accountId}&select=email,imap_host,imap_password,otp_requested_at`,
+      { headers: { apikey: CONFIG.API_KEY, Authorization: `Bearer ${CONFIG.API_KEY}` } }
+    );
+    const accounts = await res.json();
+    if (!accounts?.length || !accounts[0].imap_password) return null;
+
+    const account = accounts[0];
+    const host = account.imap_host || "imap.gmail.com";
+    const otpRequestedAt = account.otp_requested_at ? new Date(account.otp_requested_at) : null;
+    const otpRequestedTs = otpRequestedAt && !Number.isNaN(otpRequestedAt.getTime()) ? otpRequestedAt.getTime() : null;
+
+    console.log(`  [IMAP] ${account.email} → ${host} bağlanıyor...`);
+
+    const decodeQuotedPrintable = (text = "") =>
+      text.replace(/=\r?\n/g, "").replace(/=([0-9A-F]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    const htmlToText = (text = "") =>
+      text.replace(/<br\s*\/?\s*>/gi, "\n").replace(/<\/(p|div|tr|td|h1|h2|h3|h4|h5|h6)>/gi, "\n")
+        .replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&")
+        .replace(/\u00a0/g, " ").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n");
+
+    const client = new ImapFlow({
+      host, port: 993, secure: true,
+      auth: { user: account.email, pass: account.imap_password },
+      logger: false, greetingTimeout: 10000, socketTimeout: 15000,
+    });
+
+    await client.connect();
+    const lock = await client.getMailboxLock("INBOX");
+
+    try {
+      const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+      const sinceTs = otpRequestedTs ? Math.max(oneDayAgo, otpRequestedTs - 5 * 60 * 1000) : oneDayAgo;
+      const messages = await client.search({ since: new Date(sinceTs) }, { uid: true });
+      if (!messages.length) { await lock.release(); await client.logout(); return null; }
+
+      const lastUids = messages.slice(-20).reverse();
+      for (const uid of lastUids) {
+        const msg = await client.fetchOne(uid, { source: true, envelope: true, internalDate: true }, { uid: true });
+        const msgTs = msg?.internalDate ? new Date(msg.internalDate).getTime() : null;
+        if (otpRequestedTs && msgTs && msgTs < otpRequestedTs - 15000) continue;
+
+        const rawText = (msg?.source ? msg.source.toString("utf8") : "").replace(/\r/g, "");
+        const mainBlock = rawText.split(/\n(?:On .+ wrote:|-----Original Message-----)/i)[0].slice(0, 12000);
+        const normalizedText = htmlToText(decodeQuotedPrintable(mainBlock));
+
+        // VFS OTP genellikle 6 haneli
+        const patterns = [
+          /(?:doğrulama kodu|verification code|one.?time password|otp)[^\d]{0,60}(\d{4,8})/i,
+          /(?:tek seferlik|tek kullanımlık)[^\d]{0,60}(\d{4,8})/i,
+          /\b(\d{6})\b/,
+        ];
+
+        let otp = null;
+        for (const pattern of patterns) {
+          const match = normalizedText.match(pattern);
+          if (match?.[1] && match[1] !== "0000" && match[1] !== "000000") { otp = match[1]; break; }
+        }
+
+        if (!otp) {
+          const lineCodes = [...normalizedText.matchAll(/^\s*(\d{4,8})\s*$/gm)].map((m) => m[1]).filter((x) => x !== "0000" && x !== "000000");
+          if (lineCodes.length > 0) otp = lineCodes[lineCodes.length - 1];
+        }
+
+        if (otp) {
+          const fromText = (msg?.envelope?.from || []).map((x) => x?.address || "").join(", ");
+          console.log(`  [IMAP] ✅ VFS OTP bulundu: ${otp} | from: ${fromText}`);
+          await lock.release(); await client.logout();
+          return otp;
+        }
+      }
+      await lock.release(); await client.logout();
+      return null;
+    } catch (e) {
+      try { await lock.release(); } catch {} try { await client.logout(); } catch {}
+      throw e;
+    }
+  } catch (err) {
+    console.error(`  [IMAP] VFS IMAP hatası: ${err.message}`);
+    return null;
+  }
+}
+
 async function readManualOtp(accountId) {
   try {
     const data = await apiPost({ action: "get_account_otp", account_id: accountId }, "get_account_otp");

@@ -77,6 +77,8 @@ interface CityOffice {
 export default function IdataAccounts() {
   const [accounts, setAccounts] = useState<IdataAccount[]>([]);
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
+  const [showImapPass, setShowImapPass] = useState(false);
+  const [showImapPassCards, setShowImapPassCards] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
   const [otpInputs, setOtpInputs] = useState<Record<string, string>>({});
   const [regOtpInputs, setRegOtpInputs] = useState<Record<string, string>>({});
@@ -462,7 +464,12 @@ export default function IdataAccounts() {
             </div>
             <div>
               <Label className="text-xs">IMAP Şifre (App Password)</Label>
-              <Input type="password" placeholder="Gmail App Password" value={form.imap_password} onChange={e => updateForm("imap_password", e.target.value)} />
+              <div className="relative">
+                <Input type={showImapPass ? "text" : "password"} placeholder="Gmail App Password" value={form.imap_password} onChange={e => updateForm("imap_password", e.target.value)} className="pr-9" />
+                <button type="button" onClick={() => setShowImapPass(p => !p)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  {showImapPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
               <p className="text-[10px] text-muted-foreground mt-0.5">Gmail için: Hesap → Güvenlik → Uygulama Şifreleri</p>
             </div>
           </div>
@@ -505,7 +512,17 @@ export default function IdataAccounts() {
                      {acc.membership_number && <span className="text-xs text-muted-foreground font-mono">🆔 {acc.membership_number}</span>}
                      {acc.idata_office && <span className="text-xs text-muted-foreground">🏢 {acc.idata_office}</span>}
                      {acc.travel_date && <span className="text-xs text-muted-foreground">✈️ {acc.travel_date}</span>}
-                     {acc.imap_password && <Badge className="bg-green-500/10 text-green-600 border-green-500/20 text-[10px]">📧 IMAP</Badge>}
+                     {acc.imap_password && (
+                       <span className="flex items-center gap-1">
+                         <Badge className="bg-green-500/10 text-green-600 border-green-500/20 text-[10px]">📧 IMAP</Badge>
+                         <span className="text-[10px] text-muted-foreground font-mono">
+                           {showImapPassCards[acc.id] ? acc.imap_password : "••••"}
+                         </span>
+                         <button onClick={() => setShowImapPassCards(p => ({ ...p, [acc.id]: !p[acc.id] }))} className="text-muted-foreground hover:text-foreground">
+                           {showImapPassCards[acc.id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                         </button>
+                       </span>
+                     )}
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">

@@ -491,6 +491,50 @@ export default function VfsAccounts() {
                 </span>
               )}
 
+              {/* IMAP OTP Ayarları */}
+              <div className="border-t pt-2 mt-1">
+                {editingImap[acc.id] ? (
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div>
+                      <Label className="text-[10px]">IMAP Host</Label>
+                      <Input
+                        className="h-7 w-40 text-xs"
+                        placeholder="imap.gmail.com"
+                        value={editingImap[acc.id].host}
+                        onChange={(e) => setEditingImap((prev) => ({ ...prev, [acc.id]: { ...prev[acc.id], host: e.target.value } }))}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px]">IMAP Şifre (App Password)</Label>
+                      <Input
+                        className="h-7 w-40 text-xs"
+                        type="password"
+                        placeholder="uygulama şifresi"
+                        value={editingImap[acc.id].password}
+                        onChange={(e) => setEditingImap((prev) => ({ ...prev, [acc.id]: { ...prev[acc.id], password: e.target.value } }))}
+                      />
+                    </div>
+                    <Button size="sm" className="h-7 gap-1" onClick={() => saveImapSettings(acc.id)}>
+                      <CheckCircle2 className="w-3 h-3" /> Kaydet
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7" onClick={() => setEditingImap((prev) => { const n = { ...prev }; delete n[acc.id]; return n; })}>
+                      İptal
+                    </Button>
+                  </div>
+                ) : (
+                  <button
+                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                    onClick={() => setEditingImap((prev) => ({
+                      ...prev,
+                      [acc.id]: { host: acc.imap_host || "imap.gmail.com", password: acc.imap_password || "" }
+                    }))}
+                  >
+                    <Mail className="w-3 h-3" />
+                    {acc.imap_password ? "📧 IMAP ayarlandı — düzenle" : "📧 IMAP OTP ekle (otomatik kod okuma)"}
+                  </button>
+                )}
+              </div>
+
               {acc.fail_count > 0 && (
                 <span className="text-xs text-destructive">Başarısız giriş: {acc.fail_count}</span>
               )}

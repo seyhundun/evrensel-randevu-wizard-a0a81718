@@ -2930,31 +2930,43 @@ async function tickAllCheckboxes(page) {
   };
 
   const pulseCheckbox = async (x, y) => {
+    // Strateji: Tam 2 tıklama, 1sn aralıkla (pasif→aktif döngüsü Angular'ı tetikler)
+    // Gerekirse 2 tur yaparak final state = checked olmasını garanti et
+
+    const doDoubleClick = async () => {
+      await page.mouse.click(x, y);
+      await delay(1000, 1200);
+      await page.mouse.click(x, y);
+      await delay(1000, 1200);
+    };
+
     let state = await getCheckboxStateAtPoint(x, y);
 
     if (!state.found) {
-      await page.mouse.click(x, y);
-      await delay(1000, 1200);
-      await page.mouse.click(x, y);
-      await delay(1000, 1200);
+      // Element bulunamadı, yine de 2 kez tıkla
+      await doDoubleClick();
       return;
     }
 
-    if (!state.checked) {
-      await page.mouse.click(x, y);
-      await delay(250, 450);
-      state = await getCheckboxStateAtPoint(x, y);
-    }
-
-    await page.mouse.click(x, y);
-    await delay(1000, 1200);
-    await page.mouse.click(x, y);
-    await delay(1000, 1200);
-
+    // 1. tur: 2 tıklama (toggle toggle → başlangıç durumuna döner)
+    await doDoubleClick();
     state = await getCheckboxStateAtPoint(x, y);
+
     if (!state.checked) {
+      // Checked değilse bir tık daha at (tek sayı = toggle)
       await page.mouse.click(x, y);
-      await delay(350, 650);
+      await delay(1000, 1200);
+      state = await getCheckboxStateAtPoint(x, y);
+
+      // Hala checked değilse 2. tam tur dene
+      if (!state.checked) {
+        await doDoubleClick();
+        state = await getCheckboxStateAtPoint(x, y);
+        if (!state.checked) {
+          await page.mouse.click(x, y);
+          await delay(500, 800);
+        }
+      }
     }
   };
 

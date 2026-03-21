@@ -272,13 +272,7 @@ const Index = () => {
                     checksCount={t.checksCount}
                     onSimulateFound={t.simulateFound}
                     configId={t.configId}
-                  />
-                  <ApplicantList
-                    applicants={t.applicants}
-                    onUpdate={t.updateApplicant}
-                    personCount={t.personCount}
-                    setPersonCount={t.setPersonCount}
-                  />
+                
                 </div>
               </ScrollArea>
             </main>

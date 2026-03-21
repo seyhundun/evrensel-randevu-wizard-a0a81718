@@ -512,7 +512,17 @@ export default function IdataAccounts() {
                      {acc.membership_number && <span className="text-xs text-muted-foreground font-mono">🆔 {acc.membership_number}</span>}
                      {acc.idata_office && <span className="text-xs text-muted-foreground">🏢 {acc.idata_office}</span>}
                      {acc.travel_date && <span className="text-xs text-muted-foreground">✈️ {acc.travel_date}</span>}
-                     {acc.imap_password && <Badge className="bg-green-500/10 text-green-600 border-green-500/20 text-[10px]">📧 IMAP</Badge>}
+                     {acc.imap_password && (
+                       <span className="flex items-center gap-1">
+                         <Badge className="bg-green-500/10 text-green-600 border-green-500/20 text-[10px]">📧 IMAP</Badge>
+                         <span className="text-[10px] text-muted-foreground font-mono">
+                           {showImapPassCards[acc.id] ? acc.imap_password : "••••"}
+                         </span>
+                         <button onClick={() => setShowImapPassCards(p => ({ ...p, [acc.id]: !p[acc.id] }))} className="text-muted-foreground hover:text-foreground">
+                           {showImapPassCards[acc.id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                         </button>
+                       </span>
+                     )}
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">

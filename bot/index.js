@@ -193,6 +193,10 @@ function isPageBlocked(pageContent) {
   // Sadece gerçek engel durumlarını tespit et
   return lower.includes("access denied") || 
          lower.includes("403 forbidden") ||
+         lower.includes("izin sorunları") ||
+         lower.includes("izin sorunlari") ||
+         lower.includes("yetki sorunu") ||
+         (lower.includes("(403)") && lower.includes("izin")) ||
          (lower.includes("blocked") && !lower.includes("just a moment"));
 }
 

@@ -3683,6 +3683,24 @@ async function registerVfsAccount(account) {
       } catch {}
     }
 
+    // SUBMIT ÖNCESİ: Tüm inputlarda Angular validasyonunu zorla tetikle
+    await page.evaluate(() => {
+      const inputs = document.querySelectorAll('input, select, textarea');
+      inputs.forEach(el => {
+        el.dispatchEvent(new Event('focus', { bubbles: true }));
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('blur', { bubbles: true }));
+      });
+      // Angular form validation tetikle
+      const forms = document.querySelectorAll('form');
+      forms.forEach(form => {
+        form.dispatchEvent(new Event('input', { bubbles: true }));
+        form.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    });
+    await delay(500, 1000);
+
     // DEVAM ET BUTONU
     console.log("  [REG 7/7] Devam Et tıklanıyor...");
     let clickedSubmit = false;

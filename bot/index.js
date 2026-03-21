@@ -878,18 +878,22 @@ async function handleOtpVerification(page, account) {
     const hasEmailInput = !!document.querySelector('input[type="email"], input[name="email"]');
     const hasPasswordInput = !!document.querySelector('input[type="password"]');
     if (hasEmailInput && hasPasswordInput) return false;
-    const inputs = document.querySelectorAll('input[type="text"], input[type="number"], input[type="tel"]');
+    const inputs = document.querySelectorAll('input[type="text"], input[type="number"], input[type="tel"], input[type="password"]');
     const hasOtpInput = [...inputs].some(inp => {
       const name = (inp.name || "").toLowerCase();
       const placeholder = (inp.placeholder || "").toLowerCase();
       const id = (inp.id || "").toLowerCase();
+      const type = (inp.getAttribute("type") || "").toLowerCase();
+      const label = (inp.closest('mat-form-field, .mat-mdc-form-field, .form-group, .ng-star-inserted, div')?.textContent || "").toLowerCase();
       return name.includes("otp") || name.includes("code") || name.includes("verification") ||
              placeholder.includes("kod") || placeholder.includes("code") || placeholder.includes("doğrulama") ||
-             id.includes("otp") || id.includes("code");
+             id.includes("otp") || id.includes("code") ||
+             label.includes("otp") || label.includes("tek seferlik") || label.includes("doğrulama") ||
+             type === "password";
     });
     const hasOtpText = body.includes("doğrulama kodu") || body.includes("verification code") ||
                        body.includes("one-time") || body.includes("otp") ||
-                       body.includes("tek kullanımlık") || body.includes("sms") ||
+                       body.includes("tek kullanımlık") || body.includes("tek seferlik") || body.includes("sms") ||
                        body.includes("enter the code") || body.includes("kodu girin");
     return hasOtpInput || (hasOtpText && inputs.length > 0 && inputs.length <= 6);
   });

@@ -4376,7 +4376,7 @@ async function openManualBrowser() {
   console.log(`  [MANUAL] Proxy: ${proxyLabel}`);
   
   try {
-    // Proxy auth için tarayıcıyı bot açar, sonra bağlantıyı tamamen bırakır
+    // Proxy/IP bot tarafından hazırlanır, sonra tarayıcı kullanıcıya bırakılır
     const { browser, page } = await launchBrowser(activeIp);
     const browserProcess = typeof browser.process === "function" ? browser.process() : null;
 
@@ -4385,7 +4385,7 @@ async function openManualBrowser() {
     await page.goto(loginUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
 
     console.log("  [MANUAL] ✅ Sayfa açıldı — TAM KONTROL SİZDE!");
-    console.log("  [MANUAL] ✅ Bot tarayıcı bağlantısını bırakıyor; yazı yazma ve tıklama artık sizde.");
+    console.log("  [MANUAL] ✅ Bot manuel oturumu izlemeye geçti; tıklama ve yazma sizde.");
     console.log("  [MANUAL] ⏳ Tarayıcıyı kapattığınızda bot normal çalışmaya dönecek.\n");
 
     // Log to dashboard
@@ -4398,18 +4398,26 @@ async function openManualBrowser() {
       await logStep(logConfigId, "manual_browser", `Manuel tarayıcı açıldı (tam kontrol) | Proxy: ${proxyLabel}`);
     }
 
-    // En kritik nokta: Puppeteer bağlantısını tamamen kopar
-    try {
-      await page.bringToFront().catch(() => {});
-      browser.disconnect();
-    } catch {}
+    await page.bringToFront().catch(() => {});
 
-    // Chrome açık kalır, kullanıcı kapatana kadar beklenir
+    // Tarayıcıyı kapatma; kullanıcı manuel olarak kapatana kadar sadece bekle.
     await new Promise((resolve) => {
-      if (!browserProcess) return resolve();
-      if (browserProcess.exitCode !== null) return resolve();
-      browserProcess.once("close", resolve);
-      browserProcess.once("exit", resolve);
+      let resolved = false;
+      const done = () => {
+        if (resolved) return;
+        resolved = true;
+        resolve();
+      };
+
+      if (browserProcess) {
+        if (browserProcess.exitCode !== null) return done();
+        browserProcess.once("close", done);
+        browserProcess.once("exit", done);
+      }
+
+      try {
+        browser.once("disconnected", done);
+      } catch {}
     });
 
     console.log("  [MANUAL] 🔚 Tarayıcı kapatıldı, bot normal çalışmaya dönüyor.\n");

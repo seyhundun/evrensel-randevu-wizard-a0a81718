@@ -4379,9 +4379,9 @@ async function openManualBrowser() {
     // puppeteer-real-browser ile aç — proxy auth otomatik + turnstile desteği
     const { browser, page } = await launchBrowser(activeIp);
     
-    const registerUrl = "https://visa.vfsglobal.com/tur/tr/fra/register";
-    console.log(`  [MANUAL] VFS kayıt sayfası açılıyor: ${registerUrl}`);
-    await page.goto(registerUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
+    const loginUrl = "https://visa.vfsglobal.com/tur/tr/fra/login";
+    console.log(`  [MANUAL] VFS giriş sayfası açılıyor: ${loginUrl}`);
+    await page.goto(loginUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
     
     // Puppeteer listener'larını kaldır — kullanıcıya tam kontrol ver
     await page.evaluate(() => {

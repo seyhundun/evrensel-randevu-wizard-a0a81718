@@ -4419,10 +4419,25 @@ async function openManualBrowser() {
         browser.once("disconnected", finish);
       } catch {}
 
-      if (!browserProcess) return;
-      if (browserProcess.exitCode !== null) return finish();
-      browserProcess.once("close", finish);
-      browserProcess.once("exit", finish);
+      if (browserProcess) {
+        if (browserProcess.exitCode !== null) return finish();
+        browserProcess.once("close", finish);
+        browserProcess.once("exit", finish);
+      }
+
+      // browserProcess yoksa sadece browser.disconnected'a güven
+      // Ayrıca her 5 saniyede browser hala bağlı mı kontrol et
+      const checkInterval = setInterval(async () => {
+        try {
+          if (!browser.isConnected()) {
+            clearInterval(checkInterval);
+            finish();
+          }
+        } catch {
+          clearInterval(checkInterval);
+          finish();
+        }
+      }, 5000);
     });
 
     console.log("  [MANUAL] 🔚 Tarayıcı kapatıldı, bot normal çalışmaya dönüyor.\n");

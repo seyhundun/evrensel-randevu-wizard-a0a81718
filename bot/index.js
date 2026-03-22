@@ -4376,49 +4376,32 @@ async function openManualBrowser() {
   console.log(`  [MANUAL] Proxy: ${proxyLabel}`);
   
   try {
-    const { execSync, spawn } = require("child_process");
-    
-    // Build proxy args
-    const chromiumArgs = [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--window-size=1920,1080",
-      "--start-maximized",
-    ];
-    
-    if (PROXY_ENABLED && PROXY_MODE === "residential" && EVOMI_PROXY_USER) {
-      // Residential proxy — use chrome extension or proxy arg
-      const rp = getResidentialProxyUrl();
-      chromiumArgs.push(`--proxy-server=http://${rp.host}:${rp.port}`);
-      console.log(`  [MANUAL] 🏠 Residential proxy: ${rp.host}:${rp.port}`);
-      console.log(`  [MANUAL] ⚠ Proxy auth gerekebilir — user: ${rp.user}`);
-    } else if (PROXY_ENABLED && activeIp) {
-      const proxyPort = 10800 + IP_LIST.indexOf(activeIp);
-      chromiumArgs.push(`--proxy-server=socks5://127.0.0.1:${proxyPort}`);
-      console.log(`  [MANUAL] 🌐 SOCKS5 proxy: 127.0.0.1:${proxyPort} (IP: ${activeIp})`);
-    } else {
-      console.log(`  [MANUAL] 🔵 Proxy KAPALI — doğrudan IP ile çıkılıyor`);
-    }
+    // puppeteer-real-browser ile aç — proxy auth otomatik + turnstile desteği
+    const { browser, page } = await launchBrowser(activeIp);
     
     const registerUrl = "https://visa.vfsglobal.com/tur/tr/fra/register";
-    chromiumArgs.push(registerUrl);
+    console.log(`  [MANUAL] VFS kayıt sayfası açılıyor: ${registerUrl}`);
+    await page.goto(registerUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
     
-    // Find chromium binary
-    let chromiumPath = "google-chrome";
-    try { execSync("which google-chrome", { stdio: "ignore" }); }
-    catch {
-      try { execSync("which chromium-browser", { stdio: "ignore" }); chromiumPath = "chromium-browser"; }
-      catch {
-        try { execSync("which chromium", { stdio: "ignore" }); chromiumPath = "chromium"; }
-        catch { chromiumPath = "/usr/bin/google-chrome-stable"; }
-      }
-    }
+    // Puppeteer listener'larını kaldır — kullanıcıya tam kontrol ver
+    await page.evaluate(() => {
+      // Input interception'ları temizle
+      document.querySelectorAll("input, select, textarea, button").forEach(el => {
+        const clone = el.cloneNode(true);
+        el.parentNode?.replaceChild(clone, el);
+      });
+    }).catch(() => {});
     
-    console.log(`  [MANUAL] Chromium: ${chromiumPath}`);
-    console.log(`  [MANUAL] URL: ${registerUrl}`);
-    console.log(`  [MANUAL] ✅ Tarayıcı açılıyor — TAM KONTROL SİZDE!`);
-    console.log(`  [MANUAL] ⏳ Tarayıcı kapatılana kadar bot bekleyecek...\n`);
+    // CDP session'ı kapat — puppeteer artık sayfaya müdahale etmez
+    try {
+      const client = await page.target().createCDPSession();
+      await client.send("Input.setInterceptDrags", { enabled: false }).catch(() => {});
+      await client.detach().catch(() => {});
+    } catch {}
+    
+    console.log("  [MANUAL] ✅ Sayfa açıldı — TAM KONTROL SİZDE!");
+    console.log("  [MANUAL] ✅ Yazı yazma, tıklama, form doldurma — her şey sizin elinizde.");
+    console.log("  [MANUAL] ⏳ Tarayıcıyı kapattığınızda bot normal çalışmaya dönecek.\n");
     
     // Log to dashboard
     let logConfigId = null;
@@ -4430,20 +4413,9 @@ async function openManualBrowser() {
       await logStep(logConfigId, "manual_browser", `Manuel tarayıcı açıldı (tam kontrol) | Proxy: ${proxyLabel}`);
     }
     
-    // Launch chromium directly — no puppeteer, full user control
-    const proc = spawn(chromiumPath, chromiumArgs, {
-      stdio: "ignore",
-      detached: false,
-      env: { ...process.env, DISPLAY: process.env.DISPLAY || ":99" },
-    });
-    
-    // Wait for browser process to exit
+    // Tarayıcı kapatılana kadar bekle
     await new Promise((resolve) => {
-      proc.on("close", resolve);
-      proc.on("error", (err) => {
-        console.error("  [MANUAL] Chromium başlatma hatası:", err.message);
-        resolve();
-      });
+      browser.on("disconnected", resolve);
     });
     
     console.log("  [MANUAL] 🔚 Tarayıcı kapatıldı, bot normal çalışmaya dönüyor.\n");

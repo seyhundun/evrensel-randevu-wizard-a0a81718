@@ -4368,7 +4368,7 @@ async function checkManualBrowserRequest() {
 }
 
 async function openManualBrowser() {
-  console.log("\n🖥 MANUEL TARAYICI AÇILIYOR...");
+  console.log("\n🖥 MANUEL TARAYICI AÇILIYOR (tam kontrol)...");
   await loadProxySettingsFromDB();
   
   const activeIp = (PROXY_MODE !== "residential" && IP_LIST.length > 0) ? getNextIp() : null;
@@ -4376,15 +4376,49 @@ async function openManualBrowser() {
   console.log(`  [MANUAL] Proxy: ${proxyLabel}`);
   
   try {
-    const { browser, page } = await launchBrowser(activeIp);
+    const { execSync, spawn } = require("child_process");
     
-    // VFS kayıt sayfasına git
+    // Build proxy args
+    const chromiumArgs = [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--window-size=1920,1080",
+      "--start-maximized",
+    ];
+    
+    if (PROXY_ENABLED && PROXY_MODE === "residential" && EVOMI_PROXY_USER) {
+      // Residential proxy — use chrome extension or proxy arg
+      const rp = getResidentialProxyUrl();
+      chromiumArgs.push(`--proxy-server=http://${rp.host}:${rp.port}`);
+      console.log(`  [MANUAL] 🏠 Residential proxy: ${rp.host}:${rp.port}`);
+      console.log(`  [MANUAL] ⚠ Proxy auth gerekebilir — user: ${rp.user}`);
+    } else if (PROXY_ENABLED && activeIp) {
+      const proxyPort = 10800 + IP_LIST.indexOf(activeIp);
+      chromiumArgs.push(`--proxy-server=socks5://127.0.0.1:${proxyPort}`);
+      console.log(`  [MANUAL] 🌐 SOCKS5 proxy: 127.0.0.1:${proxyPort} (IP: ${activeIp})`);
+    } else {
+      console.log(`  [MANUAL] 🔵 Proxy KAPALI — doğrudan IP ile çıkılıyor`);
+    }
+    
     const registerUrl = "https://visa.vfsglobal.com/tur/tr/fra/register";
-    console.log(`  [MANUAL] VFS kayıt sayfası açılıyor: ${registerUrl}`);
-    await page.goto(registerUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
+    chromiumArgs.push(registerUrl);
     
-    console.log("  [MANUAL] ✅ Sayfa açıldı — tarayıcı açık kalacak, siz işlemi yapın.");
-    console.log("  [MANUAL] ⏳ Tarayıcı kapatılana kadar bekleniyor...");
+    // Find chromium binary
+    let chromiumPath = "google-chrome";
+    try { execSync("which google-chrome", { stdio: "ignore" }); }
+    catch {
+      try { execSync("which chromium-browser", { stdio: "ignore" }); chromiumPath = "chromium-browser"; }
+      catch {
+        try { execSync("which chromium", { stdio: "ignore" }); chromiumPath = "chromium"; }
+        catch { chromiumPath = "/usr/bin/google-chrome-stable"; }
+      }
+    }
+    
+    console.log(`  [MANUAL] Chromium: ${chromiumPath}`);
+    console.log(`  [MANUAL] URL: ${registerUrl}`);
+    console.log(`  [MANUAL] ✅ Tarayıcı açılıyor — TAM KONTROL SİZDE!`);
+    console.log(`  [MANUAL] ⏳ Tarayıcı kapatılana kadar bot bekleyecek...\n`);
     
     // Log to dashboard
     let logConfigId = null;
@@ -4393,12 +4427,23 @@ async function openManualBrowser() {
       if (configs.length > 0) logConfigId = configs[0].id;
     } catch {}
     if (logConfigId) {
-      await logStep(logConfigId, "manual_browser", `Manuel tarayıcı açıldı | Proxy: ${proxyLabel}`);
+      await logStep(logConfigId, "manual_browser", `Manuel tarayıcı açıldı (tam kontrol) | Proxy: ${proxyLabel}`);
     }
     
-    // Tarayıcı kapatılana kadar bekle
+    // Launch chromium directly — no puppeteer, full user control
+    const proc = spawn(chromiumPath, chromiumArgs, {
+      stdio: "ignore",
+      detached: false,
+      env: { ...process.env, DISPLAY: process.env.DISPLAY || ":99" },
+    });
+    
+    // Wait for browser process to exit
     await new Promise((resolve) => {
-      browser.on("disconnected", resolve);
+      proc.on("close", resolve);
+      proc.on("error", (err) => {
+        console.error("  [MANUAL] Chromium başlatma hatası:", err.message);
+        resolve();
+      });
     });
     
     console.log("  [MANUAL] 🔚 Tarayıcı kapatıldı, bot normal çalışmaya dönüyor.\n");

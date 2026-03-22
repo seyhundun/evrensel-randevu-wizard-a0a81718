@@ -4357,6 +4357,56 @@ async function registerVfsAccount(account) {
 }
 
 // ==================== MAIN LOOP ====================
+// ==================== MANUAL BROWSER ====================
+async function checkManualBrowserRequest() {
+  try {
+    const data = await apiPost({ action: "check_manual_browser" }, "check_manual_browser");
+    return data.ok && data.requested;
+  } catch (err) {
+    return false;
+  }
+}
+
+async function openManualBrowser() {
+  console.log("\n🖥 MANUEL TARAYICI AÇILIYOR...");
+  await loadProxySettingsFromDB();
+  
+  const activeIp = (PROXY_MODE !== "residential" && IP_LIST.length > 0) ? getNextIp() : null;
+  const proxyLabel = PROXY_MODE === "residential" ? "residential proxy" : (activeIp || "doğrudan IP");
+  console.log(`  [MANUAL] Proxy: ${proxyLabel}`);
+  
+  try {
+    const { browser, page } = await launchBrowser(activeIp);
+    
+    // VFS kayıt sayfasına git
+    const registerUrl = "https://visa.vfsglobal.com/tur/tr/fra/register";
+    console.log(`  [MANUAL] VFS kayıt sayfası açılıyor: ${registerUrl}`);
+    await page.goto(registerUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
+    
+    console.log("  [MANUAL] ✅ Sayfa açıldı — tarayıcı açık kalacak, siz işlemi yapın.");
+    console.log("  [MANUAL] ⏳ Tarayıcı kapatılana kadar bekleniyor...");
+    
+    // Log to dashboard
+    let logConfigId = null;
+    try {
+      const { configs } = await fetchActiveConfigs();
+      if (configs.length > 0) logConfigId = configs[0].id;
+    } catch {}
+    if (logConfigId) {
+      await logStep(logConfigId, "manual_browser", `Manuel tarayıcı açıldı | Proxy: ${proxyLabel}`);
+    }
+    
+    // Tarayıcı kapatılana kadar bekle
+    await new Promise((resolve) => {
+      browser.on("disconnected", resolve);
+    });
+    
+    console.log("  [MANUAL] 🔚 Tarayıcı kapatıldı, bot normal çalışmaya dönüyor.\n");
+  } catch (err) {
+    console.error("  [MANUAL] Hata:", err.message);
+  }
+}
+
 async function main() {
   console.log("═══════════════════════════════════════════");
   console.log("  VFS Randevu Takip Botu v8.0");
@@ -4374,11 +4424,19 @@ async function main() {
   console.log("✅ Fingerprint randomization aktif");
   console.log("✅ OTP false-positive düzeltmesi aktif");
   console.log("✅ Otomatik kayıt aktif");
+  console.log("✅ Manuel tarayıcı açma desteği aktif");
 
   while (true) {
     try {
       // DB'den güncel proxy ayarlarını yükle
       await loadProxySettingsFromDB();
+
+      // Manuel tarayıcı isteği kontrol et
+      const manualRequested = await checkManualBrowserRequest();
+      if (manualRequested) {
+        await openManualBrowser();
+        continue; // Manuel tarayıcı kapatıldıktan sonra normal döngüye dön
+      }
 
       // Bekleyen kayıtları kontrol et — başarısız olanları IP değiştirerek tekrar dene
       const pendingRegs = await fetchPendingRegistrations();

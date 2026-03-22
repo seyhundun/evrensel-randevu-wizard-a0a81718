@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Plus, Trash2, Eye, EyeOff, UserCheck, Ban, Clock, MessageSquare, Send, UserPlus, Mail, Phone, Loader2, RefreshCw, ShieldAlert, CheckCircle2, Users } from "lucide-react";
+import { Plus, Trash2, Eye, EyeOff, UserCheck, Ban, Clock, MessageSquare, Send, UserPlus, Mail, Phone, Loader2, RefreshCw, ShieldAlert, CheckCircle2, Users, Globe } from "lucide-react";
 
 const VFS_PASSWORD_SPECIAL = "$@#!%*?";
 const VFS_PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[$@#!%*?])[A-Za-z\d$@#!%*?]{8,15}$/;
@@ -85,6 +85,7 @@ export default function VfsAccounts() {
   const [regOtpInputs, setRegOtpInputs] = useState<Record<string, string>>({});
   const [addMode, setAddMode] = useState<"existing" | "register" | "bulk">("existing");
   const [editingImap, setEditingImap] = useState<Record<string, { host: string; password: string }>>({});
+  const [manualBrowserLoading, setManualBrowserLoading] = useState(false);
   // Bulk Gmail alias state
   const [bulkBaseEmail, setBulkBaseEmail] = useState("");
   const [bulkPhone, setBulkPhone] = useState("");
@@ -293,6 +294,21 @@ export default function VfsAccounts() {
     setShowPasswords((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
+  const requestManualBrowser = async () => {
+    setManualBrowserLoading(true);
+    try {
+      const { error } = await supabase.functions.invoke("bot-api", {
+        body: { action: "request_manual_browser" },
+      });
+      if (error) throw error;
+      toast.success("Manuel tarayıcı açma isteği gönderildi! Bot yeni IP ile VFS sayfasını açacak.");
+    } catch (err: any) {
+      toast.error("İstek gönderilemedi: " + (err?.message || "Bilinmeyen hata"));
+    } finally {
+      setManualBrowserLoading(false);
+    }
+  };
+
   const statusBadge = (account: VfsAccount) => {
     if (account.registration_status === "pending") {
       return <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/20"><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Kayıt Bekliyor</Badge>;
@@ -325,7 +341,19 @@ export default function VfsAccounts() {
         <UserCheck className="w-5 h-5 text-primary" />
         VFS Hesapları
       </h2>
-      <p className="helper-text">Bot bu hesapları sırayla kullanır. Yeni hesap kaydı için "Yeni Kayıt" seçin.</p>
+      <div className="flex items-center gap-2 flex-wrap">
+        <p className="helper-text flex-1">Bot bu hesapları sırayla kullanır. Yeni hesap kaydı için "Yeni Kayıt" seçin.</p>
+        <Button 
+          size="sm" 
+          variant="outline" 
+          onClick={requestManualBrowser} 
+          disabled={manualBrowserLoading}
+          className="gap-1.5 border-primary/30 hover:bg-primary/10"
+        >
+          {manualBrowserLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+          Manuel Giriş (Yeni IP)
+        </Button>
+      </div>
 
       {/* Add new account */}
       <Card className="p-4 space-y-3">

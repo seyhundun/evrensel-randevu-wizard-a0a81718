@@ -408,6 +408,26 @@ export default function QuizSidebarContent() {
         )}
       </Card>
 
+      {/* Browser Use API */}
+      <Card className="p-3 space-y-2">
+        <h3 className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+          <Globe className="w-3.5 h-3.5 text-muted-foreground" />
+          Browser Use API
+        </h3>
+        <div className="grid grid-cols-1 gap-1.5 text-[10px]">
+          <div className="flex items-center justify-between bg-secondary/40 rounded px-2 py-1.5">
+            <span className="text-muted-foreground">API Key</span>
+            <span className={`font-medium ${browserUseApiKey ? "text-emerald-600" : "text-destructive"}`}>
+              {browserUseApiKey ? "✓ Tanımlı" : "✗ Eksik"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between bg-secondary/40 rounded px-2 py-1.5">
+            <span className="text-muted-foreground">Motor</span>
+            <span className="font-medium text-foreground">Cloud Agent v3.0</span>
+          </div>
+        </div>
+      </Card>
+
       {/* CAPTCHA Settings */}
       <Card className="p-3 space-y-2">
         <h3 className="text-xs font-semibold text-foreground flex items-center gap-1.5">
@@ -426,6 +446,8 @@ export default function QuizSidebarContent() {
             </span>
           </div>
         </div>
+      </Card>
+    </div>
       </Card>
     </div>
   );

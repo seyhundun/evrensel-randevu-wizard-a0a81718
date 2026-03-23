@@ -12,6 +12,7 @@ import {
   Maximize2, Clock, Mail
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import QuizTrackingLogs from "@/components/QuizTrackingLogs";
 
 type QuizAccount = {
   id: string;
@@ -289,6 +290,9 @@ export default function QuizBotPanel() {
           </ScrollArea>
         </Card>
       )}
+
+      {/* Quiz Bot Logları */}
+      <QuizTrackingLogs />
     </div>
   );
 }

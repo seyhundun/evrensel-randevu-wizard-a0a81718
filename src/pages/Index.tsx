@@ -333,9 +333,24 @@ const Index = () => {
         {/* ========== QUIZ BOT TAB ========== */}
         <TabsContent value="quiz" className="mt-0 flex-1 min-h-0">
           <div className="flex h-[calc(100vh-105px)]">
+            {/* LEFT SIDEBAR */}
+            {!isMobile && (
+              <aside
+                className={`shrink-0 border-r border-border bg-card/50 overflow-hidden transition-[width] duration-300 ease-in-out ${
+                  sidebarOpen ? "w-[340px]" : "w-0 border-r-0"
+                }`}
+                style={{ height: "calc(100vh - 105px)" }}
+              >
+                <div className="w-[340px] h-full overflow-y-auto overflow-x-hidden">
+                  <QuizSidebarContent />
+                </div>
+              </aside>
+            )}
+
+            {/* MAIN CONTENT */}
             <main className="flex-1 min-w-0">
               <ScrollArea className="h-full">
-                <div className="p-3 md:p-6 max-w-4xl mx-auto">
+                <div className="p-3 md:p-6">
                   <QuizBotPanel />
                 </div>
               </ScrollArea>

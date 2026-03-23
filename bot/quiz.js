@@ -246,9 +246,10 @@ async function handleEmailLogin(page) {
 
     if (!emailInput) {
       await clickByText(page, "button, a, div[role='button'], span, input[type='button'], input[type='submit']", [
-        "continue with email", "continue with e-mail", "email", "e-mail", "e posta", "e-posta", "email ile", "e-posta ile",
+        "continue with email", "continue with e-mail", "email ile devam", "e-posta ile devam",
+        "email", "e-mail", "e posta", "e-posta",
         "login", "log in", "sign in", "signin", "giriş", "oturum aç"
-      ]);
+      ], ["google", "apple", "facebook", "twitter", "github"]);
       await randomDelay(2000, 3500);
       await dismissCookies(page);
       emailInput = await page.$(emailSelector);

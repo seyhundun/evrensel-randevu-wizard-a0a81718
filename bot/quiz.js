@@ -578,95 +578,20 @@ async function handleEmailLogin(page) {
 // ==================== COOKIE POPUP KAPATMA ====================
 
 async function dismissCookies(page) {
-  for (var attempt = 0; attempt < 8; attempt++) {
-    try {
-      var dismissed = await page.evaluate(function() {
-        function isVisible(el) {
-          if (!el) return false;
-          var style = window.getComputedStyle(el);
-          var rect = el.getBoundingClientRect();
-          return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
-        }
-
-        var keywords = [
-          "accept all", "accept", "allow all", "allow", "agree", "i agree", "got it", "ok", "okay",
-          "kabul", "kabul et", "hepsini kabul et", "tamam", "anladım", "çerezleri kabul et", "cookie kabul"
-        ];
-        var rejectWords = ["reject", "reject all", "more choices", "manage", "preferences", "ayar", "reddet", "tercih"];
-
-        var selectors = [
-          "button",
-          "a",
-          "div[role='button']",
-          "input[type='button']",
-          "input[type='submit']"
-        ];
-
-        var nodes = document.querySelectorAll(selectors.join(","));
-        var bestNode = null;
-        var bestScore = -9999;
-        for (var i = 0; i < nodes.length; i++) {
-          var node = nodes[i];
-          if (!isVisible(node)) continue;
-          var text = (node.textContent || node.value || "").toLowerCase().replace(/\s+/g, " ").trim();
-          if (!text) continue;
-          var lowered = text.toLowerCase();
-          var blocked = false;
-          for (var r = 0; r < rejectWords.length; r++) {
-            if (lowered.indexOf(rejectWords[r]) !== -1) { blocked = true; break; }
-          }
-          if (blocked) continue;
-          var rect = node.getBoundingClientRect();
-          var score = 0;
-          var cookieParent = node.closest('[id*="cookie" i], [class*="cookie" i], [aria-label*="cookie" i], [data-testid*="cookie" i], [id*="consent" i], [class*="consent" i], [aria-label*="consent" i], [data-testid*="consent" i], [role="dialog"], [aria-modal="true"]');
-          if (cookieParent) score += 120;
-          if (rect.top > window.innerHeight * 0.55) score += 80;
-          for (var j = 0; j < keywords.length; j++) {
-            if (text === keywords[j]) score += 200;
-            else if (text.indexOf(keywords[j]) !== -1) score += 120;
-          }
-          if (score > bestScore) {
-            bestScore = score;
-            bestNode = node;
-          }
-        }
-
-        if (bestNode && bestScore > 0) {
-          bestNode.scrollIntoView({ block: "center", behavior: "instant" });
-          bestNode.click();
-          return true;
-        }
-
-        var cookieContainers = document.querySelectorAll('[id*="cookie" i], [class*="cookie" i], [aria-label*="cookie" i], [data-testid*="cookie" i], [role="dialog"], [aria-modal="true"]');
-        for (var k = 0; k < cookieContainers.length; k++) {
-          var container = cookieContainers[k];
-          if (!isVisible(container)) continue;
-          var btns = container.querySelectorAll("button, a, div[role='button'], input[type='button'], input[type='submit']");
-          for (var m = 0; m < btns.length; m++) {
-            var btnText = (btns[m].textContent || btns[m].value || "").toLowerCase().replace(/\s+/g, " ").trim();
-            for (var n = 0; n < keywords.length; n++) {
-              if (btnText === keywords[n] || btnText.indexOf(keywords[n]) !== -1) {
-                btns[m].scrollIntoView({ block: "center", behavior: "instant" });
-                btns[m].click();
-                return true;
-              }
-            }
-          }
-        }
-
-        return false;
-      });
-      if (dismissed) {
-        console.log("Cookie popup kapatildi");
-        await randomDelay(700, 1200);
-        return true;
-      }
-    } catch (e) {}
-
-    await page.evaluate(function() { window.scrollTo(0, document.body.scrollHeight); }).catch(function() {});
-    await randomDelay(400, 800);
-    await page.evaluate(function() { window.scrollTo(0, 0); }).catch(function() {});
-    await randomDelay(400, 800);
+  try {
+    console.log("  Cookie: AI agent ile deneniyor...");
+    var agentResult = await agentStep(page, "Sayfadaki cookie/cerez kabul popup'ini kapat. 'Accept All', 'Kabul Et', 'Accept', 'Allow All', 'I Agree', 'Got it' gibi KABUL butonuna tikla. 'Reject', 'Manage', 'Preferences' gibi butonlara TIKLAMA. isInCookieBanner: true olan elementlere oncelik ver.", null);
+    if (agentResult.status === "found") {
+      console.log("  Cookie popup AI agent ile kapatildi");
+      await randomDelay(700, 1200);
+      return true;
+    }
+    if (agentResult.status === "already_done" || agentResult.status === "not_found") {
+      console.log("  Cookie popup bulunamadi veya zaten yok");
+      return false;
+    }
+  } catch (agentErr) {
+    console.log("  AI agent cookie hatasi: " + agentErr.message);
   }
   return false;
 }

@@ -193,13 +193,20 @@ export default function LinkAnalyzer() {
                       </div>
 
                       {a.status === "completed" && a.ai_answer && (
-                        <div className="mt-2">
+                        <div className="mt-2 flex items-center gap-3">
                           <button
                             onClick={() => setExpandedId(expandedId === a.id ? null : a.id)}
                             className="text-[11px] text-primary hover:underline"
                           >
                             {expandedId === a.id ? "Cevabı Gizle ▲" : "Cevabı Göster ▼"}
                           </button>
+                          <button
+                            onClick={() => openInNewTab(a)}
+                            className="text-[11px] text-primary hover:underline flex items-center gap-1"
+                          >
+                            <Maximize2 className="w-3 h-3" /> Yeni Sekmede Aç
+                          </button>
+                        </div>
                           {expandedId === a.id && (
                             <div className="mt-2 p-3 rounded-lg bg-muted/50 text-xs whitespace-pre-wrap leading-relaxed max-h-[300px] overflow-y-auto">
                               {a.ai_answer}

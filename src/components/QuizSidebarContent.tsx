@@ -448,7 +448,5 @@ export default function QuizSidebarContent() {
         </div>
       </Card>
     </div>
-      </Card>
-    </div>
   );
 }

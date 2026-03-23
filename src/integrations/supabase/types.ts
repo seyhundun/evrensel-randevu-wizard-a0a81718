@@ -277,6 +277,36 @@ export type Database = {
         }
         Relationships: []
       }
+      link_analyses: {
+        Row: {
+          ai_answer: string | null
+          created_at: string
+          id: string
+          page_content: string | null
+          page_title: string | null
+          status: string
+          url: string
+        }
+        Insert: {
+          ai_answer?: string | null
+          created_at?: string
+          id?: string
+          page_content?: string | null
+          page_title?: string | null
+          status?: string
+          url: string
+        }
+        Update: {
+          ai_answer?: string | null
+          created_at?: string
+          id?: string
+          page_content?: string | null
+          page_title?: string | null
+          status?: string
+          url?: string
+        }
+        Relationships: []
+      }
       tracking_configs: {
         Row: {
           cf_blocked_ip: string | null

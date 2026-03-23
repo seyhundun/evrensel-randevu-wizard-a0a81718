@@ -214,6 +214,90 @@ async function clickByText(page, selectors, keywords, excludeKeywords) {
   return false;
 }
 
+async function recoverFromSocialPopup(page) {
+  try {
+    var socialHosts = ["appleid.apple.com", "accounts.google.com", "apple.com", "google.com"];
+    var currentUrl = page.url().toLowerCase();
+    for (var i = 0; i < socialHosts.length; i++) {
+      if (currentUrl.indexOf(socialHosts[i]) !== -1) {
+        console.log("Beklenmeyen sosyal giris sayfasi algilandi, geri donuluyor...");
+        await supabaseInsertLog("Sosyal popup algilandi, geri donuluyor", "warning");
+        await page.goBack({ waitUntil: "networkidle2", timeout: 15000 }).catch(function() {});
+        await randomDelay(1500, 2500);
+        return true;
+      }
+    }
+
+    if (currentBrowser && typeof currentBrowser.pages === "function") {
+      var pages = await currentBrowser.pages().catch(function() { return []; });
+      for (var j = 0; j < pages.length; j++) {
+        var p = pages[j];
+        if (p === page) continue;
+        var url = "";
+        try { url = (p.url() || "").toLowerCase(); } catch (e) {}
+        for (var k = 0; k < socialHosts.length; k++) {
+          if (url.indexOf(socialHosts[k]) !== -1) {
+            try {
+              await p.close();
+              console.log("Sosyal popup kapatildi: " + url);
+            } catch (e2) {}
+          }
+        }
+      }
+    }
+  } catch (e) {}
+  return false;
+}
+
+async function clickSwagbucksEmailButton(page) {
+  var candidates = await page.$$("button, a, div[role='button']");
+  var best = null;
+  var bestScore = -9999;
+
+  for (var i = 0; i < candidates.length; i++) {
+    try {
+      var info = await page.evaluate(function(el) {
+        var style = window.getComputedStyle(el);
+        var rect = el.getBoundingClientRect();
+        return {
+          text: (el.textContent || el.value || "").toLowerCase().replace(/\s+/g, " ").trim(),
+          className: (el.className || "").toString().toLowerCase(),
+          id: (el.id || "").toLowerCase(),
+          visible: rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none",
+          y: rect.top,
+        };
+      }, candidates[i]);
+
+      if (!info.visible || !info.text) continue;
+      if (info.text.indexOf("google") !== -1 || info.text.indexOf("apple") !== -1 || info.text.indexOf("facebook") !== -1) continue;
+      if (info.text.indexOf("email") === -1 && info.text.indexOf("e-mail") === -1 && info.text.indexOf("e-posta") === -1) continue;
+
+      var score = 0;
+      if (info.text === "continue with email") score += 200;
+      if (info.text.indexOf("continue with email") !== -1) score += 150;
+      if (info.text.indexOf("email") !== -1) score += 80;
+      if (info.className.indexOf("sb-button--dark") !== -1) score += 120;
+      if (info.id.indexOf("email") !== -1) score += 30;
+      if (info.y > 350) score += 40;
+
+      if (score > bestScore) {
+        best = candidates[i];
+        bestScore = score;
+      }
+    } catch (e) {}
+  }
+
+  if (!best) return false;
+  await best.evaluate(function(el) { el.scrollIntoView({ block: "center", behavior: "instant" }); });
+  await randomDelay(250, 450);
+  if (await humanClick(page, best)) return true;
+  try {
+    await best.evaluate(function(el) { el.click(); });
+    return true;
+  } catch (e2) {}
+  return false;
+}
+
 // ==================== LOGIN ====================
 
 async function getLoginAccount() {
@@ -240,7 +324,8 @@ async function handleEmailLogin(page) {
   try {
     // ===== ADIM 1: ÇEREZLERİ KABUL ET =====
     console.log("  Adim 1: Cerezleri kabul ediliyor...");
-    for (var cookieTry = 0; cookieTry < 3; cookieTry++) {
+    for (var cookieTry = 0; cookieTry < 5; cookieTry++) {
+      await recoverFromSocialPopup(page);
       var cookieDismissed = await dismissCookies(page);
       if (cookieDismissed) break;
       await randomDelay(1000, 1500);
@@ -286,6 +371,7 @@ async function handleEmailLogin(page) {
         await supabaseInsertLog("Log In navigasyon butonu tiklandi", "info");
         await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 15000 }).catch(function() {});
         await randomDelay(2000, 3000);
+        await recoverFromSocialPopup(page);
         await dismissCookies(page);
         emailInput = await page.$(emailSelector);
       }
@@ -294,31 +380,15 @@ async function handleEmailLogin(page) {
     // ===== ADIM 3: "CONTINUE WITH EMAIL" BUTONUNA TIKLA =====
     if (!emailInput) {
       console.log("  Adim 3: Continue with Email butonu araniyor...");
-      var emailBtnClicked = await page.evaluate(function() {
-        var buttons = document.querySelectorAll('button, a, div[role="button"]');
-        for (var i = 0; i < buttons.length; i++) {
-          var el = buttons[i];
-          var text = (el.textContent || "").toLowerCase().replace(/\s+/g, " ").trim();
-          var style = window.getComputedStyle(el);
-          var rect = el.getBoundingClientRect();
-          if (rect.width === 0 || rect.height === 0 || style.display === "none" || style.visibility === "hidden") continue;
-          // SADECE "email" içeren butonlar, Google/Apple olmayanlar
-          if (text.indexOf("google") !== -1 || text.indexOf("apple") !== -1 || text.indexOf("facebook") !== -1) continue;
-          if (text.indexOf("continue with email") !== -1 || text.indexOf("continue with e-mail") !== -1 ||
-              text.indexOf("email ile devam") !== -1 || text.indexOf("e-posta ile devam") !== -1 ||
-              text === "email" || text === "e-mail" || text === "e-posta") {
-            el.scrollIntoView({ block: "center", behavior: "instant" });
-            el.click();
-            return true;
-          }
-        }
-        return false;
-      });
+      await recoverFromSocialPopup(page);
+      await dismissCookies(page);
+      var emailBtnClicked = await clickSwagbucksEmailButton(page);
 
       if (emailBtnClicked) {
         console.log("  Continue with Email tiklandi");
         await supabaseInsertLog("Continue with Email tiklandi", "info");
         await randomDelay(2500, 4000);
+        await recoverFromSocialPopup(page);
         await dismissCookies(page);
         emailInput = await page.$(emailSelector);
       }
@@ -354,11 +424,13 @@ async function handleEmailLogin(page) {
     // ===== ADIM 5: ŞİFRE GİR =====
     var passwordInput = await page.$(passwordSelector);
     if (!passwordInput) {
+      await recoverFromSocialPopup(page);
       // Devam / Next butonuna bas
       await clickByText(page, "button, a, div[role='button'], input[type='submit']", [
         "next", "continue", "devam", "ileri", "sonraki", "proceed", "submit"
       ], ["google", "apple", "facebook"]);
       await randomDelay(2000, 4000);
+      await recoverFromSocialPopup(page);
       await dismissCookies(page);
       await page.waitForSelector(passwordSelector, { timeout: 10000 }).catch(function() {});
       passwordInput = await page.$(passwordSelector);
@@ -382,13 +454,15 @@ async function handleEmailLogin(page) {
 
     // ===== ADIM 6: GİRİŞ YAP =====
     console.log("  Adim 6: Giris yapiliyor...");
+    await recoverFromSocialPopup(page);
     await dismissCookies(page);
     await clickByText(page, "button, a, div[role='button'], input[type='submit']", [
-      "log in", "sign in", "login", "giriş", "oturum aç", "devam", "continue", "submit", "gönder"
+      "log in", "sign in", "login", "giriş", "oturum aç", "submit", "gönder"
     ], ["google", "apple", "facebook", "create", "register", "kayıt", "join"]);
     await randomDelay(3000, 6000);
 
     await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 15000 }).catch(function() {});
+    await recoverFromSocialPopup(page);
     await dismissCookies(page);
     console.log("Email giris tamamlandi!");
     await supabaseInsertLog("Email giris basarili: " + account.email, "success");
@@ -418,6 +492,7 @@ async function dismissCookies(page) {
           "accept all", "accept", "allow all", "allow", "agree", "i agree", "got it", "ok", "okay",
           "kabul", "kabul et", "hepsini kabul et", "tamam", "anladım", "çerezleri kabul et", "cookie kabul"
         ];
+        var rejectWords = ["reject", "reject all", "more choices", "manage", "preferences", "ayar", "reddet", "tercih"];
 
         var selectors = [
           "button",
@@ -428,17 +503,38 @@ async function dismissCookies(page) {
         ];
 
         var nodes = document.querySelectorAll(selectors.join(","));
+        var bestNode = null;
+        var bestScore = -9999;
         for (var i = 0; i < nodes.length; i++) {
           var node = nodes[i];
           if (!isVisible(node)) continue;
           var text = (node.textContent || node.value || "").toLowerCase().replace(/\s+/g, " ").trim();
-          for (var j = 0; j < keywords.length; j++) {
-            if (text === keywords[j] || text.indexOf(keywords[j]) !== -1) {
-              node.scrollIntoView({ block: "center", behavior: "instant" });
-              node.click();
-              return true;
-            }
+          if (!text) continue;
+          var lowered = text.toLowerCase();
+          var blocked = false;
+          for (var r = 0; r < rejectWords.length; r++) {
+            if (lowered.indexOf(rejectWords[r]) !== -1) { blocked = true; break; }
           }
+          if (blocked) continue;
+          var rect = node.getBoundingClientRect();
+          var score = 0;
+          var cookieParent = node.closest('[id*="cookie" i], [class*="cookie" i], [aria-label*="cookie" i], [data-testid*="cookie" i], [id*="consent" i], [class*="consent" i], [aria-label*="consent" i], [data-testid*="consent" i], [role="dialog"], [aria-modal="true"]');
+          if (cookieParent) score += 120;
+          if (rect.top > window.innerHeight * 0.55) score += 80;
+          for (var j = 0; j < keywords.length; j++) {
+            if (text === keywords[j]) score += 200;
+            else if (text.indexOf(keywords[j]) !== -1) score += 120;
+          }
+          if (score > bestScore) {
+            bestScore = score;
+            bestNode = node;
+          }
+        }
+
+        if (bestNode && bestScore > 0) {
+          bestNode.scrollIntoView({ block: "center", behavior: "instant" });
+          bestNode.click();
+          return true;
         }
 
         var cookieContainers = document.querySelectorAll('[id*="cookie" i], [class*="cookie" i], [aria-label*="cookie" i], [data-testid*="cookie" i], [role="dialog"], [aria-modal="true"]');

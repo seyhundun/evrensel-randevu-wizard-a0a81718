@@ -148,15 +148,25 @@ export default function LinkAnalyzer() {
           rows={3}
           className="text-sm font-mono"
         />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button
-            onClick={startAnalysis}
+            onClick={() => startAnalysis("analyze")}
             disabled={processing || !urls.trim()}
             size="sm"
             className="gap-1.5"
           >
-            {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+            {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
             {processing ? "İşleniyor..." : "Analiz Et"}
+          </Button>
+          <Button
+            onClick={() => startAnalysis("quiz")}
+            disabled={processing || !urls.trim()}
+            size="sm"
+            variant="secondary"
+            className="gap-1.5"
+          >
+            {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+            Quiz Çöz (Bot)
           </Button>
           {analyses.length > 0 && (
             <Button onClick={clearAll} variant="ghost" size="sm" className="gap-1 text-muted-foreground text-xs">

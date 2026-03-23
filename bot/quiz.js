@@ -181,27 +181,35 @@ async function humanClick(page, element) {
   return true;
 }
 
-async function clickByText(page, selectors, keywords) {
+async function clickByText(page, selectors, keywords, excludeKeywords) {
+  excludeKeywords = excludeKeywords || [];
   var elements = await page.$$(selectors);
-  for (var i = 0; i < elements.length; i++) {
-    try {
-      var info = await page.evaluate(function(el) {
-        var style = window.getComputedStyle(el);
-        var rect = el.getBoundingClientRect();
-        return {
-          text: (el.textContent || el.value || "").toLowerCase().trim(),
-          visible: rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none",
-        };
-      }, elements[i]);
-      if (!info.visible) continue;
-      for (var j = 0; j < keywords.length; j++) {
-        if (info.text.indexOf(keywords[j]) !== -1) {
+  // First pass: try exact/priority matches (first keyword has highest priority)
+  for (var pass = 0; pass < keywords.length; pass++) {
+    for (var i = 0; i < elements.length; i++) {
+      try {
+        var info = await page.evaluate(function(el) {
+          var style = window.getComputedStyle(el);
+          var rect = el.getBoundingClientRect();
+          return {
+            text: (el.textContent || el.value || "").toLowerCase().replace(/\s+/g, " ").trim(),
+            visible: rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none",
+          };
+        }, elements[i]);
+        if (!info.visible) continue;
+        // Skip excluded keywords (e.g. "google", "apple")
+        var excluded = false;
+        for (var e = 0; e < excludeKeywords.length; e++) {
+          if (info.text.indexOf(excludeKeywords[e]) !== -1) { excluded = true; break; }
+        }
+        if (excluded) continue;
+        if (info.text.indexOf(keywords[pass]) !== -1) {
           await elements[i].evaluate(function(el) { el.scrollIntoView({ block: "center", behavior: "instant" }); });
           await randomDelay(200, 400);
           if (await humanClick(page, elements[i])) return true;
         }
-      }
-    } catch (e) {}
+      } catch (e2) {}
+    }
   }
   return false;
 }

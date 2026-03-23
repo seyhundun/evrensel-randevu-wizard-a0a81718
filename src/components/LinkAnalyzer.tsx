@@ -96,6 +96,12 @@ export default function LinkAnalyzer() {
     await supabase.from("link_analyses").delete().eq("id", id);
   };
 
+  const openInNewTab = (a: Analysis) => {
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${a.page_title || a.url}</title><style>body{font-family:system-ui,sans-serif;max-width:800px;margin:40px auto;padding:0 20px;line-height:1.7;color:#222;background:#fafafa}h1{font-size:1.3rem;color:#1a1a2e;border-bottom:2px solid #e0e0e0;padding-bottom:12px}a{color:#2563eb}.meta{color:#888;font-size:0.85rem;margin-bottom:20px}.answer{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:24px;white-space:pre-wrap;font-size:0.95rem;box-shadow:0 1px 3px rgba(0,0,0,0.06)}</style></head><body><h1>🧠 AI Analiz Sonucu</h1><p class="meta">Kaynak: <a href="${a.url}" target="_blank">${a.url}</a><br>${new Date(a.created_at).toLocaleString("tr-TR")}</p><div class="answer">${a.ai_answer || "Cevap bulunamadı"}</div></body></html>`;
+    const blob = new Blob([html], { type: "text/html" });
+    window.open(URL.createObjectURL(blob), "_blank");
+  };
+
   const clearAll = async () => {
     await supabase.from("link_analyses").delete().neq("id", "00000000-0000-0000-0000-000000000000");
     toast.info("Tüm geçmiş temizlendi");

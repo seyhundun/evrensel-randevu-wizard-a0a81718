@@ -265,6 +265,7 @@ const Index = () => {
                       canStart={!!t.country && !!t.city}
                     />
                   </div>
+                  <LinkAnalyzer />
                   <AccountHealthPanel configId={t.configId} />
                   <StatusPanel
                     status={t.status}

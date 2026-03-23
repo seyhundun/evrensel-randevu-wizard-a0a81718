@@ -72,6 +72,7 @@ export default function QuizSidebarContent() {
       setCaptchaProvider(map.captcha_provider || "2captcha");
       setCaptchaApiKey(!!(map.captcha_api_key));
       setBrowserUseApiKey(!!(map.browser_use_api_key));
+      setBrowserUseKeyValue(map.browser_use_api_key || "");
     }
   }, []);
 

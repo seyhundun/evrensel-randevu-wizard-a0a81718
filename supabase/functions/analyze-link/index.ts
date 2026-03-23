@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { url, analysisId } = await req.json();
+    const { url, analysisId, mode } = await req.json();
     if (!url) {
       return new Response(
         JSON.stringify({ error: "URL gerekli" }),
@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         url: formattedUrl,
-        formats: ["markdown"],
+        formats: ["markdown", "html"],
         onlyMainContent: true,
       }),
     });
@@ -61,6 +61,7 @@ Deno.serve(async (req) => {
     }
 
     const markdown = scrapeData?.data?.markdown || scrapeData?.markdown || "";
+    const html = scrapeData?.data?.html || scrapeData?.html || "";
     const pageTitle = scrapeData?.data?.metadata?.title || scrapeData?.metadata?.title || "";
 
     // Update with scraped content
@@ -72,9 +73,42 @@ Deno.serve(async (req) => {
       }).eq("id", analysisId);
     }
 
-    // 2) AI Analysis
+    // 2) AI Analysis - structured for bot mode
     const truncatedContent = markdown.slice(0, 8000);
-    
+    const truncatedHtml = html.slice(0, 4000);
+
+    const isBot = mode === "bot";
+
+    const systemPrompt = isBot
+      ? `Sen bir anket/sınav çözme asistanısın. Verilen sayfa içeriğindeki soruları tespit et ve her birine cevap ver.
+
+ZORUNLU: Cevabını sadece JSON formatında ver, başka hiçbir şey yazma.
+JSON formatı:
+{
+  "questions": [
+    {
+      "question_number": 1,
+      "question_text": "Sorunun metni",
+      "type": "multiple_choice" veya "text_input",
+      "options": ["A şıkkı", "B şıkkı", "C şıkkı", "D şıkkı"],
+      "answer": "Doğru cevap metni (şık ise şıkkın tam metni)",
+      "answer_index": 0,
+      "selector_hint": "input[name='q1'] veya benzeri CSS seçici ipucu (HTML'den çıkarabilirsen)"
+    }
+  ]
+}
+
+HTML'den form elemanlarının name, id, class bilgilerini çıkar ve selector_hint olarak ver.
+Eğer şık bulamazsan type: "text_input" yap ve answer'a cevap metnini yaz.`
+      : `Sen bir web sayfa analiz asistanısın. Verilen sayfa içeriğini analiz et.
+Eğer sayfada sorular varsa, bunları tespit et ve her birine doğru cevabı ver.
+Eğer soru yoksa, sayfanın özetini çıkar.
+Cevapları Türkçe ver. Markdown formatı kullan.`;
+
+    const userContent = isBot
+      ? `Sayfa: ${formattedUrl}\nBaşlık: ${pageTitle}\n\nMarkdown İçerik:\n${truncatedContent}\n\nHTML Yapısı:\n${truncatedHtml}`
+      : `Sayfa: ${formattedUrl}\nBaşlık: ${pageTitle}\n\nİçerik:\n${truncatedContent}`;
+
     const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -82,19 +116,10 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-flash",
         messages: [
-          {
-            role: "system",
-            content: `Sen bir web sayfa analiz asistanısın. Verilen sayfa içeriğini analiz et.
-Eğer sayfada sorular varsa, bunları tespit et ve her birine doğru cevabı ver.
-Eğer soru yoksa, sayfanın özetini çıkar.
-Cevapları Türkçe ver. Markdown formatı kullan.`
-          },
-          {
-            role: "user",
-            content: `Sayfa: ${formattedUrl}\nBaşlık: ${pageTitle}\n\nİçerik:\n${truncatedContent}`
-          }
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent },
         ],
       }),
     });

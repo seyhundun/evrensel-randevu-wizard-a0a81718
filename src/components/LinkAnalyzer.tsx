@@ -45,7 +45,7 @@ export default function LinkAnalyzer() {
     if (data) setAnalyses(data as unknown as Analysis[]);
   };
 
-  const startAnalysis = async () => {
+  const startAnalysis = async (mode: "analyze" | "quiz" = "analyze") => {
     const urlList = urls
       .split("\n")
       .map(u => u.trim())
@@ -59,10 +59,11 @@ export default function LinkAnalyzer() {
     setProcessing(true);
 
     for (const url of urlList) {
-      // Create DB record first
+      const status = mode === "quiz" ? "quiz_pending" : "scraping";
+      
       const { data: record, error: insertErr } = await supabase
         .from("link_analyses")
-        .insert({ url, status: "scraping" } as any)
+        .insert({ url, status } as any)
         .select()
         .single();
 
@@ -71,17 +72,17 @@ export default function LinkAnalyzer() {
         continue;
       }
 
-      // Fire and forget - the edge function will update the record
-      supabase.functions.invoke("analyze-link", {
-        body: { url, analysisId: (record as any).id },
-      }).then(({ error }) => {
-        if (error) {
-          console.error("Analysis error for", url, error);
-          toast.error(`Hata (${url}): ${error.message}`);
-        }
-      });
+      if (mode === "analyze") {
+        supabase.functions.invoke("analyze-link", {
+          body: { url, analysisId: (record as any).id },
+        }).then(({ error }) => {
+          if (error) {
+            console.error("Analysis error for", url, error);
+            toast.error(`Hata (${url}): ${error.message}`);
+          }
+        });
+      }
 
-      // Small delay between requests
       if (urlList.length > 1) {
         await new Promise(r => setTimeout(r, 1500));
       }
@@ -89,7 +90,11 @@ export default function LinkAnalyzer() {
 
     setUrls("");
     setProcessing(false);
-    toast.success(`${urlList.length} link analiz ediliyor...`);
+    toast.success(
+      mode === "quiz"
+        ? `${urlList.length} link quiz botu kuyruğuna eklendi`
+        : `${urlList.length} link analiz ediliyor...`
+    );
   };
 
   const deleteAnalysis = async (id: string) => {
@@ -116,6 +121,12 @@ export default function LinkAnalyzer() {
         return <Badge className="bg-purple-500/10 text-purple-600 border-purple-500/20 gap-1"><Brain className="w-3 h-3 animate-pulse" /> Analiz</Badge>;
       case "completed":
         return <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 gap-1"><CheckCircle2 className="w-3 h-3" /> Tamamlandı</Badge>;
+      case "quiz_pending":
+        return <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 gap-1"><Clock className="w-3 h-3 animate-pulse" /> Bot Bekliyor</Badge>;
+      case "quiz_running":
+        return <Badge className="bg-indigo-500/10 text-indigo-600 border-indigo-500/20 gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Bot Çözüyor</Badge>;
+      case "quiz_done":
+        return <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 gap-1"><CheckCircle2 className="w-3 h-3" /> Quiz Çözüldü</Badge>;
       case "error":
         return <Badge variant="destructive" className="gap-1"><AlertCircle className="w-3 h-3" /> Hata</Badge>;
       default:
@@ -143,15 +154,25 @@ export default function LinkAnalyzer() {
           rows={3}
           className="text-sm font-mono"
         />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button
-            onClick={startAnalysis}
+            onClick={() => startAnalysis("analyze")}
             disabled={processing || !urls.trim()}
             size="sm"
             className="gap-1.5"
           >
-            {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+            {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
             {processing ? "İşleniyor..." : "Analiz Et"}
+          </Button>
+          <Button
+            onClick={() => startAnalysis("quiz")}
+            disabled={processing || !urls.trim()}
+            size="sm"
+            variant="secondary"
+            className="gap-1.5"
+          >
+            {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+            Quiz Çöz (Bot)
           </Button>
           {analyses.length > 0 && (
             <Button onClick={clearAll} variant="ghost" size="sm" className="gap-1 text-muted-foreground text-xs">

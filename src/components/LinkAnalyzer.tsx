@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Link2, Play, Loader2, CheckCircle2, AlertCircle, Trash2,
-  Plus, Clock, ExternalLink, Brain, History
+  Plus, Clock, ExternalLink, Brain, History, Maximize2
 } from "lucide-react";
 
 interface Analysis {

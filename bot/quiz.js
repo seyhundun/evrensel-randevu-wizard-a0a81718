@@ -115,11 +115,11 @@ async function humanClick(page, element) {
 
 // ==================== GOOGLE LOGIN ====================
 
-async function getGoogleAccount() {
-  var accounts = await supabaseGet("quiz_accounts", "status=eq.active&platform=eq.google&order=last_used_at.asc.nullsfirst&limit=1");
+async function getLoginAccount() {
+  var accounts = await supabaseGet("quiz_accounts", "status=eq.active&order=last_used_at.asc.nullsfirst&limit=1");
   if (!accounts || accounts.length === 0) {
-    console.log("Aktif Google hesabi bulunamadi!");
-    await supabaseInsertLog("Aktif Google hesabi bulunamadi", "error");
+    console.log("Aktif giris hesabi bulunamadi!");
+    await supabaseInsertLog("Aktif giris hesabi bulunamadi", "error");
     return null;
   }
   var acc = accounts[0];

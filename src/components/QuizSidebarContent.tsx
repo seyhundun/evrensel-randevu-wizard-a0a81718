@@ -42,6 +42,7 @@ export default function QuizSidebarContent() {
   const [quizProxyEnabled, setQuizProxyEnabled] = useState(true);
   const [captchaProvider, setCaptchaProvider] = useState("—");
   const [captchaApiKey, setCaptchaApiKey] = useState(false);
+  const [browserUseApiKey, setBrowserUseApiKey] = useState(false);
   const [quizStatus, setQuizStatus] = useState<"idle" | "running">("idle");
   const [lastLog, setLastLog] = useState<{ message: string; time: string; status: string } | null>(null);
   const [stats, setStats] = useState({ total: 0, success: 0, error: 0, successRate: 100 });
@@ -66,6 +67,7 @@ export default function QuizSidebarContent() {
       setQuizProxyEnabled(map.quiz_proxy_enabled !== "false");
       setCaptchaProvider(map.captcha_provider || "2captcha");
       setCaptchaApiKey(!!(map.captcha_api_key));
+      setBrowserUseApiKey(!!(map.browser_use_api_key));
     }
   }, []);
 
@@ -404,6 +406,26 @@ export default function QuizSidebarContent() {
             )}
           </>
         )}
+      </Card>
+
+      {/* Browser Use API */}
+      <Card className="p-3 space-y-2">
+        <h3 className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+          <Globe className="w-3.5 h-3.5 text-muted-foreground" />
+          Browser Use API
+        </h3>
+        <div className="grid grid-cols-1 gap-1.5 text-[10px]">
+          <div className="flex items-center justify-between bg-secondary/40 rounded px-2 py-1.5">
+            <span className="text-muted-foreground">API Key</span>
+            <span className={`font-medium ${browserUseApiKey ? "text-emerald-600" : "text-destructive"}`}>
+              {browserUseApiKey ? "✓ Tanımlı" : "✗ Eksik"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between bg-secondary/40 rounded px-2 py-1.5">
+            <span className="text-muted-foreground">Motor</span>
+            <span className="font-medium text-foreground">Cloud Agent v3.0</span>
+          </div>
+        </div>
       </Card>
 
       {/* CAPTCHA Settings */}

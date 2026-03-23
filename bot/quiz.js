@@ -40,6 +40,106 @@ async function supabaseInsertLog(message, status) {
   });
 }
 
+// ==================== AI AJAN ====================
+
+async function extractPageElements(page) {
+  return await page.evaluate(function() {
+    var results = [];
+    var selectors = 'button, a, input, select, textarea, div[role="button"], label, [onclick]';
+    var nodes = document.querySelectorAll(selectors);
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      var style = window.getComputedStyle(el);
+      var rect = el.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0 || style.display === "none" || style.visibility === "hidden" || style.opacity === "0") continue;
+      var cookieParent = el.closest('[id*="cookie" i], [class*="cookie" i], [id*="consent" i], [class*="consent" i], [role="dialog"], [aria-modal="true"], [class*="gdpr" i], [id*="gdpr" i]');
+      results.push({
+        index: results.length,
+        tag: el.tagName.toLowerCase(),
+        type: el.type || null,
+        text: (el.textContent || el.value || "").replace(/\s+/g, " ").trim().slice(0, 100),
+        id: el.id || null,
+        name: el.name || null,
+        className: (el.className || "").toString().slice(0, 100),
+        href: el.href ? el.href.slice(0, 150) : null,
+        placeholder: el.placeholder || null,
+        ariaLabel: el.getAttribute("aria-label") || null,
+        rect: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
+        isInCookieBanner: !!cookieParent
+      });
+    }
+    return results;
+  });
+}
+
+async function askAgent(task, elements, context) {
+  var fetch = (await import("node-fetch")).default;
+  var res = await fetch(SUPABASE_URL + "/functions/v1/dom-agent", {
+    method: "POST",
+    headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ elements: elements, task: task, context: context || null }),
+  });
+  if (!res.ok) {
+    var errText = await res.text();
+    throw new Error("Agent hatasi (" + res.status + "): " + errText);
+  }
+  return await res.json();
+}
+
+async function executeAgentActions(page, actions) {
+  var allElements = await page.$$('button, a, input, select, textarea, div[role="button"], label, [onclick]');
+  var visibleElements = [];
+  for (var i = 0; i < allElements.length; i++) {
+    var visible = await page.evaluate(function(el) {
+      var style = window.getComputedStyle(el);
+      var rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0";
+    }, allElements[i]);
+    if (visible) visibleElements.push(allElements[i]);
+  }
+
+  for (var j = 0; j < actions.length; j++) {
+    var action = actions[j];
+    console.log("  Agent action: " + action.type + " [" + action.elementIndex + "] - " + action.reason);
+    await supabaseInsertLog("Agent: " + action.type + " - " + action.reason, "info");
+
+    if (action.type === "none" || action.type === "wait") { await randomDelay(1000, 2000); continue; }
+
+    var targetEl = visibleElements[action.elementIndex];
+    if (!targetEl) { console.log("  Element bulunamadi: index " + action.elementIndex); continue; }
+
+    await targetEl.evaluate(function(el) { el.scrollIntoView({ block: "center", behavior: "instant" }); });
+    await randomDelay(300, 600);
+
+    if (action.type === "click") {
+      await humanClick(page, targetEl);
+      await randomDelay(500, 1500);
+    } else if (action.type === "type" && action.value) {
+      await humanClick(page, targetEl);
+      await randomDelay(200, 400);
+      await page.keyboard.down("Control").catch(function() {});
+      await page.keyboard.press("A").catch(function() {});
+      await page.keyboard.up("Control").catch(function() {});
+      await page.keyboard.press("Backspace").catch(function() {});
+      for (var k = 0; k < action.value.length; k++) {
+        await page.keyboard.type(action.value[k], { delay: 40 + Math.random() * 60 });
+      }
+      await randomDelay(300, 600);
+    }
+  }
+}
+
+async function agentStep(page, task, context) {
+  var elements = await extractPageElements(page);
+  console.log("  " + elements.length + " element tespit edildi, AI'a soruluyor...");
+  var result = await askAgent(task, elements, context);
+  console.log("  Agent cevabi: " + result.status + " - " + result.message);
+  if (result.status === "found" && result.actions && result.actions.length > 0) {
+    await executeAgentActions(page, result.actions);
+  }
+  return result;
+}
+
 // ==================== AI ANALİZ ====================
 
 async function analyzeWithAI(url) {

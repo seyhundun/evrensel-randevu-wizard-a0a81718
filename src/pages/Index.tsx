@@ -20,6 +20,7 @@ import IdataAccounts from "@/components/IdataAccounts";
 import IdataTrackingLogs from "@/components/IdataTrackingLogs";
 import BotSettingsPanel from "@/components/BotSettingsPanel";
 import AccountHealthPanel from "@/components/AccountHealthPanel";
+import LinkAnalyzer from "@/components/LinkAnalyzer";
 import VncViewer from "@/components/VncViewer";
 import { useTracking } from "@/hooks/useTracking";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -264,6 +265,7 @@ const Index = () => {
                       canStart={!!t.country && !!t.city}
                     />
                   </div>
+                  <LinkAnalyzer />
                   <AccountHealthPanel configId={t.configId} />
                   <StatusPanel
                     status={t.status}

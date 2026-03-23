@@ -121,6 +121,12 @@ export default function LinkAnalyzer() {
         return <Badge className="bg-purple-500/10 text-purple-600 border-purple-500/20 gap-1"><Brain className="w-3 h-3 animate-pulse" /> Analiz</Badge>;
       case "completed":
         return <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 gap-1"><CheckCircle2 className="w-3 h-3" /> Tamamlandı</Badge>;
+      case "quiz_pending":
+        return <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 gap-1"><Clock className="w-3 h-3 animate-pulse" /> Bot Bekliyor</Badge>;
+      case "quiz_running":
+        return <Badge className="bg-indigo-500/10 text-indigo-600 border-indigo-500/20 gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Bot Çözüyor</Badge>;
+      case "quiz_done":
+        return <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 gap-1"><CheckCircle2 className="w-3 h-3" /> Quiz Çözüldü</Badge>;
       case "error":
         return <Badge variant="destructive" className="gap-1"><AlertCircle className="w-3 h-3" /> Hata</Badge>;
       default:

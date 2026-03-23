@@ -21,6 +21,7 @@ import IdataTrackingLogs from "@/components/IdataTrackingLogs";
 import BotSettingsPanel from "@/components/BotSettingsPanel";
 import AccountHealthPanel from "@/components/AccountHealthPanel";
 import LinkAnalyzer from "@/components/LinkAnalyzer";
+import QuizBotPanel from "@/components/QuizBotPanel";
 import VncViewer from "@/components/VncViewer";
 import { useTracking } from "@/hooks/useTracking";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -202,6 +203,9 @@ const Index = () => {
             <TabsTrigger value="idata" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-1 pb-2 text-xs md:text-sm">
               🇮🇹 iDATA
             </TabsTrigger>
+            <TabsTrigger value="quiz" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-1 pb-2 text-xs md:text-sm">
+              🧩 Quiz Bot
+            </TabsTrigger>
           </TabsList>
         </div>
 
@@ -320,6 +324,19 @@ const Index = () => {
                 <div className="p-3 md:p-6 space-y-4 md:space-y-6">
                   <IdataAccounts />
                   <IdataTrackingLogs />
+                </div>
+              </ScrollArea>
+            </main>
+          </div>
+        </TabsContent>
+
+        {/* ========== QUIZ BOT TAB ========== */}
+        <TabsContent value="quiz" className="mt-0 flex-1 min-h-0">
+          <div className="flex h-[calc(100vh-105px)]">
+            <main className="flex-1 min-w-0">
+              <ScrollArea className="h-full">
+                <div className="p-3 md:p-6 max-w-4xl mx-auto">
+                  <QuizBotPanel />
                 </div>
               </ScrollArea>
             </main>

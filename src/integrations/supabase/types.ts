@@ -307,6 +307,45 @@ export type Database = {
         }
         Relationships: []
       }
+      quiz_accounts: {
+        Row: {
+          created_at: string
+          email: string
+          fail_count: number
+          id: string
+          last_used_at: string | null
+          notes: string | null
+          password: string
+          platform: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          fail_count?: number
+          id?: string
+          last_used_at?: string | null
+          notes?: string | null
+          password: string
+          platform?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          fail_count?: number
+          id?: string
+          last_used_at?: string | null
+          notes?: string | null
+          password?: string
+          platform?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       tracking_configs: {
         Row: {
           cf_blocked_ip: string | null

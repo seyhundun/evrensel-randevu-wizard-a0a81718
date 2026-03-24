@@ -2936,6 +2936,7 @@ async function pollForQuizTasks() {
     gemini: "Puppeteer + Gemini Vision",
     lovable_ai: "Puppeteer + Lovable AI",
     openai: "Puppeteer + OpenAI GPT-4o-mini",
+    dom_agent: "Puppeteer + DOM Agent",
     browser_use: "Browser Use Cloud"
   };
   var engineLabel = engineLabels[engine] || engine;
@@ -2948,6 +2949,7 @@ async function pollForQuizTasks() {
     gemini: { key: settings.gemini_api_key || process.env.GEMINI_API_KEY || "", name: "Gemini API key" },
     lovable_ai: { key: settings.lovable_api_key || process.env.LOVABLE_API_KEY || "", name: "Lovable API key" },
     openai: { key: settings.openai_api_key || process.env.OPENAI_API_KEY || "", name: "OpenAI API key" },
+    dom_agent: { key: settings.lovable_api_key || process.env.LOVABLE_API_KEY || "", name: "Lovable API key (DOM Agent)" },
     browser_use: { key: settings.browser_use_api_key || process.env.BROWSER_USE_API_KEY || "", name: "Browser Use API key" }
   };
   var check = keyChecks[engine];

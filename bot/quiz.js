@@ -588,7 +588,7 @@ function quizIsPageBlocked(pageContent) {
 
 function getQuizCooldownWait() {
   if (quizConsecutiveErrors <= 1) return 5000;
-  var wait = Math.min(quizConsecutiveErrors * QUIZ_COOLDOWN_BACKOFF_MS, 5 * 60 * 1000); // max 5dk
+  var wait = Math.min(quizConsecutiveErrors * QUIZ_COOLDOWN_BACKOFF_MS, 60 * 1000); // max 60s
   return wait;
 }
 

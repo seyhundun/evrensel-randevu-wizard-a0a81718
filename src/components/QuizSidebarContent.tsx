@@ -236,6 +236,7 @@ export default function QuizSidebarContent() {
     gemini: "Gemini Vision (Kendi Key)",
     lovable_ai: "Lovable AI (Ücretsiz)",
     openai: "OpenAI GPT-4o-mini (Ucuz)",
+    dom_agent: "DOM Agent (Hızlı)",
     browser_use: "Browser Use (Ücretli)",
   };
   const switchEngine = async (engine: QuizEngineType) => {

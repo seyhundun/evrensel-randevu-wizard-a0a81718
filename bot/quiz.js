@@ -931,8 +931,7 @@ async function runGeminiEngine(url, account, settings) {
     await humanMove(page);
     await humanScroll(page);
 
-    var maxSteps = 50;
-    var maxSteps = 200; // Sürekli anket çözme — kapanmayacak
+    var maxSteps = 500; // Sürekli anket çözme — kapanmayacak
     var surveysCompleted = 0;
     var stepCount = 0;
     var recentActions = [];

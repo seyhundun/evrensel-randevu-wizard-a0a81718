@@ -83,6 +83,9 @@ export default function QuizSidebarContent() {
   const [loadingRegions, setLoadingRegions] = useState(false);
   const [countryPopoverOpen, setCountryPopoverOpen] = useState(false);
   const [regionPopoverOpen, setRegionPopoverOpen] = useState(false);
+  const [evomiApiKey, setEvomiApiKey] = useState("");
+  const [evomiKeyVisible, setEvomiKeyVisible] = useState(false);
+  const [savingEvomiKey, setSavingEvomiKey] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
 

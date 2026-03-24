@@ -464,10 +464,24 @@ const fs = require("fs");
 const os = require("os");
 
 function createTempUserDataDir() {
-  var dir = path.join(os.tmpdir(), "quiz-chrome-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8));
+  var dir = path.join(os.tmpdir(), "quiz-chrome-temp-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8));
   fs.mkdirSync(dir, { recursive: true });
   console.log("[BROWSER] 🧹 Temiz profil: " + dir);
   return dir;
+}
+
+function getOrCreatePersistentProfile(accountEmail) {
+  // Hesap başına kalıcı profil — çerezler, localStorage korunur
+  var safeName = (accountEmail || "default").replace(/[^a-zA-Z0-9@._-]/g, "_").slice(0, 50);
+  var dir = path.join(os.homedir(), ".quiz-profiles", safeName);
+  var isNew = !fs.existsSync(dir);
+  fs.mkdirSync(dir, { recursive: true });
+  if (isNew) {
+    console.log("[BROWSER] 🆕 Yeni kalıcı profil oluşturuldu: " + dir);
+  } else {
+    console.log("[BROWSER] ♻️ Mevcut kalıcı profil kullanılıyor: " + dir);
+  }
+  return { dir: dir, isNew: isNew };
 }
 
 function cleanupUserDataDir(dir) {

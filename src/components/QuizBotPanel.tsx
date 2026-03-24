@@ -210,6 +210,19 @@ export default function QuizBotPanel() {
                   {/* Status */}
                   {statusBadge(link.status)}
 
+                  {/* Restart button */}
+                  {(link.status === "quiz_done" || link.status === "error" || link.status === "quiz_running" || link.status === "quiz_pending") && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 text-amber-600 hover:text-amber-700"
+                      onClick={() => startQuiz(link)}
+                      title="Yeniden Başlat"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
+
                   {/* Start button */}
                   <Button
                     variant="ghost"

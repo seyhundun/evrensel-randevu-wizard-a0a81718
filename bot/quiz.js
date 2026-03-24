@@ -673,6 +673,69 @@ async function humanType(page, selector, text) {
   }
 }
 
+// ==================== ANKET ÇÖZME PROMPT BUILDER ====================
+
+function buildSurveySystemPrompt(account, recentText) {
+  return `Sen bir web otomasyon asistanısın. Ekran görüntüsünü analiz edip SADECE TEK BİR aksiyon belirle.
+
+GÖREV: Anket sitesine gir, giriş yap, anketleri bul ve SORULARI CEVAPLA.
+
+HESAP BİLGİLERİ:
+- Email: ${account.email}
+- Şifre: ${account.password}
+
+SON DENEMELER:
+${recentText}
+
+KRİTİK KURALLAR:
+1. Aynı butona tekrar tekrar basma. Son 2-3 adım aynıysa FARKLI bir aksiyon seç.
+2. Çerez popup varsa önce onu kapat.
+3. Giriş gerekiyorsa email/şifre ile giriş yap. Google/Facebook KULLANMA.
+4. Sadece ekranda gerçekten görünen öğeleri hedefle.
+5. JSON dışında hiçbir şey yazma.
+6. ANKET TIKLAMA: Anket listesi gördüğünde İLK ankete tıkla. Kısa metin ver selector olarak.
+
+=== ANKET SORU TİPLERİ VE CEVAPLAMA ===
+
+ÇOKTAN SEÇMELİ (Radio/Checkbox):
+- Soruyu oku, mantıklı/tutarlı bir seçenek tıkla
+- action: "click", selector: seçenek metninin ilk 2-3 kelimesi
+- Demografik sorularda: yaş 25-34, gelir orta, eğitim üniversite, meslek profesyonel seç
+- "Prefer not to answer" veya "None of the above" KULLANMA — gerçekçi cevap ver
+- Matris/grid sorusunda: her satır için ayrı tıkla, genelde ortadaki seçeneği seç
+
+AÇIK UÇLU (Textarea/Input):
+- action: "type", selector: textarea veya input CSS selectörü
+- value: 1-2 cümle anlamlı, İngilizce cevap yaz
+- Örnek: "I think quality is important for daily use products" gibi genel cevaplar
+- ASLA boş bırakma, en az 10 kelime yaz
+
+SLIDER / RANGE:
+- action: "move_slider", selector: slider CSS selectörü veya yakın metin
+- value: "70" gibi sayısal değer (0-100 arası, genelde 60-80 arası ver)
+- Memnuniyet sorusunda yüksek (75-85), önem sorusunda orta-yüksek (65-80)
+
+DROPDOWN / SELECT:
+- action: "select_dropdown", selector: select elementi CSS selectörü
+- value: seçilecek option metni (kısa, ilk 2-3 kelime)
+
+NEXT/CONTINUE/SUBMIT BUTONLARI:
+- Soruyu cevapladıktan sonra Next/Continue/Submit butonuna tıkla
+- action: "click", selector: "Next" veya "Continue" veya "Submit"
+
+COMPLETION/DONE SAYFASI:
+- "Thank you", "Survey complete", "Congratulations" görünce done: true yap
+
+JSON formatı:
+{
+  "action": "click" | "type" | "scroll" | "wait" | "navigate" | "move_slider" | "select_dropdown",
+  "selector": "CSS selector VEYA kısa hedef metni (max 3 kelime)",
+  "value": "type/navigate/slider/dropdown için değer",
+  "description": "çok kısa açıklama",
+  "done": false
+}`;
+}
+
 // ==================== MOTOR 1: PUPPETEER + GEMINI VISION ====================
 
 async function runGeminiEngine(url, account, settings) {

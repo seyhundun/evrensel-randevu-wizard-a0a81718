@@ -1,7 +1,8 @@
 /**
- * Quiz/Anket Çözücü Bot v4.0 — Dual Engine
+ * Quiz/Anket Çözücü Bot v5.1 — Dual Engine + Anti-Detection
  * Motor 1: Local Puppeteer + Gemini Vision (varsayılan, ücretsiz)
  * Motor 2: Browser Use Cloud API (alternatif, ücretli)
+ * Anti-detection: VFS bot seviyesinde humanMove/humanType/humanScroll
  * Kullanım: node quiz.js [URL]
  */
 require("dotenv").config();

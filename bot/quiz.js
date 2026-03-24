@@ -351,18 +351,22 @@ async function tryAutoSolveCaptcha(page, settings) {
   if (!captchaInfo) return false;
 
   var provider = (settings.captcha_provider || "2captcha").toLowerCase();
-  var twoCaptchaKey = settings.captcha_api_key || process.env.CAPTCHA_API_KEY || "";
-  var capsolverKey = settings.capsolver_api_key || process.env.CAPSOLVER_API_KEY || "";
+  var twoCaptchaKey = (settings.captcha_api_key || process.env.CAPTCHA_API_KEY || "").trim();
+  var capsolverKey = (settings.capsolver_api_key || process.env.CAPSOLVER_API_KEY || "").trim();
   var pageUrl = page.url();
 
-  console.log("[CAPTCHA] Tespit edildi: " + captchaInfo.type + " | sitekey: " + (captchaInfo.sitekey || "bilinmiyor") + " | provider: " + provider);
-  await supabaseInsertLog("CAPTCHA tespit edildi: " + captchaInfo.type + " (provider: " + provider + ")", "info");
+  // Sitekey'i temizle - boş string, undefined, null kontrolü
+  var sitekey = (captchaInfo.sitekey || "").trim();
+  captchaInfo.sitekey = sitekey || null;
 
-  if (!captchaInfo.sitekey) {
+  console.log("[CAPTCHA] Tespit edildi: " + captchaInfo.type + " | sitekey: " + (sitekey || "YOK") + " | provider: " + provider);
+  await supabaseInsertLog("CAPTCHA tespit edildi: " + captchaInfo.type + " | sitekey: " + (sitekey ? sitekey.slice(0,20) + "..." : "YOK") + " (provider: " + provider + ")", "info");
+
+  if (!sitekey) {
     if (captchaInfo.type === "recaptcha_v2" && captchaInfo.hasImageGrid) {
       await supabaseInsertLog("reCAPTCHA image-grid açık ama sitekey bulunamadı, AI'a bırakılıyor", "warning");
     } else {
-      await supabaseInsertLog("CAPTCHA sitekey bulunamadı, çözülemiyor", "warning");
+      await supabaseInsertLog("CAPTCHA sitekey bulunamadı (googlekey eksik), API çağrısı yapılmıyor", "warning");
     }
     return false;
   }

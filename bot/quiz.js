@@ -692,6 +692,7 @@ async function humanType(page, selector, text) {
 
 // ==================== ANKET ÇÖZME PROMPT BUILDER ====================
 
+// Old prompt removed — new version is below
 function buildSurveySystemPrompt(account, recentText) {
   return `Sen bir web otomasyon asistanısın. Ekran görüntüsünü analiz edip SADECE TEK BİR aksiyon belirle.
 
@@ -704,6 +705,24 @@ HESAP BİLGİLERİ:
 SON DENEMELER:
 ${recentText}
 
+🧑 PERSONA (TÜM CEVAPLARDA BU KİŞİLİĞİ KULLAN):
+- Adı: Alex Johnson
+- Yaş: 29 | Cinsiyet: Male | Medeni hal: Single
+- Ülke: United States | Eyalet: California | Şehir: Los Angeles
+- ZIP Code: 90210
+- Eğitim: Bachelor's Degree (4-year college)
+- Meslek: Marketing Coordinator | Sektör: Technology / Software
+- Yıllık gelir: $55,000 - $74,999
+- Etnik köken: Caucasian / White
+- Çocuk: No children
+- Telefon: (310) 555-0147
+- Araba: 2020 Honda Civic
+- Sigorta: BlueCross BlueShield
+- Favori markalar: Nike, Apple, Starbucks, Netflix
+- Hobiler: hiking, photography, gaming, cooking
+- Sosyal medya: Instagram, YouTube, Reddit (günde ~2 saat)
+- Alışveriş: Amazon, Target — ayda 3-4 kez online alışveriş
+
 KRİTİK KURALLAR:
 1. Aynı butona tekrar tekrar basma. Son 2-3 adım aynıysa FARKLI bir aksiyon seç.
 2. Çerez popup varsa önce onu kapat.
@@ -715,55 +734,71 @@ KRİTİK KURALLAR:
 === ANKET SORU TİPLERİ VE CEVAPLAMA ===
 
 ÇOKTAN SEÇMELİ (Radio/Checkbox):
-- Soruyu oku, mantıklı/tutarlı bir seçenek tıkla
+- Soruyu oku, persona bilgilerine göre mantıklı/tutarlı cevap ver
 - action: "click", selector: seçenek metninin ilk 2-3 kelimesi
-- Demografik sorularda: yaş 25-34, gelir orta, eğitim üniversite, meslek profesyonel seç
-- "Prefer not to answer" veya "None of the above" KULLANMA — gerçekçi cevap ver
-- Matris/grid sorusunda: her satır için ayrı tıkla, genelde ortadaki seçeneği seç
+- "Prefer not to answer" veya "None of the above" KULLANMA — her zaman gerçekçi cevap ver
+- Matris/grid sorusunda: her satır için ayrı tıkla, Agree/Somewhat Agree gibi olumlu seçenekleri tercih et
 
-CHECKBOX LİSTESİ (Onay kutuları — ☐ kare kutucuklar):
-- Checkbox'lar radio butonlarından farklı, KARE kutucuklardır (☐)
+CHECKBOX LİSTESİ (☐ kare kutucuklar):
+- Checkbox'lar KARE kutucuklardır (☐), radio butonlarından farklı
 - Birden fazla seçilebilir! En az 1, en fazla 3 tane seç
-- Her tıklama ayrı adım: önce birini tıkla, sonraki adımda Continue'ya tıkla
-- selector: checkbox'un yanındaki metnin ilk 2-3 kelimesi
-- Örnek: selector: "İnsan Kaynakları" veya selector: "Eğitim"
+- Her tıklama ayrı adım: birini tıkla, sonraki adımda diğerini veya Next'e tıkla
+- selector: checkbox yanındaki metnin ilk 2-3 kelimesi
 
 AÇIK UÇLU (Textarea/Input):
-- action: "type", selector: textarea veya input CSS selectörü
-- value: 1-2 cümle anlamlı, İngilizce cevap yaz
-- Örnek: "I think quality is important for daily use products" gibi genel cevaplar
-- ASLA boş bırakma, en az 10 kelime yaz
+- action: "type", selector: input veya textarea CSS selectörü
+- value: EN AZ 10 kelimelik anlamlı İngilizce cevap
+- Kişisel deneyim anlatır gibi yaz: "I recently purchased..." veya "In my experience..."
+- ASLA boş bırakma, kısa ve anlamlı yaz
+
+SAYISAL GİRİŞ (Zip Code, Yaş, Gelir vb.):
+- ZIP Code sorusu: value: "90210" (Los Angeles CA)
+- Yaş sorusu: value: "29"
+- Hane halkı sayısı: value: "1"
+- Çocuk sayısı: value: "0"
+- Gelir: En yakın aralığı seç (55000-74999)
+- action: "type", uygun input'a doğru değeri yaz
+- ASLA "12345" gibi test/placeholder değerleri KULLANMA!
 
 SLIDER / RANGE:
-- action: "move_slider", selector: slider CSS selectörü veya yakın metin
-- value: "70" gibi sayısal değer (0-100 arası, genelde 60-80 arası ver)
-- Memnuniyet sorusunda yüksek (75-85), önem sorusunda orta-yüksek (65-80)
+- action: "move_slider", selector: slider CSS selectörü
+- value: "70" (0-100 arası, genelde 60-80)
 
 DROPDOWN / SELECT:
-- action: "select_dropdown", selector: select elementi CSS selectörü
-- value: seçilecek option metni (kısa, ilk 2-3 kelime)
+- action: "select_dropdown", selector: select CSS selectörü
+- value: seçilecek option metni (kısa)
+
+SÜRÜKLE-BIRAK (Drag and Drop):
+- "drag and drop" veya "sürükle" ifadesi gördüğünde:
+- action: "drag_drop", selector: sürüklenecek öğenin metni veya CSS selectörü
+- value: hedef kutunun CSS selectörü veya açıklaması
+- Örnek: Sorudaki doğru cevabı bul (sayı, metin) ve hedef kutuya sürükle
+- "drag the number 22" → selector: "22", value: "drop-target"
+
+MANTIK / DOĞRULAMA SORULARI (Attention Check):
+- "Please select Strongly Agree" → doğrudan Strongly Agree tıkla
+- "What is 2+3?" → 5 yaz veya seç
+- "drag the number 22 into the box" → 22'yi sürükle
+- Bu soruları DİKKATLİ oku, doğru cevabı ver — yanlış cevap anketten atılma sebebi!
 
 NEXT/CONTINUE/SUBMIT BUTONLARI:
 - Soruyu cevapladıktan sonra Next/Continue/Submit butonuna tıkla
+- "Please click to continue" + ok (→) butonu → o butona tıkla
 - action: "click", selector: "Next" veya "Continue" veya "Submit"
 
-SAYFA KAYDIRMA (ÇOK ÖNEMLİ):
-- Eğer sayfada soru veya seçenekler var ama Next/Continue/Submit butonu GÖRÜNMÜYORSA:
-  action: "scroll", description: "Sayfayı aşağı kaydır Continue butonunu bulmak için"
-- Eğer seçenek listesi uzunsa ve alttaki seçenekler kesilmişse scroll yap
-- Tüm seçenekleri görmeden ve cevaplamadan scroll yapma
-- Bir soruyu cevapladıktan SONRA Continue/Next butonu göremiyorsan MUTLAKA scroll yap
+SAYFA KAYDIRMA:
+- Soru cevaplandıktan sonra Next butonu görünmüyorsa scroll yap
+- action: "scroll"
 
 COMPLETION/DONE SAYFASI:
-- "Thank you", "Survey complete", "Congratulations" görünce done: true yap
-- ASLA done: true yapıp durma — anket tamamlandıysa ana sayfaya dön ve BİR SONRAKİ ankete başla
-- Anket bittikten sonra: action: "navigate", value: ana sayfa URL'si
+- "Thank you", "Survey complete", "Congratulations" → action: "next_survey"
+- Anket bittiğinde ASLA done: true kullanma
 
 JSON formatı:
 {
-  "action": "click" | "type" | "scroll" | "wait" | "navigate" | "move_slider" | "select_dropdown" | "next_survey",
+  "action": "click" | "type" | "scroll" | "wait" | "navigate" | "move_slider" | "select_dropdown" | "drag_drop" | "next_survey",
   "selector": "CSS selector VEYA kısa hedef metni (max 3 kelime)",
-  "value": "type/navigate/slider/dropdown için değer",
+  "value": "type/navigate/slider/dropdown/drag_drop için değer",
   "description": "çok kısa açıklama",
   "done": false
 }
@@ -2307,6 +2342,141 @@ async function executeAction(page, action) {
       // Handled in main loop — just wait
       await new Promise(function(resolve) { setTimeout(resolve, 1000); });
       break;
+
+    case "drag_drop": {
+      console.log("[DRAG_DROP] Sürükle-bırak: " + action.selector + " → " + action.value);
+      var ddFrames = await getCandidateFrames();
+      var ddDone = false;
+      for (var ddf = 0; ddf < ddFrames.length && !ddDone; ddf++) {
+        try {
+          ddDone = await ddFrames[ddf].evaluate(function(sourceText, targetText) {
+            function normalize(text) { return String(text || '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+            function isVisible(el) {
+              if (!el) return false;
+              var rect = el.getBoundingClientRect();
+              return rect.width > 0 && rect.height > 0;
+            }
+
+            var allEls = Array.from(document.querySelectorAll('*')).filter(isVisible);
+            var srcNorm = normalize(sourceText);
+            var tgtNorm = normalize(targetText);
+
+            var sourceEl = null;
+            var targetEl = null;
+
+            for (var i = 0; i < allEls.length; i++) {
+              var el = allEls[i];
+              var text = normalize(el.textContent || '');
+              var draggable = el.getAttribute('draggable') === 'true' || el.classList.contains('draggable') || el.getAttribute('data-drag') !== null;
+
+              if (!sourceEl && (text === srcNorm || (text.includes(srcNorm) && text.length < srcNorm.length + 10))) {
+                if (draggable || el.closest('[draggable="true"]')) {
+                  sourceEl = el.closest('[draggable="true"]') || el;
+                } else {
+                  sourceEl = el;
+                }
+              }
+
+              var isDropZone = el.classList.contains('drop-target') || el.classList.contains('dropzone') || el.classList.contains('drop-zone') ||
+                el.getAttribute('data-drop') !== null || el.getAttribute('data-droppable') !== null ||
+                (el.style.border && el.style.border.includes('dashed')) ||
+                window.getComputedStyle(el).borderStyle === 'dashed';
+
+              if (!targetEl && isDropZone) {
+                targetEl = el;
+              }
+              if (!targetEl && tgtNorm && text.includes(tgtNorm)) {
+                targetEl = el;
+              }
+            }
+
+            if (!targetEl) {
+              var placeholders = Array.from(document.querySelectorAll('[class*="drop"], [class*="placeholder"], [class*="target"], [style*="dashed"]')).filter(isVisible);
+              if (placeholders.length > 0) targetEl = placeholders[0];
+            }
+
+            if (!sourceEl || !targetEl) return false;
+
+            var srcRect = sourceEl.getBoundingClientRect();
+            var tgtRect = targetEl.getBoundingClientRect();
+            var srcX = srcRect.left + srcRect.width / 2;
+            var srcY = srcRect.top + srcRect.height / 2;
+            var tgtX = tgtRect.left + tgtRect.width / 2;
+            var tgtY = tgtRect.top + tgtRect.height / 2;
+
+            var dataTransfer = new DataTransfer();
+            try { dataTransfer.setData('text/plain', srcNorm); } catch(e) {}
+
+            function fire(el, type, x, y, dt) {
+              var evt = new DragEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: dt });
+              el.dispatchEvent(evt);
+            }
+
+            fire(sourceEl, 'pointerdown', srcX, srcY, dataTransfer);
+            fire(sourceEl, 'mousedown', srcX, srcY, dataTransfer);
+            fire(sourceEl, 'dragstart', srcX, srcY, dataTransfer);
+            fire(sourceEl, 'drag', srcX, srcY, dataTransfer);
+            fire(targetEl, 'dragenter', tgtX, tgtY, dataTransfer);
+            fire(targetEl, 'dragover', tgtX, tgtY, dataTransfer);
+            fire(targetEl, 'drop', tgtX, tgtY, dataTransfer);
+            fire(sourceEl, 'dragend', tgtX, tgtY, dataTransfer);
+            fire(targetEl, 'pointerup', tgtX, tgtY, dataTransfer);
+            fire(targetEl, 'mouseup', tgtX, tgtY, dataTransfer);
+
+            return true;
+          }, action.selector || "", action.value || "");
+        } catch (ddErr) {
+          console.error("[DRAG_DROP] Frame hata:", ddErr.message);
+        }
+      }
+
+      if (!ddDone) {
+        console.log("[DRAG_DROP] DOM drag başarısız, Puppeteer mouse ile deneniyor...");
+        try {
+          var coords = await page.evaluate(function(sourceText) {
+            function normalize(text) { return String(text || '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+            function isVisible(el) { var r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
+            var srcNorm = normalize(sourceText);
+            var allEls = Array.from(document.querySelectorAll('*')).filter(isVisible);
+            var src = null, tgt = null;
+            for (var i = 0; i < allEls.length; i++) {
+              var text = normalize(allEls[i].textContent || '');
+              if (!src && (text === srcNorm || (text.includes(srcNorm) && text.length < srcNorm.length + 10))) {
+                src = allEls[i];
+              }
+              var isDrop = allEls[i].classList.contains('drop-target') || allEls[i].classList.contains('dropzone') ||
+                allEls[i].getAttribute('data-drop') !== null || window.getComputedStyle(allEls[i]).borderStyle === 'dashed';
+              if (!tgt && isDrop) tgt = allEls[i];
+            }
+            if (!tgt) {
+              var ph = Array.from(document.querySelectorAll('[class*="drop"], [class*="placeholder"], [class*="target"], [style*="dashed"]')).filter(isVisible);
+              if (ph.length > 0) tgt = ph[0];
+            }
+            if (!src || !tgt) return null;
+            var sr = src.getBoundingClientRect();
+            var tr = tgt.getBoundingClientRect();
+            return { sx: sr.left + sr.width/2, sy: sr.top + sr.height/2, tx: tr.left + tr.width/2, ty: tr.top + tr.height/2 };
+          }, action.selector || "");
+
+          if (coords) {
+            await page.mouse.move(coords.sx, coords.sy, { steps: 5 });
+            await page.mouse.down();
+            await new Promise(function(r) { setTimeout(r, 200); });
+            await page.mouse.move(coords.tx, coords.ty, { steps: 15 });
+            await new Promise(function(r) { setTimeout(r, 100); });
+            await page.mouse.up();
+            console.log("[DRAG_DROP] ✅ Mouse drag tamamlandı");
+          } else {
+            console.log("[DRAG_DROP] ❌ Kaynak/hedef bulunamadı");
+          }
+        } catch (mouseErr) {
+          console.error("[DRAG_DROP] Mouse drag hatası:", mouseErr.message);
+        }
+      } else {
+        console.log("[DRAG_DROP] ✅ DOM drag tamamlandı");
+      }
+      break;
+    }
   }
 }
 

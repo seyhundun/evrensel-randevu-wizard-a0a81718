@@ -143,17 +143,32 @@ async function runGeminiEngine(url, account, settings) {
     var stepCount = 0;
     var recentActions = [];
 
+    // Determine which vision function to use
+    var engineType = settings.quiz_engine || "gemini";
+    var visionFn;
+    if (engineType === "lovable_ai") {
+      var lovableKey = settings.lovable_api_key || process.env.LOVABLE_API_KEY || "";
+      if (!lovableKey) throw new Error("Lovable API key bulunamadı! bot_settings'e lovable_api_key ekleyin.");
+      visionFn = function(ss, url, acc, st, ra) { return askLovableAIVision(lovableKey, ss, url, acc, st, ra); };
+    } else if (engineType === "openai") {
+      var openaiKey = settings.openai_api_key || process.env.OPENAI_API_KEY || "";
+      if (!openaiKey) throw new Error("OpenAI API key bulunamadı! bot_settings'e openai_api_key ekleyin.");
+      visionFn = function(ss, url, acc, st, ra) { return askOpenAIVision(openaiKey, ss, url, acc, st, ra); };
+    } else {
+      visionFn = function(ss, url, acc, st, ra) { return askGeminiVision(geminiApiKey, ss, url, acc, st, ra); };
+    }
+
     while (stepCount < maxSteps) {
       stepCount++;
-      console.log("[GEMINI] Adım " + stepCount + "/" + maxSteps);
+      console.log("[" + engineType.toUpperCase() + "] Adım " + stepCount + "/" + maxSteps);
 
       var screenshot = await page.screenshot({ encoding: "base64", type: "jpeg", quality: 70 });
       var currentUrl = page.url();
-      var action = await askGeminiVision(geminiApiKey, screenshot, currentUrl, account, stepCount, recentActions);
+      var action = await visionFn(screenshot, currentUrl, account, stepCount, recentActions);
 
       if (!action) {
-        console.log("[GEMINI] Gemini cevap vermedi, durduruluyor");
-        await supabaseInsertLog("Gemini cevap vermedi, durduruluyor", "warning");
+        console.log("[" + engineType.toUpperCase() + "] AI cevap vermedi, durduruluyor");
+        await supabaseInsertLog("AI cevap vermedi, durduruluyor", "warning");
         break;
       }
 

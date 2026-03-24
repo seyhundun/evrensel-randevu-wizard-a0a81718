@@ -1402,6 +1402,48 @@ async function executeAction(page, action) {
         } catch (e) {}
       }
 
+      // Survey/anket fallback: eğer aksiyon survey ile ilgiliyse ilk survey linkine tıkla
+      var descLower = ((action.description || "") + " " + (action.selector || "")).toLowerCase();
+      var isSurveyClick = /survey|anket|earn|sb|min|answer/.test(descLower);
+      if (isSurveyClick) {
+        for (var sf = 0; sf < frames.length; sf++) {
+          try {
+            var surveyClicked = await frames[sf].evaluate(function() {
+              // Survey linklerini bul — href veya metin bazlı
+              var links = Array.from(document.querySelectorAll('a[href*="survey"], a[href*="answer"], a[href*="earn"]'));
+              if (links.length === 0) {
+                // Fallback: "Survey #" veya "min" içeren görünür linkleri ara
+                var allLinks = Array.from(document.querySelectorAll("a"));
+                links = allLinks.filter(function(a) {
+                  var text = (a.textContent || "").toLowerCase();
+                  var rect = a.getBoundingClientRect();
+                  return rect.width > 0 && rect.height > 0 && (text.includes("survey") || text.includes("min") || text.includes("earn"));
+                });
+              }
+              if (links.length > 0) {
+                links[0].click();
+                return true;
+              }
+              // Son çare: survey kartı gibi görünen div/li'leri ara
+              var cards = Array.from(document.querySelectorAll('[class*="survey"], [class*="card"], [data-survey-id], li'));
+              for (var c = 0; c < cards.length; c++) {
+                var cardText = (cards[c].textContent || "").toLowerCase();
+                var cardRect = cards[c].getBoundingClientRect();
+                if (cardRect.width > 100 && cardRect.height > 30 && (cardText.includes("survey") || cardText.includes("min") || cardText.includes("earn"))) {
+                  cards[c].click();
+                  return true;
+                }
+              }
+              return false;
+            });
+            if (surveyClicked) {
+              console.log("[CLICK] 🎯 Survey fallback tıklama başarılı");
+              return;
+            }
+          } catch (e) {}
+        }
+      }
+
       throw new Error("Tıklanabilir öğe bulunamadı: " + searchTexts.join(" | "));
     }
 

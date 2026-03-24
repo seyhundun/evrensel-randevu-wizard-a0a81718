@@ -740,6 +740,13 @@ NEXT/CONTINUE/SUBMIT BUTONLARI:
 - Soruyu cevapladıktan sonra Next/Continue/Submit butonuna tıkla
 - action: "click", selector: "Next" veya "Continue" veya "Submit"
 
+SAYFA KAYDIRMA (ÇOK ÖNEMLİ):
+- Eğer sayfada soru veya seçenekler var ama Next/Continue/Submit butonu GÖRÜNMÜYORSA:
+  action: "scroll", description: "Sayfayı aşağı kaydır Continue butonunu bulmak için"
+- Eğer seçenek listesi uzunsa ve alttaki seçenekler kesilmişse scroll yap
+- Tüm seçenekleri görmeden ve cevaplamadan scroll yapma
+- Bir soruyu cevapladıktan SONRA Continue/Next butonu göremiyorsan MUTLAKA scroll yap
+
 COMPLETION/DONE SAYFASI:
 - "Thank you", "Survey complete", "Congratulations" görünce done: true yap
 
@@ -952,7 +959,37 @@ async function runGeminiEngine(url, account, settings) {
       // Her adımda rastgele insan benzeri hareket
       if (Math.random() > 0.4) await humanMove(page);
 
-      var screenshot = await page.screenshot({ encoding: "base64", type: "jpeg", quality: 70 });
+      // Sayfanın kaydırılabilir olup olmadığını kontrol et ve tam sayfa screenshot al
+      var pageScrollInfo = await page.evaluate(function() {
+        var scrollable = document.documentElement.scrollHeight > window.innerHeight + 50;
+        var atBottom = (window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - 100);
+        // Continue/Next/Submit butonu ekranın altında mı kontrol et
+        var submitBtn = null;
+        var btns = document.querySelectorAll('button, input[type="submit"], a');
+        for (var i = 0; i < btns.length; i++) {
+          var txt = (btns[i].textContent || btns[i].value || "").trim().toLowerCase();
+          if (/^(continue|next|submit|devam|ileri|gönder|sonraki)$/i.test(txt) || 
+              (txt.length < 20 && /continue|next|submit/i.test(txt))) {
+            var rect = btns[i].getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+              submitBtn = { text: txt, visible: rect.top < window.innerHeight && rect.bottom > 0, top: rect.top };
+              break;
+            }
+          }
+        }
+        return { scrollable: scrollable, atBottom: atBottom, submitBtn: submitBtn, scrollY: window.scrollY, scrollHeight: document.documentElement.scrollHeight, viewportH: window.innerHeight };
+      });
+
+      // Eğer sayfa kaydırılabilir ve Continue butonu görünmüyorsa, aşağı kaydır
+      if (pageScrollInfo.scrollable && !pageScrollInfo.atBottom && pageScrollInfo.submitBtn && !pageScrollInfo.submitBtn.visible) {
+        console.log("[SCROLL] Continue butonu görünmüyor, aşağı kaydırılıyor...");
+        await supabaseInsertLog("⬇️ Sayfayı kaydırıyor (Continue butonu ekranın altında)", "info");
+        await page.evaluate(function() { window.scrollBy({ top: 500, behavior: 'smooth' }); });
+        await quizDelay(800, 1500);
+      }
+
+      // fullPage screenshot al ki AI tüm sayfayı görsün
+      var screenshot = await page.screenshot({ encoding: "base64", type: "jpeg", quality: 70, fullPage: false });
       var currentUrl = page.url();
       var action = await visionFn(screenshot, currentUrl, account, stepCount, recentActions);
 
@@ -965,6 +1002,19 @@ async function runGeminiEngine(url, account, settings) {
       var actionSummary = [action.action || "?", action.selector || action.value || action.description || ""].join(": ");
       recentActions.push(actionSummary);
       if (recentActions.length > 5) recentActions.shift();
+
+      // Stuck detection: son 3 aksiyon aynıysa zorla scroll yap
+      if (recentActions.length >= 3) {
+        var last3 = recentActions.slice(-3);
+        if (last3[0] === last3[1] && last3[1] === last3[2]) {
+          console.log("[STUCK] Son 3 aksiyon aynı, zorla scroll yapılıyor");
+          await supabaseInsertLog("⚠️ Takılma algılandı, sayfayı kaydırıyor", "warning");
+          await page.evaluate(function() { window.scrollBy({ top: 600, behavior: 'smooth' }); });
+          await quizDelay(1000, 2000);
+          recentActions.push("scroll: forced_unstuck");
+          continue;
+        }
+      }
 
       await supabaseInsertLog("Adım " + stepCount + ": " + action.description, "info");
 
@@ -1843,7 +1893,9 @@ async function executeAction(page, action) {
     }
 
     case "scroll":
-      await page.evaluate(function() { window.scrollBy(0, 400); });
+      var scrollDir = (action.value === "up") ? -400 : 400;
+      await page.evaluate(function(d) { window.scrollBy({ top: d, behavior: 'smooth' }); }, scrollDir);
+      await quizDelay(800, 1500);
       break;
 
     case "navigate":

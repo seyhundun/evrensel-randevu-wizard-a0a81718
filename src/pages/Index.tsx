@@ -25,6 +25,7 @@ import QuizBotPanel from "@/components/QuizBotPanel";
 import QuizSidebarContent from "@/components/QuizSidebarContent";
 import VncViewer from "@/components/VncViewer";
 import { useTracking } from "@/hooks/useTracking";
+import VfsDomAgentSettings from "@/components/VfsDomAgentSettings";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 function LiveClock() {
@@ -83,6 +84,9 @@ function VfsSidebarContent({ t }: { t: ReturnType<typeof useTracking> }) {
           onStart={t.startTracking}
           onStop={t.stopTracking}
         />
+      </SidebarSection>
+      <SidebarSection icon={<Cpu className="w-3.5 h-3.5" />} title="DOM Agent Ayarları">
+        <VfsDomAgentSettings />
       </SidebarSection>
       <SidebarSection icon={<Settings className="w-3.5 h-3.5" />} title="Bot & Ülke Ayarları">
         <BotSettingsPanel />

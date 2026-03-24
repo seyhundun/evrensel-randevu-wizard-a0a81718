@@ -401,26 +401,80 @@ async function tryAutoSolveDragDropCaptcha(page, settings) {
       });
     }
 
-    // Drop zone bul (dashed border, drop class vb.)
+    // Drop zone bul - çoklu strateji
     var dropZone = null;
-    var dropCandidates = document.querySelectorAll("[class*='drop'], [class*='target'], [class*='placeholder'], [data-drop], [data-droppable]");
+    
+    // 1. Sınıf adına göre drop zone ara
+    var dropCandidates = document.querySelectorAll("[class*='drop'], [class*='target'], [class*='placeholder'], [data-drop], [data-droppable], [class*='answer-box'], [class*='droparea'], [class*='drop-area']");
     for (var k = 0; k < dropCandidates.length; k++) {
       var dr = dropCandidates[k].getBoundingClientRect();
-      if (dr.width > 30 && dr.height > 30) {
+      if (dr.width > 30 && dr.height > 30 && dr.width < 500 && dr.height < 500) {
         dropZone = { x: Math.round(dr.x + dr.width / 2), y: Math.round(dr.y + dr.height / 2) };
         break;
       }
     }
-    // Fallback: dashed border olan elemanları ara
+    
+    // 2. Dashed border olan elemanları ara
     if (!dropZone) {
-      var allVisible = document.querySelectorAll("div, section, span, td");
+      var allVisible = document.querySelectorAll("div, section, span, td, li, article");
       for (var m = 0; m < allVisible.length; m++) {
         var cs = window.getComputedStyle(allVisible[m]);
-        if (cs.borderStyle === "dashed" || cs.outlineStyle === "dashed") {
+        var hasDashed = cs.borderStyle === "dashed" || cs.outlineStyle === "dashed" ||
+          cs.borderTopStyle === "dashed" || cs.borderBottomStyle === "dashed" ||
+          cs.borderLeftStyle === "dashed" || cs.borderRightStyle === "dashed";
+        if (hasDashed) {
           var dRect = allVisible[m].getBoundingClientRect();
-          if (dRect.width > 40 && dRect.height > 40) {
+          if (dRect.width > 40 && dRect.height > 40 && dRect.width < 500) {
             dropZone = { x: Math.round(dRect.x + dRect.width / 2), y: Math.round(dRect.y + dRect.height / 2) };
             break;
+          }
+        }
+      }
+    }
+    
+    // 3. İçinde sadece resim placeholder (broken img icon) olan boş kutuları ara
+    if (!dropZone) {
+      var boxes = document.querySelectorAll("div, td, li, section");
+      for (var b = 0; b < boxes.length; b++) {
+        var box = boxes[b];
+        var bRect = box.getBoundingClientRect();
+        if (bRect.width < 50 || bRect.height < 50 || bRect.width > 400) continue;
+        var bcs = window.getComputedStyle(box);
+        var hasBorder = bcs.borderWidth && parseInt(bcs.borderWidth) > 0;
+        var bgColor = bcs.backgroundColor;
+        var isGrayBg = bgColor && (bgColor.indexOf("rgb(2") > -1 || bgColor.indexOf("rgb(22") > -1 || bgColor.indexOf("rgb(23") > -1 || bgColor.indexOf("rgb(24") > -1 || bgColor.indexOf("#e") > -1 || bgColor.indexOf("#d") > -1 || bgColor.indexOf("#c") > -1);
+        // İçinde sadece bir img (broken/placeholder) varsa ve metin yoksa
+        var innerImgs = box.querySelectorAll("img");
+        var innerText = (box.textContent || "").trim();
+        if ((hasBorder || isGrayBg) && innerImgs.length >= 1 && innerText.length < 5) {
+          // Bu draggable değilse drop zone olabilir
+          var isDraggable = box.getAttribute("draggable") === "true" || box.closest("[draggable='true']");
+          if (!isDraggable) {
+            dropZone = { x: Math.round(bRect.x + bRect.width / 2), y: Math.round(bRect.y + bRect.height / 2) };
+            break;
+          }
+        }
+      }
+    }
+    
+    // 4. Gri arka planlı ve boş olan büyükçe kutuları ara (son çare)
+    if (!dropZone) {
+      var allDivs = document.querySelectorAll("div");
+      for (var g = 0; g < allDivs.length; g++) {
+        var gRect = allDivs[g].getBoundingClientRect();
+        if (gRect.width < 80 || gRect.height < 80 || gRect.width > 400) continue;
+        var gcs = window.getComputedStyle(allDivs[g]);
+        var gbg = gcs.backgroundColor;
+        // Gri tonları: rgb(200-245, 200-245, 200-245)
+        var grayMatch = gbg && gbg.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+        if (grayMatch) {
+          var rr = parseInt(grayMatch[1]), gg2 = parseInt(grayMatch[2]), bb = parseInt(grayMatch[3]);
+          if (rr > 190 && rr < 250 && gg2 > 190 && gg2 < 250 && bb > 190 && bb < 250 && Math.abs(rr - gg2) < 15 && Math.abs(gg2 - bb) < 15) {
+            var gText = (allDivs[g].textContent || "").trim();
+            if (gText.length < 10) {
+              dropZone = { x: Math.round(gRect.x + gRect.width / 2), y: Math.round(gRect.y + gRect.height / 2) };
+              break;
+            }
           }
         }
       }

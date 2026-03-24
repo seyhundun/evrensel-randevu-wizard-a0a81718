@@ -817,7 +817,7 @@ async function pollForQuizTasks() {
       var currentEngine = freshSettings.quiz_engine || "gemini";
       if (currentEngine !== engine) {
         engine = currentEngine;
-        engineLabel = engine === "browser_use" ? "Browser Use Cloud" : "Puppeteer + Gemini Vision";
+        engineLabel = engineLabels[currentEngine] || currentEngine;
         console.log("Motor değişti: " + engineLabel);
         await supabaseInsertLog("Motor değişti: " + engineLabel, "info");
       }

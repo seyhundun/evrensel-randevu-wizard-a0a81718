@@ -156,9 +156,12 @@ export default function QuizSidebarContent() {
   const fetchEvomiRegions = async (country?: string) => {
     setLoadingRegions(true);
     try {
+      const targetCountry = country || proxyCountry || "US";
+      console.log("[QuizSidebar] Evomi regions çekiliyor, ülke:", targetCountry);
       const { data, error } = await supabase.functions.invoke("evomi-regions", {
-        body: { country: country || proxyCountry || "US" },
+        body: { country: targetCountry },
       });
+      console.log("[QuizSidebar] Evomi response:", JSON.stringify(data)?.slice(0, 300), "error:", error);
       if (error) throw error;
       if (data?.ok) {
         setEvomiCities(
@@ -171,9 +174,14 @@ export default function QuizSidebarContent() {
         }));
         countryList.sort((a, b) => a.name.localeCompare(b.name));
         if (countryList.length > 0) setEvomiCountries(countryList);
+        console.log("[QuizSidebar] Ülkeler:", countryList.length, "Şehirler:", (data.cities || []).length);
+      } else {
+        console.error("[QuizSidebar] Evomi ok=false:", data?.error || JSON.stringify(data)?.slice(0, 200));
+        if (data?.error) toast.error("Evomi: " + data.error);
       }
     } catch (err: any) {
-      toast.error("Evomi API hatası: " + err.message);
+      console.error("[QuizSidebar] Evomi hatası:", err);
+      toast.error("Evomi API hatası: " + (err.message || String(err)));
     }
     setLoadingRegions(false);
   };

@@ -1357,9 +1357,40 @@ async function runGeminiEngine(url, account, settings) {
         // Bazen scroll yap
         if (Math.random() > 0.6) await humanScroll(page);
       } catch (actionErr) {
+        var errMsg = actionErr.message || "";
+        
+        // Navigasyon kaynaklı context hatası — sayfa yenilendi, hata değil
+        if (errMsg.includes("Execution context was destroyed") || 
+            errMsg.includes("navigation") || 
+            errMsg.includes("detached") ||
+            errMsg.includes("Target closed") ||
+            errMsg.includes("Session closed")) {
+          console.log("[QUIZ] 🔄 Sayfa navigasyonu algılandı, yeni sayfa bekleniyor...");
+          await supabaseInsertLog("🔄 Sayfa navigasyonu algılandı, devam ediliyor", "info");
+          
+          // Sayfanın yüklenmesini bekle
+          try {
+            await new Promise(function(r) { setTimeout(r, 3000); });
+            
+            // Aktif sayfayı yeniden bul
+            var allPages = await browser.pages();
+            if (allPages.length > 1) {
+              page = allPages[allPages.length - 1];
+            }
+            await page.waitForFunction("document.readyState === 'complete'", { timeout: 15000 }).catch(function() {});
+            
+            consecutiveFailures = 0; // Navigasyon hatası sayılmaz
+            sameActionStreak = 0;
+          } catch (navErr) {
+            console.error("[QUIZ] Navigasyon kurtarma hatası:", navErr.message);
+            consecutiveFailures++;
+          }
+          continue;
+        }
+        
         consecutiveFailures++;
-        console.error("[GEMINI] Aksiyon hatası (" + consecutiveFailures + "/5):", actionErr.message);
-        await supabaseInsertLog("Aksiyon hatası (" + consecutiveFailures + "/5): " + actionErr.message, "warning");
+        console.error("[GEMINI] Aksiyon hatası (" + consecutiveFailures + "/5):", errMsg);
+        await supabaseInsertLog("Aksiyon hatası (" + consecutiveFailures + "/5): " + errMsg, "warning");
         
         if (consecutiveFailures >= 5) {
           console.log("[ERROR] 🔄 5 ardışık hata, oturumu yeniden başlatıyor");

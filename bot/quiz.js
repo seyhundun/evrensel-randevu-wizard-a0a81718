@@ -141,6 +141,7 @@ async function runGeminiEngine(url, account, settings) {
 
     var maxSteps = 30;
     var stepCount = 0;
+    var recentActions = [];
 
     while (stepCount < maxSteps) {
       stepCount++;
@@ -148,13 +149,17 @@ async function runGeminiEngine(url, account, settings) {
 
       var screenshot = await page.screenshot({ encoding: "base64", type: "jpeg", quality: 70 });
       var currentUrl = page.url();
-      var action = await askGeminiVision(geminiApiKey, screenshot, currentUrl, account, stepCount);
+      var action = await askGeminiVision(geminiApiKey, screenshot, currentUrl, account, stepCount, recentActions);
 
       if (!action) {
         console.log("[GEMINI] Gemini cevap vermedi, durduruluyor");
         await supabaseInsertLog("Gemini cevap vermedi, durduruluyor", "warning");
         break;
       }
+
+      var actionSummary = [action.action || "?", action.selector || action.value || action.description || ""].join(": ");
+      recentActions.push(actionSummary);
+      if (recentActions.length > 5) recentActions.shift();
 
       await supabaseInsertLog("Adım " + stepCount + ": " + action.description, "info");
 

@@ -217,7 +217,7 @@ export default function QuizBotPanel() {
                   {statusBadge(link.status)}
 
                   {/* Restart button */}
-                  {(link.status === "quiz_done" || link.status === "error" || link.status === "quiz_running" || link.status === "quiz_pending") && (
+                  {(link.status === "quiz_done" || link.status === "error") && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -229,17 +229,31 @@ export default function QuizBotPanel() {
                     </Button>
                   )}
 
+                  {/* Stop button */}
+                  {(link.status === "quiz_pending" || link.status === "quiz_running") && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 text-destructive hover:text-destructive/80"
+                      onClick={() => stopQuiz(link)}
+                      title="Durdur"
+                    >
+                      <StopCircle className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
+
                   {/* Start button */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 w-6 p-0 text-emerald-600 hover:text-emerald-700"
-                    onClick={() => startQuiz(link)}
-                    disabled={link.status === "quiz_pending" || link.status === "quiz_running"}
-                    title="Quiz Başlat"
-                  >
-                    <Play className="w-3.5 h-3.5" />
-                  </Button>
+                  {link.status !== "quiz_pending" && link.status !== "quiz_running" && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 text-emerald-600 hover:text-emerald-700"
+                      onClick={() => startQuiz(link)}
+                      title="Quiz Başlat"
+                    >
+                      <Play className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
 
                   {/* Delete */}
                   <Button

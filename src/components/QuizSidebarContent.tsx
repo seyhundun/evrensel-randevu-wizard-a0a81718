@@ -112,6 +112,7 @@ export default function QuizSidebarContent() {
       setOpenaiApiKey(map.openai_api_key || "");
       setLovableApiKey(map.lovable_api_key || "");
       setEvomiApiKey(map.evomi_api_key || "");
+      setStepTimeout(map.quiz_step_timeout || "30");
       setSettingsLoaded(true);
     }
   }, []);

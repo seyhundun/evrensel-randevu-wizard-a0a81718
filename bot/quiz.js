@@ -501,6 +501,80 @@ function getQuizFallbackRegion(countryCode) {
   return region;
 }
 
+// ==================== SESSION IP BAN & COOLDOWN (VFS'den) ====================
+var quizSessionFailCounts = new Map(); // sessionId -> failCount
+var quizSessionBannedUntil = new Map(); // sessionId -> timestamp
+var quizAccountCooldowns = new Map(); // accountId -> timestamp
+var QUIZ_SESSION_MAX_FAILS = 3;
+var QUIZ_SESSION_BAN_DURATION_MS = 30 * 60 * 1000; // 30 dk
+var QUIZ_ACCOUNT_COOLDOWN_MS = 10 * 60 * 1000; // 10 dk
+var quizConsecutiveErrors = 0;
+var QUIZ_MAX_CONSECUTIVE_ERRORS = 5;
+var QUIZ_COOLDOWN_BACKOFF_MS = 60 * 1000; // Her ardışık hata sonrası +60s
+
+function quizMarkSessionSuccess(sessionId) {
+  if (!sessionId) return;
+  quizSessionFailCounts.delete(sessionId);
+  quizConsecutiveErrors = 0;
+  console.log("[SESSION] ✅ Oturum başarılı: " + sessionId);
+}
+
+function quizMarkSessionFail(sessionId, reason) {
+  if (!sessionId) return;
+  var count = (quizSessionFailCounts.get(sessionId) || 0) + 1;
+  quizSessionFailCounts.set(sessionId, count);
+  quizConsecutiveErrors++;
+  console.log("[SESSION] ❌ Oturum hata: " + sessionId + " (" + count + "/" + QUIZ_SESSION_MAX_FAILS + ")" + (reason ? " | " + reason : ""));
+
+  if (count >= QUIZ_SESSION_MAX_FAILS) {
+    quizSessionBannedUntil.set(sessionId, Date.now() + QUIZ_SESSION_BAN_DURATION_MS);
+    quizSessionFailCounts.delete(sessionId);
+    console.log("[SESSION] 🚫 Oturum banlandı (" + (QUIZ_SESSION_BAN_DURATION_MS / 60000) + " dk): " + sessionId);
+  }
+}
+
+function quizBanSessionImmediately(sessionId, reason) {
+  if (!sessionId) return;
+  quizSessionBannedUntil.set(sessionId, Date.now() + QUIZ_SESSION_BAN_DURATION_MS);
+  quizSessionFailCounts.delete(sessionId);
+  quizConsecutiveErrors++;
+  console.log("[SESSION] 🚫 Anında ban: " + sessionId + (reason ? " | " + reason : ""));
+}
+
+function quizMarkAccountFail(accountId) {
+  if (!accountId) return;
+  quizAccountCooldowns.set(accountId, Date.now() + QUIZ_ACCOUNT_COOLDOWN_MS);
+  console.log("[ACCOUNT] ⏳ Hesap cooldown: " + accountId + " (" + (QUIZ_ACCOUNT_COOLDOWN_MS / 60000) + " dk)");
+}
+
+function isQuizAccountInCooldown(accountId) {
+  if (!accountId) return false;
+  var until = quizAccountCooldowns.get(accountId) || 0;
+  if (Date.now() >= until) {
+    quizAccountCooldowns.delete(accountId);
+    return false;
+  }
+  return true;
+}
+
+function quizIsPageBlocked(pageContent) {
+  if (!pageContent || pageContent.trim().length < 100) return true;
+  var lower = pageContent.toLowerCase();
+  return lower.includes("access denied") ||
+    lower.includes("403 forbidden") ||
+    lower.includes("blocked") ||
+    lower.includes("unusual traffic") ||
+    lower.includes("suspicious activity") ||
+    lower.includes("too many requests") ||
+    lower.includes("rate limit");
+}
+
+function getQuizCooldownWait() {
+  if (quizConsecutiveErrors <= 1) return 5000;
+  var wait = Math.min(quizConsecutiveErrors * QUIZ_COOLDOWN_BACKOFF_MS, 5 * 60 * 1000); // max 5dk
+  return wait;
+}
+
 // ==================== ANTİ-DETECTİON HELPERS (VFS'den) ====================
 
 function quizDelay(min, max) {

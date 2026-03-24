@@ -1529,6 +1529,29 @@ async function executeAction(page, action) {
         return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
       }
 
+      function isDisabled(el) {
+        if (!el) return true;
+        return !!(el.disabled || el.getAttribute("aria-disabled") === "true");
+      }
+
+      function isContinuePhrase(text) {
+        var value = normalize(text);
+        return /(please click to continue|click to continue|continue|next|submit|verify|devam etmek|devam et|devam|ileri|sonraki|gönder|gonder)/.test(value);
+      }
+
+      function getElementBlob(el) {
+        if (!el) return "";
+        return normalize([
+          el.textContent || "",
+          el.value || "",
+          el.getAttribute("aria-label") || "",
+          el.getAttribute("title") || "",
+          el.getAttribute("data-testid") || "",
+          el.getAttribute("name") || "",
+          el.className || ""
+        ].join(" "));
+      }
+
       function isCaptchaLike(el) {
         var cls = normalize(el.className || "");
         var aria = normalize(el.getAttribute("aria-label") || "");
@@ -1610,6 +1633,58 @@ async function executeAction(page, action) {
         return bestEl;
       }
 
+      function findContinuePromptButton() {
+        var allNodes = Array.from(document.querySelectorAll('h1, h2, h3, h4, p, span, div'));
+        var promptNode = null;
+        for (var i = 0; i < allNodes.length; i++) {
+          var node = allNodes[i];
+          if (!isVisible(node)) continue;
+          var text = normalize(node.textContent || "");
+          if (text && /(please click to continue|click to continue|devam etmek için|devam etmek icin)/.test(text)) {
+            promptNode = node;
+            break;
+          }
+        }
+
+        var controls = Array.from(document.querySelectorAll('button, a, input[type="submit"], input[type="button"], [role="button"], [onclick], [tabindex]'))
+          .filter(isVisible)
+          .filter(function(el) { return !isDisabled(el); });
+
+        if (controls.length === 0) return null;
+
+        var bestControl = null;
+        var bestScore = 0;
+        for (var j = 0; j < controls.length; j++) {
+          var control = controls[j];
+          var blob = getElementBlob(control);
+          var rect = control.getBoundingClientRect();
+          var score = 0;
+
+          if (isContinuePhrase(blob)) score += 110;
+          if (/arrow|continue|next|primary|cta|submit|forward/.test(blob)) score += 25;
+          if (/^[→»›⟶➜➡➝⮕]+$/.test((control.textContent || '').trim())) score += 70;
+          if (rect.width >= 48 && rect.height >= 28) score += 10;
+
+          if (promptNode) {
+            var promptRect = promptNode.getBoundingClientRect();
+            var sameContainer = promptNode.parentElement && (promptNode.parentElement.contains(control) || control.parentElement === promptNode.parentElement);
+            var belowPrompt = rect.top >= (promptRect.bottom - 12);
+            var horizontalAligned = Math.abs((rect.left + rect.width / 2) - (promptRect.left + promptRect.width / 2)) < Math.max(220, promptRect.width);
+            if (sameContainer) score += 70;
+            if (belowPrompt) score += 35;
+            if (horizontalAligned) score += 20;
+            if (rect.top > promptRect.top && rect.top - promptRect.bottom < 260) score += 25;
+          }
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestControl = control;
+          }
+        }
+
+        return bestScore >= 60 ? bestControl : null;
+      }
+
       function fireSmartClick(el) {
         if (!el) return false;
         var target = getClickableTarget(el);
@@ -1668,6 +1743,13 @@ async function executeAction(page, action) {
       var best = null;
       var bestScore = 0;
       var bestText = "";
+      var wantsContinue = false;
+      for (var wp = 0; wp < phrases.length; wp++) {
+        if (isContinuePhrase(phrases[wp])) {
+          wantsContinue = true;
+          break;
+        }
+      }
 
       for (var i = 0; i < elements.length; i++) {
         var el = elements[i];
@@ -1675,6 +1757,11 @@ async function executeAction(page, action) {
         var href = normalize(el.getAttribute("href") || "");
         var cls = normalize(el.className || "");
         var tag = (el.tagName || "").toLowerCase();
+        var aria = normalize(el.getAttribute("aria-label") || "");
+        var title = normalize(el.getAttribute("title") || "");
+        var dataTest = normalize(el.getAttribute("data-testid") || "");
+        var name = normalize(el.getAttribute("name") || "");
+        var blob = [text, cls, aria, title, href, dataTest, name].join(" ");
         var score = 0;
 
         if (isCaptchaLike(el)) score += 35;
@@ -1697,11 +1784,16 @@ async function executeAction(page, action) {
 
         if (words.length > 0) {
           var matched = 0;
-          var blob = [text, cls, normalize(el.getAttribute("aria-label") || ""), normalize(el.getAttribute("title") || ""), href].join(" ");
           for (var k = 0; k < words.length; k++) {
             if (blob.includes(words[k])) matched++;
           }
           if (matched > 0) score = Math.max(score, matched * 20);
+        }
+
+        if (wantsContinue) {
+          if (isContinuePhrase(blob)) score = Math.max(score, 105);
+          if (/^[→»›⟶➜➡➝⮕]+$/.test((el.textContent || '').trim())) score = Math.max(score, 85);
+          if ((tag === "button" || tag === "a" || tag === "input") && !isDisabled(el)) score += 12;
         }
 
         for (var np = 0; np < phrases.length; np++) {
@@ -1719,6 +1811,13 @@ async function executeAction(page, action) {
       var threshold = isSurveyAction ? 24 : 40;
       if (best && bestScore >= threshold) {
         return { clicked: fireSmartClick(best), matchedText: bestText, score: bestScore };
+      }
+
+      if (wantsContinue && (!best || bestScore < threshold)) {
+        var continuePromptButton = findContinuePromptButton();
+        if (continuePromptButton) {
+          return { clicked: fireSmartClick(continuePromptButton), matchedText: getElementBlob(continuePromptButton).slice(0, 120), score: 95, continuePromptFallback: true };
+        }
       }
 
       // Checkbox/radio fallback: metin bazlı arama

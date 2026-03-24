@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import {
   Plus, Trash2, Play, Eye, EyeOff,
   Link2, Loader2, CheckCircle2, AlertCircle,
-  Clock, Mail, Power, Square, Globe, RotateCcw
+  Clock, Mail, Power, Square, Globe, RotateCcw, StopCircle
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import QuizTrackingLogs from "@/components/QuizTrackingLogs";
@@ -107,6 +107,12 @@ export default function QuizBotPanel() {
     setQuizLinks(prev => prev.map(l => l.id === link.id ? { ...l, status: "quiz_pending" } : l));
     await supabase.from("link_analyses").update({ status: "quiz_pending" }).eq("id", link.id);
     toast.success("Quiz başlatıldı: " + link.url.slice(0, 40));
+  }
+
+  async function stopQuiz(link: QuizLink) {
+    setQuizLinks(prev => prev.map(l => l.id === link.id ? { ...l, status: "idle" } : l));
+    await supabase.from("link_analyses").update({ status: "idle" }).eq("id", link.id);
+    toast.success("Quiz durduruldu");
   }
 
   async function startAllActive() {
@@ -211,7 +217,7 @@ export default function QuizBotPanel() {
                   {statusBadge(link.status)}
 
                   {/* Restart button */}
-                  {(link.status === "quiz_done" || link.status === "error" || link.status === "quiz_running" || link.status === "quiz_pending") && (
+                  {(link.status === "quiz_done" || link.status === "error") && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -223,17 +229,31 @@ export default function QuizBotPanel() {
                     </Button>
                   )}
 
+                  {/* Stop button */}
+                  {(link.status === "quiz_pending" || link.status === "quiz_running") && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 text-destructive hover:text-destructive/80"
+                      onClick={() => stopQuiz(link)}
+                      title="Durdur"
+                    >
+                      <StopCircle className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
+
                   {/* Start button */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 w-6 p-0 text-emerald-600 hover:text-emerald-700"
-                    onClick={() => startQuiz(link)}
-                    disabled={link.status === "quiz_pending" || link.status === "quiz_running"}
-                    title="Quiz Başlat"
-                  >
-                    <Play className="w-3.5 h-3.5" />
-                  </Button>
+                  {link.status !== "quiz_pending" && link.status !== "quiz_running" && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 text-emerald-600 hover:text-emerald-700"
+                      onClick={() => startQuiz(link)}
+                      title="Quiz Başlat"
+                    >
+                      <Play className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
 
                   {/* Delete */}
                   <Button

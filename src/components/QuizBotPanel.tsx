@@ -91,17 +91,20 @@ export default function QuizBotPanel() {
   }
 
   async function deleteQuizLink(id: string) {
+    setQuizLinks(prev => prev.filter(l => l.id !== id));
     await supabase.from("link_analyses").delete().eq("id", id);
     toast.success("Link silindi");
   }
 
   async function toggleLinkActive(link: QuizLink) {
     const newStatus = link.status === "idle" || link.status === "quiz_done" || link.status === "error" ? "active" : "idle";
+    setQuizLinks(prev => prev.map(l => l.id === link.id ? { ...l, status: newStatus } : l));
     await supabase.from("link_analyses").update({ status: newStatus }).eq("id", link.id);
     toast.success(newStatus === "active" ? "Link aktif" : "Link pasif");
   }
 
   async function startQuiz(link: QuizLink) {
+    setQuizLinks(prev => prev.map(l => l.id === link.id ? { ...l, status: "quiz_pending" } : l));
     await supabase.from("link_analyses").update({ status: "quiz_pending" }).eq("id", link.id);
     toast.success("Quiz başlatıldı: " + link.url.slice(0, 40));
   }
@@ -109,6 +112,7 @@ export default function QuizBotPanel() {
   async function startAllActive() {
     const activeLinks = quizLinks.filter(l => l.status === "active");
     if (activeLinks.length === 0) { toast.error("Aktif link yok"); return; }
+    setQuizLinks(prev => prev.map(l => l.status === "active" ? { ...l, status: "quiz_pending" } : l));
     for (const link of activeLinks) {
       await supabase.from("link_analyses").update({ status: "quiz_pending" }).eq("id", link.id);
     }

@@ -462,6 +462,19 @@ async function runGeminiEngine(url, account, settings) {
       stepCount++;
       console.log("[" + engineType.toUpperCase() + "] Adım " + stepCount + "/" + maxSteps);
 
+      // === CAPTCHA AUTO-DETECTION ===
+      try {
+        var captchaSolved = await tryAutoSolveCaptcha(page, settings);
+        if (captchaSolved) {
+          console.log("[CAPTCHA] Otomatik çözüldü, 3s bekleniyor...");
+          await new Promise(function(r) { setTimeout(r, 3000); });
+          continue; // Skip AI step, re-evaluate page
+        }
+      } catch (captchaErr) {
+        console.error("[CAPTCHA] Oto-çözme hatası:", captchaErr.message);
+        await supabaseInsertLog("CAPTCHA oto-çözme hatası: " + captchaErr.message, "warning");
+      }
+
       var screenshot = await page.screenshot({ encoding: "base64", type: "jpeg", quality: 70 });
       var currentUrl = page.url();
       var action = await visionFn(screenshot, currentUrl, account, stepCount, recentActions);

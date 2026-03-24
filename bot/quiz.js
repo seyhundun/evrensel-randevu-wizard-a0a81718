@@ -1945,6 +1945,11 @@ async function executeAction(page, action) {
     case "wait":
       await new Promise(function(resolve) { setTimeout(resolve, 2000); });
       break;
+
+    case "next_survey":
+      // Handled in main loop — just wait
+      await new Promise(function(resolve) { setTimeout(resolve, 1000); });
+      break;
   }
 }
 

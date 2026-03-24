@@ -1006,7 +1006,11 @@ async function runGeminiEngine(url, account, settings) {
     // Determine which vision function to use
     var engineType = settings.quiz_engine || "gemini";
     var visionFn;
-    if (engineType === "lovable_ai") {
+    if (engineType === "dom_agent") {
+      var domAgentKey = settings.lovable_api_key || process.env.LOVABLE_API_KEY || "";
+      if (!domAgentKey) throw new Error("Lovable API key bulunamadı (DOM Agent için gerekli)!");
+      visionFn = function(ss, url, acc, st, ra) { return askDOMAgent(page, url, acc, st, ra, domAgentKey); };
+    } else if (engineType === "lovable_ai") {
       var lovableKey = settings.lovable_api_key || process.env.LOVABLE_API_KEY || "";
       if (!lovableKey) throw new Error("Lovable API key bulunamadı! bot_settings'e lovable_api_key ekleyin.");
       visionFn = function(ss, url, acc, st, ra) { return askLovableAIVision(lovableKey, ss, url, acc, st, ra); };

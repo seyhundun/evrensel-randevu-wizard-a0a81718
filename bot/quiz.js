@@ -929,11 +929,13 @@ KRİTİK KURALLAR:
 4. Giriş gerekiyorsa email/şifre ile giriş yap. Google/Facebook KULLANMA.
 5. Sadece ekranda gerçekten görünen öğeleri hedefle.
 6. JSON dışında hiçbir şey yazma.
+7. ANKET TIKLAMA: Anket listesi (Swagbucks, vb.) gördüğünde İLK ankete tıkla. selector olarak CSS selector kullan: "a[href*='survey'], a[href*='answer'], .sb-card, [data-survey-id], li a" gibi. Eğer CSS bilmiyorsan, anketteki kısa metni (örn "15 min") selector olarak ver.
+8. Anket kartı/satırına tıklamak için selector olarak sadece kart içindeki KISA bir metin ver (örn: "15 min", "Survey #108293587", "8 min"). Uzun cümleler KULLANMA.
 
 JSON formatı:
 {
   "action": "click" | "type" | "scroll" | "wait" | "navigate",
-  "selector": "Kısa hedef metni veya CSS selector",
+  "selector": "CSS selector VEYA kısa hedef metni (max 3 kelime)",
   "value": "type/navigate için değer",
   "description": "çok kısa açıklama",
   "done": false

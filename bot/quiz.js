@@ -1514,6 +1514,180 @@ async function executeAction(page, action) {
           }
         } catch (e) {}
       }
+      // Strategy 4: Survey textarea fallback — find any visible textarea/input and type
+      if (!isPasswordField && !isEmailField && action.value) {
+        for (var tf3 = 0; tf3 < typeFrames.length; tf3++) {
+          try {
+            var surveyTyped = await typeFrames[tf3].evaluate(function(val) {
+              function setNativeValue(el, value) {
+                var valueSetter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value')?.set;
+                if (valueSetter) valueSetter.call(el, value);
+                else el.value = value;
+                el.dispatchEvent(new Event("input", {bubbles: true}));
+                el.dispatchEvent(new Event("change", {bubbles: true}));
+              }
+              // Find visible textarea first, then text inputs
+              var fields = Array.from(document.querySelectorAll("textarea, input[type='text'], input:not([type])"));
+              for (var i = 0; i < fields.length; i++) {
+                var f = fields[i];
+                var rect = f.getBoundingClientRect();
+                var style = window.getComputedStyle(f);
+                if (rect.width > 50 && rect.height > 10 && style.display !== "none" && style.visibility !== "hidden") {
+                  var type = (f.type || "").toLowerCase();
+                  // Skip password/email/hidden fields
+                  if (type === "password" || type === "email" || type === "hidden" || type === "submit") continue;
+                  f.focus();
+                  f.value = "";
+                  setNativeValue(f, val);
+                  return true;
+                }
+              }
+              return false;
+            }, action.value);
+            if (surveyTyped) {
+              console.log("[TYPE] 📝 Survey textarea fallback ile yazıldı");
+              return;
+            }
+          } catch (e) {}
+        }
+      }
+      break;
+    }
+
+    case "move_slider": {
+      var sliderFrames = await getCandidateFrames();
+      var targetValue = parseInt(action.value) || 50;
+      
+      for (var sf = 0; sf < sliderFrames.length; sf++) {
+        try {
+          var sliderMoved = await sliderFrames[sf].evaluate(function(selector, targetVal) {
+            function isVisible(el) {
+              var rect = el.getBoundingClientRect();
+              var style = window.getComputedStyle(el);
+              return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+            }
+
+            // Try CSS selector first
+            var slider = null;
+            try { slider = document.querySelector(selector); } catch(e) {}
+            
+            // Fallback: find any visible range input
+            if (!slider || !isVisible(slider)) {
+              var ranges = Array.from(document.querySelectorAll('input[type="range"], [role="slider"]'));
+              for (var i = 0; i < ranges.length; i++) {
+                if (isVisible(ranges[i])) { slider = ranges[i]; break; }
+              }
+            }
+            
+            if (!slider) return false;
+            
+            // For input[type=range]
+            if (slider.tagName === "INPUT" && slider.type === "range") {
+              var min = parseFloat(slider.min) || 0;
+              var max = parseFloat(slider.max) || 100;
+              var newVal = min + (max - min) * (targetVal / 100);
+              var valueSetter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(slider), 'value')?.set;
+              if (valueSetter) valueSetter.call(slider, String(newVal));
+              else slider.value = String(newVal);
+              slider.dispatchEvent(new Event("input", {bubbles: true}));
+              slider.dispatchEvent(new Event("change", {bubbles: true}));
+              return true;
+            }
+            
+            // For custom sliders (role=slider) — simulate click at percentage position
+            var rect = slider.getBoundingClientRect();
+            var x = rect.left + (rect.width * targetVal / 100);
+            var y = rect.top + rect.height / 2;
+            var clickEvent = new MouseEvent("click", {
+              clientX: x, clientY: y, bubbles: true
+            });
+            slider.dispatchEvent(clickEvent);
+            return true;
+          }, action.selector || "", targetValue);
+          
+          if (sliderMoved) {
+            console.log("[SLIDER] 🎚 Slider değeri ayarlandı: " + targetValue);
+            return;
+          }
+        } catch (e) {}
+      }
+      
+      // Physical mouse fallback for custom sliders
+      try {
+        var sliderEl = await page.$(action.selector || 'input[type="range"]');
+        if (sliderEl) {
+          var box = await sliderEl.boundingBox();
+          if (box) {
+            var clickX = box.x + (box.width * targetValue / 100);
+            var clickY = box.y + box.height / 2;
+            await page.mouse.click(clickX, clickY);
+            console.log("[SLIDER] 🎚 Fiziksel tıklama ile slider ayarlandı");
+          }
+        }
+      } catch (e) {}
+      break;
+    }
+
+    case "select_dropdown": {
+      var ddFrames = await getCandidateFrames();
+      
+      for (var df = 0; df < ddFrames.length; df++) {
+        try {
+          var ddSelected = await ddFrames[df].evaluate(function(selector, optionText) {
+            function isVisible(el) {
+              var rect = el.getBoundingClientRect();
+              return rect.width > 0 && rect.height > 0;
+            }
+            
+            var selectEl = null;
+            try { selectEl = document.querySelector(selector); } catch(e) {}
+            
+            // Fallback: find any visible select element
+            if (!selectEl || selectEl.tagName !== "SELECT") {
+              var selects = Array.from(document.querySelectorAll("select"));
+              for (var i = 0; i < selects.length; i++) {
+                if (isVisible(selects[i])) { selectEl = selects[i]; break; }
+              }
+            }
+            
+            if (!selectEl) return false;
+            
+            var options = Array.from(selectEl.options);
+            var optLower = (optionText || "").toLowerCase().trim();
+            var target = null;
+            
+            // Exact match first
+            for (var i = 0; i < options.length; i++) {
+              if ((options[i].text || "").toLowerCase().trim() === optLower) { target = options[i]; break; }
+            }
+            // Partial match
+            if (!target) {
+              for (var i = 0; i < options.length; i++) {
+                if ((options[i].text || "").toLowerCase().includes(optLower)) { target = options[i]; break; }
+              }
+            }
+            // First non-empty option fallback
+            if (!target) {
+              for (var i = 0; i < options.length; i++) {
+                if (options[i].value && !options[i].disabled && i > 0) { target = options[i]; break; }
+              }
+            }
+            
+            if (target) {
+              selectEl.value = target.value;
+              selectEl.dispatchEvent(new Event("change", {bubbles: true}));
+              selectEl.dispatchEvent(new Event("input", {bubbles: true}));
+              return true;
+            }
+            return false;
+          }, action.selector || "", action.value || "");
+          
+          if (ddSelected) {
+            console.log("[DROPDOWN] 📋 Dropdown seçimi yapıldı: " + action.value);
+            return;
+          }
+        } catch (e) {}
+      }
       break;
     }
 

@@ -464,10 +464,24 @@ const fs = require("fs");
 const os = require("os");
 
 function createTempUserDataDir() {
-  var dir = path.join(os.tmpdir(), "quiz-chrome-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8));
+  var dir = path.join(os.tmpdir(), "quiz-chrome-temp-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8));
   fs.mkdirSync(dir, { recursive: true });
   console.log("[BROWSER] 🧹 Temiz profil: " + dir);
   return dir;
+}
+
+function getOrCreatePersistentProfile(accountEmail) {
+  // Hesap başına kalıcı profil — çerezler, localStorage korunur
+  var safeName = (accountEmail || "default").replace(/[^a-zA-Z0-9@._-]/g, "_").slice(0, 50);
+  var dir = path.join(os.homedir(), ".quiz-profiles", safeName);
+  var isNew = !fs.existsSync(dir);
+  fs.mkdirSync(dir, { recursive: true });
+  if (isNew) {
+    console.log("[BROWSER] 🆕 Yeni kalıcı profil oluşturuldu: " + dir);
+  } else {
+    console.log("[BROWSER] ♻️ Mevcut kalıcı profil kullanılıyor: " + dir);
+  }
+  return { dir: dir, isNew: isNew };
 }
 
 function cleanupUserDataDir(dir) {
@@ -750,8 +764,17 @@ async function runGeminiEngine(url, account, settings) {
   var geminiApiKey = settings.gemini_api_key || process.env.GEMINI_API_KEY || "";
   if (!geminiApiKey) throw new Error("Gemini API key bulunamadı! bot_settings'e gemini_api_key ekleyin.");
 
-  // Temiz tarayıcı profili oluştur (VFS ile aynı)
-  tempDir = createTempUserDataDir();
+  // Kalıcı profil: çerezler ve oturum bilgileri korunur
+  var usePersistentProfile = settings.quiz_persistent_profile !== "false";
+  var profileInfo = null;
+  if (usePersistentProfile) {
+    profileInfo = getOrCreatePersistentProfile(account.email);
+    tempDir = profileInfo.dir;
+    await supabaseInsertLog(profileInfo.isNew ? "🆕 Yeni kalıcı profil: " + account.email : "♻️ Kalıcı profil kullanılıyor: " + account.email + " (çerezler korunuyor)", "info");
+  } else {
+    tempDir = createTempUserDataDir();
+    await supabaseInsertLog("🧹 Temiz profil kullanılıyor (kalıcı profil kapalı)", "info");
+  }
 
   var args = [
     "--no-sandbox",
@@ -1009,15 +1032,19 @@ async function runGeminiEngine(url, account, settings) {
     await supabaseInsertLog("Hata: " + err.message, "error");
     throw err;
   } finally {
-    // VFS ile aynı: tarayıcıyı kapat ve temiz profili sil
+    // Tarayıcıyı kapat — kalıcı profilde profil silinmez
     try {
       if (browser) {
         await browser.close().catch(function() {});
         console.log("[QUIZ] 🔒 Tarayıcı kapatıldı");
       }
     } catch (e) {}
-    if (tempDir) cleanupUserDataDir(tempDir);
-    await supabaseInsertLog("Tarayıcı kapatıldı ve profil temizlendi", "info");
+    if (tempDir && !usePersistentProfile) {
+      cleanupUserDataDir(tempDir);
+      await supabaseInsertLog("Tarayıcı kapatıldı ve profil temizlendi", "info");
+    } else {
+      await supabaseInsertLog("Tarayıcı kapatıldı (profil korundu: " + (account.email || "?") + ")", "info");
+    }
   }
 }
 

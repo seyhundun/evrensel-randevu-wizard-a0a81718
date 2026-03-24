@@ -1,7 +1,8 @@
 /**
- * Quiz/Anket Çözücü Bot v4.0 — Dual Engine
+ * Quiz/Anket Çözücü Bot v5.1 — Dual Engine + Anti-Detection
  * Motor 1: Local Puppeteer + Gemini Vision (varsayılan, ücretsiz)
  * Motor 2: Browser Use Cloud API (alternatif, ücretli)
+ * Anti-detection: VFS bot seviyesinde humanMove/humanType/humanScroll
  * Kullanım: node quiz.js [URL]
  */
 require("dotenv").config();
@@ -350,18 +351,22 @@ async function tryAutoSolveCaptcha(page, settings) {
   if (!captchaInfo) return false;
 
   var provider = (settings.captcha_provider || "2captcha").toLowerCase();
-  var twoCaptchaKey = settings.captcha_api_key || process.env.CAPTCHA_API_KEY || "";
-  var capsolverKey = settings.capsolver_api_key || process.env.CAPSOLVER_API_KEY || "";
+  var twoCaptchaKey = (settings.captcha_api_key || process.env.CAPTCHA_API_KEY || "").trim();
+  var capsolverKey = (settings.capsolver_api_key || process.env.CAPSOLVER_API_KEY || "").trim();
   var pageUrl = page.url();
 
-  console.log("[CAPTCHA] Tespit edildi: " + captchaInfo.type + " | sitekey: " + (captchaInfo.sitekey || "bilinmiyor") + " | provider: " + provider);
-  await supabaseInsertLog("CAPTCHA tespit edildi: " + captchaInfo.type + " (provider: " + provider + ")", "info");
+  // Sitekey'i temizle - boş string, undefined, null kontrolü
+  var sitekey = (captchaInfo.sitekey || "").trim();
+  captchaInfo.sitekey = sitekey || null;
 
-  if (!captchaInfo.sitekey) {
+  console.log("[CAPTCHA] Tespit edildi: " + captchaInfo.type + " | sitekey: " + (sitekey || "YOK") + " | provider: " + provider);
+  await supabaseInsertLog("CAPTCHA tespit edildi: " + captchaInfo.type + " | sitekey: " + (sitekey ? sitekey.slice(0,20) + "..." : "YOK") + " (provider: " + provider + ")", "info");
+
+  if (!sitekey) {
     if (captchaInfo.type === "recaptcha_v2" && captchaInfo.hasImageGrid) {
       await supabaseInsertLog("reCAPTCHA image-grid açık ama sitekey bulunamadı, AI'a bırakılıyor", "warning");
     } else {
-      await supabaseInsertLog("CAPTCHA sitekey bulunamadı, çözülemiyor", "warning");
+      await supabaseInsertLog("CAPTCHA sitekey bulunamadı (googlekey eksik), API çağrısı yapılmıyor", "warning");
     }
     return false;
   }
@@ -438,6 +443,104 @@ async function tryAutoSolveCaptcha(page, settings) {
 
   await supabaseInsertLog("CAPTCHA token enjekte edildi, form gönderildi", "success");
   return true;
+}
+
+// ==================== ANTİ-DETECTİON HELPERS (VFS'den) ====================
+
+function quizDelay(min, max) {
+  if (!min) min = 2000;
+  if (!max) max = 5000;
+  return new Promise(function(r) { setTimeout(r, Math.floor(Math.random() * (max - min) + min)); });
+}
+
+// İnsan benzeri scroll
+async function humanScroll(page) {
+  try {
+    var scrollAmount = Math.floor(Math.random() * 300) + 100;
+    var direction = Math.random() > 0.3 ? 1 : -1;
+    await page.evaluate(function(amount) { window.scrollBy({ top: amount, behavior: 'smooth' }); }, scrollAmount * direction);
+    await quizDelay(800, 2000);
+  } catch (e) {}
+}
+
+// İnsan benzeri idle (okuyormuş gibi)
+async function humanIdle(min, max) {
+  if (!min) min = 2000;
+  if (!max) max = 6000;
+  var wait = Math.floor(Math.random() * (max - min) + min);
+  await new Promise(function(r) { setTimeout(r, wait); });
+}
+
+// İnsan benzeri mouse hareketi
+async function humanMove(page) {
+  try {
+    var vp = page.viewport();
+    var w = (vp && vp.width) || 1366;
+    var h = (vp && vp.height) || 768;
+    var moves = Math.floor(Math.random() * 3) + 1;
+    for (var i = 0; i < moves; i++) {
+      var x = Math.floor(Math.random() * w * 0.6 + w * 0.2);
+      var y = Math.floor(Math.random() * h * 0.6 + h * 0.2);
+      await page.mouse.move(x, y, { steps: Math.floor(Math.random() * 20 + 10) });
+      await quizDelay(300, 800);
+    }
+    if (Math.random() > 0.5) await humanScroll(page);
+  } catch (e) {}
+}
+
+// İnsan benzeri typing — typo simülasyonu ile
+async function humanType(page, selector, text) {
+  if (!text && text !== 0) return false;
+  try {
+    var element = await page.$(selector);
+    if (!element) return false;
+
+    await humanIdle(800, 2000);
+    await element.click({ clickCount: 1 });
+    await quizDelay(400, 900);
+
+    // Önce alanı temizle
+    await page.keyboard.down("Control");
+    await page.keyboard.press("a");
+    await page.keyboard.up("Control");
+    await page.keyboard.press("Backspace");
+    await quizDelay(300, 700);
+
+    for (var i = 0; i < String(text).length; i++) {
+      var ch = String(text)[i];
+      var keyDelay = Math.floor(Math.random() * 230) + 120;
+      await page.keyboard.type(ch, { delay: keyDelay });
+      // Rastgele duraklamalar
+      if (Math.random() < 0.2) await quizDelay(400, 1500);
+      // Typo simülasyonu (düşük olasılık)
+      if (Math.random() < 0.03 && String(text).length > 5) {
+        var wrongKey = String.fromCharCode(97 + Math.floor(Math.random() * 26));
+        await page.keyboard.type(wrongKey, { delay: keyDelay });
+        await quizDelay(300, 800);
+        await page.keyboard.press("Backspace");
+        await quizDelay(200, 500);
+      }
+    }
+    await quizDelay(400, 1000);
+
+    // React/Angular uyumluluğu
+    await page.evaluate(function(sel, value) {
+      var el = document.querySelector(sel);
+      if (!el) return;
+      var proto = Object.getPrototypeOf(el);
+      var descriptor = Object.getOwnPropertyDescriptor(proto, 'value')
+        || Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+        || Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+      if (descriptor && descriptor.set) descriptor.set.call(el, value);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+      el.dispatchEvent(new Event("blur", { bubbles: true }));
+    }, selector, String(text));
+
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 // ==================== MOTOR 1: PUPPETEER + GEMINI VISION ====================
@@ -544,8 +647,17 @@ async function runGeminiEngine(url, account, settings) {
 
   try {
     await page.setViewport({ width: 1920, height: 1080 });
+
+    // İlk sayfa yüklemeden önce insan benzeri hareket
+    await humanMove(page);
+
     await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
     await supabaseInsertLog("Sayfa yüklendi: " + url, "info");
+
+    // Sayfa yüklendikten sonra insan benzeri davranış
+    await humanIdle(1500, 3000);
+    await humanMove(page);
+    await humanScroll(page);
 
     var maxSteps = 30;
     var stepCount = 0;
@@ -575,13 +687,16 @@ async function runGeminiEngine(url, account, settings) {
         var captchaSolved = await tryAutoSolveCaptcha(page, settings);
         if (captchaSolved) {
           console.log("[CAPTCHA] Otomatik çözüldü, 3s bekleniyor...");
-          await new Promise(function(r) { setTimeout(r, 3000); });
-          continue; // Skip AI step, re-evaluate page
+          await quizDelay(2000, 4000);
+          continue;
         }
       } catch (captchaErr) {
         console.error("[CAPTCHA] Oto-çözme hatası:", captchaErr.message);
         await supabaseInsertLog("CAPTCHA oto-çözme hatası: " + captchaErr.message, "warning");
       }
+
+      // Her adımda rastgele insan benzeri hareket
+      if (Math.random() > 0.4) await humanMove(page);
 
       var screenshot = await page.screenshot({ encoding: "base64", type: "jpeg", quality: 70 });
       var currentUrl = page.url();
@@ -607,7 +722,10 @@ async function runGeminiEngine(url, account, settings) {
 
       try {
         await executeAction(page, action);
-        await new Promise(function(resolve) { setTimeout(resolve, 2500); });
+        // İnsan benzeri bekleme — sabit değil rastgele
+        await humanIdle(2000, 4000);
+        // Bazen scroll yap
+        if (Math.random() > 0.6) await humanScroll(page);
       } catch (actionErr) {
         console.error("[GEMINI] Aksiyon hatası:", actionErr.message);
         await supabaseInsertLog("Aksiyon hatası: " + actionErr.message, "warning");

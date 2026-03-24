@@ -98,6 +98,7 @@ export default function QuizBotPanel() {
 
   async function toggleLinkActive(link: QuizLink) {
     const newStatus = link.status === "idle" || link.status === "quiz_done" || link.status === "error" ? "active" : "idle";
+    setQuizLinks(prev => prev.map(l => l.id === link.id ? { ...l, status: newStatus } : l));
     await supabase.from("link_analyses").update({ status: newStatus }).eq("id", link.id);
     toast.success(newStatus === "active" ? "Link aktif" : "Link pasif");
   }

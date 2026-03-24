@@ -501,6 +501,80 @@ function getQuizFallbackRegion(countryCode) {
   return region;
 }
 
+// ==================== SESSION IP BAN & COOLDOWN (VFS'den) ====================
+var quizSessionFailCounts = new Map(); // sessionId -> failCount
+var quizSessionBannedUntil = new Map(); // sessionId -> timestamp
+var quizAccountCooldowns = new Map(); // accountId -> timestamp
+var QUIZ_SESSION_MAX_FAILS = 3;
+var QUIZ_SESSION_BAN_DURATION_MS = 30 * 60 * 1000; // 30 dk
+var QUIZ_ACCOUNT_COOLDOWN_MS = 10 * 60 * 1000; // 10 dk
+var quizConsecutiveErrors = 0;
+var QUIZ_MAX_CONSECUTIVE_ERRORS = 5;
+var QUIZ_COOLDOWN_BACKOFF_MS = 60 * 1000; // Her ardışık hata sonrası +60s
+
+function quizMarkSessionSuccess(sessionId) {
+  if (!sessionId) return;
+  quizSessionFailCounts.delete(sessionId);
+  quizConsecutiveErrors = 0;
+  console.log("[SESSION] ✅ Oturum başarılı: " + sessionId);
+}
+
+function quizMarkSessionFail(sessionId, reason) {
+  if (!sessionId) return;
+  var count = (quizSessionFailCounts.get(sessionId) || 0) + 1;
+  quizSessionFailCounts.set(sessionId, count);
+  quizConsecutiveErrors++;
+  console.log("[SESSION] ❌ Oturum hata: " + sessionId + " (" + count + "/" + QUIZ_SESSION_MAX_FAILS + ")" + (reason ? " | " + reason : ""));
+
+  if (count >= QUIZ_SESSION_MAX_FAILS) {
+    quizSessionBannedUntil.set(sessionId, Date.now() + QUIZ_SESSION_BAN_DURATION_MS);
+    quizSessionFailCounts.delete(sessionId);
+    console.log("[SESSION] 🚫 Oturum banlandı (" + (QUIZ_SESSION_BAN_DURATION_MS / 60000) + " dk): " + sessionId);
+  }
+}
+
+function quizBanSessionImmediately(sessionId, reason) {
+  if (!sessionId) return;
+  quizSessionBannedUntil.set(sessionId, Date.now() + QUIZ_SESSION_BAN_DURATION_MS);
+  quizSessionFailCounts.delete(sessionId);
+  quizConsecutiveErrors++;
+  console.log("[SESSION] 🚫 Anında ban: " + sessionId + (reason ? " | " + reason : ""));
+}
+
+function quizMarkAccountFail(accountId) {
+  if (!accountId) return;
+  quizAccountCooldowns.set(accountId, Date.now() + QUIZ_ACCOUNT_COOLDOWN_MS);
+  console.log("[ACCOUNT] ⏳ Hesap cooldown: " + accountId + " (" + (QUIZ_ACCOUNT_COOLDOWN_MS / 60000) + " dk)");
+}
+
+function isQuizAccountInCooldown(accountId) {
+  if (!accountId) return false;
+  var until = quizAccountCooldowns.get(accountId) || 0;
+  if (Date.now() >= until) {
+    quizAccountCooldowns.delete(accountId);
+    return false;
+  }
+  return true;
+}
+
+function quizIsPageBlocked(pageContent) {
+  if (!pageContent || pageContent.trim().length < 100) return true;
+  var lower = pageContent.toLowerCase();
+  return lower.includes("access denied") ||
+    lower.includes("403 forbidden") ||
+    lower.includes("blocked") ||
+    lower.includes("unusual traffic") ||
+    lower.includes("suspicious activity") ||
+    lower.includes("too many requests") ||
+    lower.includes("rate limit");
+}
+
+function getQuizCooldownWait() {
+  if (quizConsecutiveErrors <= 1) return 5000;
+  var wait = Math.min(quizConsecutiveErrors * QUIZ_COOLDOWN_BACKOFF_MS, 5 * 60 * 1000); // max 5dk
+  return wait;
+}
+
 // ==================== ANTİ-DETECTİON HELPERS (VFS'den) ====================
 
 function quizDelay(min, max) {
@@ -726,6 +800,13 @@ async function runGeminiEngine(url, account, settings) {
 
     await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
     await supabaseInsertLog("Sayfa yüklendi: " + url, "info");
+
+    // Sayfa engel kontrolü (VFS ile aynı)
+    var pageContent = await page.evaluate(function() { return document.body ? document.body.innerText : ""; }).catch(function() { return ""; });
+    if (quizIsPageBlocked(pageContent)) {
+      await supabaseInsertLog("🚫 Sayfa engellendi — yeni oturum denenecek", "warning");
+      throw new Error("blocked: Sayfa engellendi (403/access denied/rate limit)");
+    }
 
     // Sayfa yüklendikten sonra insan benzeri davranış
     await humanIdle(1500, 3000);
@@ -1472,29 +1553,72 @@ KURALLAR: Sayfadan ayrılma, her cookie popup'ı kapat.`;
 // ==================== ANA İŞLEM ====================
 
 async function processQuiz(url) {
-  try {
-    var account = await getLoginAccount();
-    if (!account) return;
+  var MAX_RETRIES = 3;
 
-    var settings = await getSettings();
-    var engine = settings.quiz_engine || "gemini";
+  for (var retry = 0; retry < MAX_RETRIES; retry++) {
+    var sessionId = "quiz" + Math.random().toString(36).slice(2, 10);
 
-    console.log("=== Quiz Bot v4.0 — Motor: " + engine.toUpperCase() + " ===");
-    console.log("URL: " + url);
-    console.log("Hesap: " + account.email);
-    await supabaseInsertLog("Quiz başlatılıyor [" + engine + "]: " + url + " | Hesap: " + account.email, "info");
+    try {
+      var account = await getLoginAccount();
+      if (!account) return;
 
-    if (engine === "browser_use") {
-      await runBrowserUseEngine(url, account, settings);
-    } else {
-      // gemini, lovable_ai, openai all use the same Puppeteer engine
-      await runGeminiEngine(url, account, settings);
+      // Hesap cooldown kontrolü
+      if (isQuizAccountInCooldown(account.id)) {
+        var remainMs = (quizAccountCooldowns.get(account.id) || 0) - Date.now();
+        console.log("[ACCOUNT] ⏳ " + account.email + " cooldown'da (" + Math.round(remainMs / 1000) + "s), atlanıyor...");
+        await supabaseInsertLog(account.email + " cooldown'da, atlanıyor", "warning");
+        continue;
+      }
+
+      var settings = await getSettings();
+      var engine = settings.quiz_engine || "gemini";
+
+      console.log("=== Quiz Bot v5.1 — Motor: " + engine.toUpperCase() + " | Deneme: " + (retry + 1) + "/" + MAX_RETRIES + " | Session: " + sessionId + " ===");
+      console.log("URL: " + url);
+      console.log("Hesap: " + account.email);
+      await supabaseInsertLog("Quiz başlatılıyor [" + engine + "]: " + url + " | Hesap: " + account.email + " | Deneme: " + (retry + 1), "info");
+
+      if (engine === "browser_use") {
+        await runBrowserUseEngine(url, account, settings);
+      } else {
+        await runGeminiEngine(url, account, settings);
+      }
+
+      // Başarılı — session ve hesap sıfırla
+      quizMarkSessionSuccess(sessionId);
+      quizConsecutiveErrors = 0;
+      return; // Başarılı, çık
+
+    } catch (err) {
+      console.error("[QUIZ] Hata (deneme " + (retry + 1) + "):", err.message);
+      await supabaseInsertLog("Hata (deneme " + (retry + 1) + "): " + err.message, "error");
+
+      var errMsg = (err.message || "").toLowerCase();
+      var isBlocked = errMsg.includes("blocked") || errMsg.includes("403") || errMsg.includes("access denied") || errMsg.includes("rate limit") || errMsg.includes("unusual traffic");
+      var isCaptchaFail = errMsg.includes("captcha") || errMsg.includes("sitekey");
+
+      if (isBlocked) {
+        quizBanSessionImmediately(sessionId, "sayfa engellendi");
+        if (account) quizMarkAccountFail(account.id);
+        await supabaseInsertLog("🚫 Engel algılandı — IP rotasyonu ve hesap cooldown uygulandı", "warning");
+      } else if (isCaptchaFail) {
+        quizMarkSessionFail(sessionId, "captcha hatası");
+      } else {
+        quizMarkSessionFail(sessionId, err.message.slice(0, 80));
+      }
+
+      // Ardışık hata bazlı bekleme (artan cooldown)
+      if (retry < MAX_RETRIES - 1) {
+        var waitMs = getQuizCooldownWait();
+        console.log("[QUIZ] ⏳ " + Math.round(waitMs / 1000) + "s bekleniyor (ardışık hata: " + quizConsecutiveErrors + ")...");
+        await supabaseInsertLog("Yeni oturum için " + Math.round(waitMs / 1000) + "s bekleniyor", "info");
+        await new Promise(function(r) { setTimeout(r, waitMs); });
+      }
     }
-
-  } catch (err) {
-    console.error("Quiz hatası:", err.message);
-    await supabaseInsertLog("Hata: " + err.message, "error");
   }
+
+  console.log("[QUIZ] ❌ Tüm denemeler başarısız: " + url);
+  await supabaseInsertLog("Tüm denemeler başarısız (" + MAX_RETRIES + "x): " + url, "error");
 }
 
 // ==================== DB POLLING ====================

@@ -44,8 +44,13 @@ export default function QuizSidebarContent() {
   const [proxyCountry, setProxyCountry] = useState("US");
   const [proxyRegion, setProxyRegion] = useState("");
   const [quizProxyEnabled, setQuizProxyEnabled] = useState(true);
-  const [captchaProvider, setCaptchaProvider] = useState("—");
-  const [captchaApiKey, setCaptchaApiKey] = useState(false);
+  const [captchaProvider, setCaptchaProvider] = useState("2captcha");
+  const [captchaApiKey, setCaptchaApiKey] = useState("");
+  const [captchaKeyVisible, setCaptchaKeyVisible] = useState(false);
+  const [savingCaptchaKey, setSavingCaptchaKey] = useState(false);
+  const [capsolverApiKey, setCapsolverApiKey] = useState("");
+  const [capsolverKeyVisible, setCapsolverKeyVisible] = useState(false);
+  const [savingCapsolverKey, setSavingCapsolverKey] = useState(false);
 
   // Engine selection
   type QuizEngineType = "gemini" | "browser_use" | "lovable_ai" | "openai";

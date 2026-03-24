@@ -959,7 +959,37 @@ async function runGeminiEngine(url, account, settings) {
       // Her adımda rastgele insan benzeri hareket
       if (Math.random() > 0.4) await humanMove(page);
 
-      var screenshot = await page.screenshot({ encoding: "base64", type: "jpeg", quality: 70 });
+      // Sayfanın kaydırılabilir olup olmadığını kontrol et ve tam sayfa screenshot al
+      var pageScrollInfo = await page.evaluate(function() {
+        var scrollable = document.documentElement.scrollHeight > window.innerHeight + 50;
+        var atBottom = (window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - 100);
+        // Continue/Next/Submit butonu ekranın altında mı kontrol et
+        var submitBtn = null;
+        var btns = document.querySelectorAll('button, input[type="submit"], a');
+        for (var i = 0; i < btns.length; i++) {
+          var txt = (btns[i].textContent || btns[i].value || "").trim().toLowerCase();
+          if (/^(continue|next|submit|devam|ileri|gönder|sonraki)$/i.test(txt) || 
+              (txt.length < 20 && /continue|next|submit/i.test(txt))) {
+            var rect = btns[i].getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+              submitBtn = { text: txt, visible: rect.top < window.innerHeight && rect.bottom > 0, top: rect.top };
+              break;
+            }
+          }
+        }
+        return { scrollable: scrollable, atBottom: atBottom, submitBtn: submitBtn, scrollY: window.scrollY, scrollHeight: document.documentElement.scrollHeight, viewportH: window.innerHeight };
+      });
+
+      // Eğer sayfa kaydırılabilir ve Continue butonu görünmüyorsa, aşağı kaydır
+      if (pageScrollInfo.scrollable && !pageScrollInfo.atBottom && pageScrollInfo.submitBtn && !pageScrollInfo.submitBtn.visible) {
+        console.log("[SCROLL] Continue butonu görünmüyor, aşağı kaydırılıyor...");
+        await supabaseInsertLog("⬇️ Sayfayı kaydırıyor (Continue butonu ekranın altında)", "info");
+        await page.evaluate(function() { window.scrollBy({ top: 500, behavior: 'smooth' }); });
+        await quizDelay(800, 1500);
+      }
+
+      // fullPage screenshot al ki AI tüm sayfayı görsün
+      var screenshot = await page.screenshot({ encoding: "base64", type: "jpeg", quality: 70, fullPage: false });
       var currentUrl = page.url();
       var action = await visionFn(screenshot, currentUrl, account, stepCount, recentActions);
 

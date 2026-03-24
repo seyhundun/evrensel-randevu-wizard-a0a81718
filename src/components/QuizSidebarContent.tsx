@@ -400,6 +400,47 @@ export default function QuizSidebarContent() {
               </p>
             </div>
 
+            {/* Proxy Username */}
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground">Proxy Kullanıcı Adı</Label>
+              <Input
+                value={proxyUsername}
+                onChange={(e) => { setProxyUsername(e.target.value); setDirty(true); }}
+                placeholder="evomi_user"
+                className="h-7 text-[11px] font-mono"
+              />
+            </div>
+
+            {/* Proxy Password */}
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground">Proxy Şifre</Label>
+              <div className="relative">
+                <Input
+                  type={proxyPassVisible ? "text" : "password"}
+                  value={proxyPassword}
+                  onChange={(e) => { setProxyPassword(e.target.value); setDirty(true); }}
+                  placeholder="proxy şifre"
+                  className="h-7 text-[11px] font-mono pr-7"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-7 w-7 p-0"
+                  onClick={() => setProxyPassVisible(!proxyPassVisible)}
+                >
+                  {proxyPassVisible ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                </Button>
+              </div>
+            </div>
+
+            {/* Proxy durum */}
+            <div className="flex items-center justify-between bg-secondary/40 rounded px-2 py-1 text-[10px]">
+              <span className="text-muted-foreground">Proxy Auth</span>
+              <span className={`font-medium ${proxyUsername && proxyPassword ? "text-emerald-600" : "text-destructive"}`}>
+                {proxyUsername && proxyPassword ? "✓ Tanımlı" : "✗ Eksik"}
+              </span>
+            </div>
+
             {/* Country Picker */}
             <div className="space-y-1.5">
               <Label className="text-[10px] text-muted-foreground flex items-center gap-1">

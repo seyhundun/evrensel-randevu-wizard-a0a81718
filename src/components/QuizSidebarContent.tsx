@@ -381,6 +381,7 @@ export default function QuizSidebarContent() {
               openai: { value: openaiApiKey, set: setOpenaiApiKey, visible: openaiKeyVisible, toggleVisible: () => setOpenaiKeyVisible(!openaiKeyVisible), saving: savingOpenaiKey, setSaving: setSavingOpenaiKey, settingKey: "openai_api_key", label: "OpenAI API Key", placeholder: "sk-... OpenAI key girin..." },
               lovable_ai: { value: lovableApiKey, set: setLovableApiKey, visible: lovableKeyVisible, toggleVisible: () => setLovableKeyVisible(!lovableKeyVisible), saving: savingLovableKey, setSaving: setSavingLovableKey, settingKey: "lovable_api_key", label: "Lovable API Key", placeholder: "Lovable API key girin..." },
               browser_use: { value: browserUseKeyValue, set: setBrowserUseKeyValue, visible: browserUseKeyVisible, toggleVisible: () => setBrowserUseKeyVisible(!browserUseKeyVisible), saving: savingBuKey, setSaving: setSavingBuKey, settingKey: "browser_use_api_key", label: "Browser Use API Key", placeholder: "Browser Use API key girin..." },
+              dom_agent: { value: lovableApiKey, set: setLovableApiKey, visible: lovableKeyVisible, toggleVisible: () => setLovableKeyVisible(!lovableKeyVisible), saving: savingLovableKey, setSaving: setSavingLovableKey, settingKey: "lovable_api_key", label: "Lovable API Key (DOM)", placeholder: "Lovable API key girin..." },
             };
             const k = engineKeyMap[quizEngine];
             return (

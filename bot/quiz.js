@@ -721,6 +721,13 @@ KRİTİK KURALLAR:
 - "Prefer not to answer" veya "None of the above" KULLANMA — gerçekçi cevap ver
 - Matris/grid sorusunda: her satır için ayrı tıkla, genelde ortadaki seçeneği seç
 
+CHECKBOX LİSTESİ (Onay kutuları — ☐ kare kutucuklar):
+- Checkbox'lar radio butonlarından farklı, KARE kutucuklardır (☐)
+- Birden fazla seçilebilir! En az 1, en fazla 3 tane seç
+- Her tıklama ayrı adım: önce birini tıkla, sonraki adımda Continue'ya tıkla
+- selector: checkbox'un yanındaki metnin ilk 2-3 kelimesi
+- Örnek: selector: "İnsan Kaynakları" veya selector: "Eğitim"
+
 AÇIK UÇLU (Textarea/Input):
 - action: "type", selector: textarea veya input CSS selectörü
 - value: 1-2 cümle anlamlı, İngilizce cevap yaz
@@ -749,15 +756,19 @@ SAYFA KAYDIRMA (ÇOK ÖNEMLİ):
 
 COMPLETION/DONE SAYFASI:
 - "Thank you", "Survey complete", "Congratulations" görünce done: true yap
+- ASLA done: true yapıp durma — anket tamamlandıysa ana sayfaya dön ve BİR SONRAKİ ankete başla
+- Anket bittikten sonra: action: "navigate", value: ana sayfa URL'si
 
 JSON formatı:
 {
-  "action": "click" | "type" | "scroll" | "wait" | "navigate" | "move_slider" | "select_dropdown",
+  "action": "click" | "type" | "scroll" | "wait" | "navigate" | "move_slider" | "select_dropdown" | "next_survey",
   "selector": "CSS selector VEYA kısa hedef metni (max 3 kelime)",
   "value": "type/navigate/slider/dropdown için değer",
   "description": "çok kısa açıklama",
   "done": false
-}`;
+}
+
+ÖNEMLİ: "done": true ASLA kullanma. Anket bittiğinde action: "next_survey" kullan.`;
 }
 
 // ==================== MOTOR 1: PUPPETEER + GEMINI VISION ====================

@@ -721,6 +721,13 @@ KRİTİK KURALLAR:
 - "Prefer not to answer" veya "None of the above" KULLANMA — gerçekçi cevap ver
 - Matris/grid sorusunda: her satır için ayrı tıkla, genelde ortadaki seçeneği seç
 
+CHECKBOX LİSTESİ (Onay kutuları — ☐ kare kutucuklar):
+- Checkbox'lar radio butonlarından farklı, KARE kutucuklardır (☐)
+- Birden fazla seçilebilir! En az 1, en fazla 3 tane seç
+- Her tıklama ayrı adım: önce birini tıkla, sonraki adımda Continue'ya tıkla
+- selector: checkbox'un yanındaki metnin ilk 2-3 kelimesi
+- Örnek: selector: "İnsan Kaynakları" veya selector: "Eğitim"
+
 AÇIK UÇLU (Textarea/Input):
 - action: "type", selector: textarea veya input CSS selectörü
 - value: 1-2 cümle anlamlı, İngilizce cevap yaz
@@ -749,15 +756,19 @@ SAYFA KAYDIRMA (ÇOK ÖNEMLİ):
 
 COMPLETION/DONE SAYFASI:
 - "Thank you", "Survey complete", "Congratulations" görünce done: true yap
+- ASLA done: true yapıp durma — anket tamamlandıysa ana sayfaya dön ve BİR SONRAKİ ankete başla
+- Anket bittikten sonra: action: "navigate", value: ana sayfa URL'si
 
 JSON formatı:
 {
-  "action": "click" | "type" | "scroll" | "wait" | "navigate" | "move_slider" | "select_dropdown",
+  "action": "click" | "type" | "scroll" | "wait" | "navigate" | "move_slider" | "select_dropdown" | "next_survey",
   "selector": "CSS selector VEYA kısa hedef metni (max 3 kelime)",
   "value": "type/navigate/slider/dropdown için değer",
   "description": "çok kısa açıklama",
   "done": false
-}`;
+}
+
+ÖNEMLİ: "done": true ASLA kullanma. Anket bittiğinde action: "next_survey" kullan.`;
 }
 
 // ==================== MOTOR 1: PUPPETEER + GEMINI VISION ====================
@@ -920,7 +931,8 @@ async function runGeminiEngine(url, account, settings) {
     await humanMove(page);
     await humanScroll(page);
 
-    var maxSteps = 50;
+    var maxSteps = 500; // Sürekli anket çözme — kapanmayacak
+    var surveysCompleted = 0;
     var stepCount = 0;
     var recentActions = [];
 
@@ -1019,9 +1031,37 @@ async function runGeminiEngine(url, account, settings) {
       await supabaseInsertLog("Adım " + stepCount + ": " + action.description, "info");
 
       if (action.done) {
-        console.log("[GEMINI] Görev tamamlandı: " + action.description);
-        await supabaseInsertLog("Görev tamamlandı: " + action.description, "success");
-        break;
+        surveysCompleted++;
+        console.log("[QUIZ] ✅ Anket #" + surveysCompleted + " tamamlandı: " + action.description);
+        await supabaseInsertLog("✅ Anket #" + surveysCompleted + " tamamlandı! Bir sonrakine geçiliyor...", "success");
+        recentActions = [];
+        // Ana sayfaya dön ve bir sonraki anketi bul
+        try {
+          await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
+          await supabaseInsertLog("Ana sayfaya dönüldü, yeni anket aranıyor", "info");
+          await humanIdle(2000, 4000);
+          await humanMove(page);
+        } catch (navErr) {
+          console.error("[NAV] Ana sayfaya dönüş hatası:", navErr.message);
+        }
+        continue;
+      }
+
+      // next_survey aksiyonu: anket bitti, bir sonrakine geç
+      if (action.action === "next_survey") {
+        surveysCompleted++;
+        console.log("[QUIZ] ✅ Anket #" + surveysCompleted + " tamamlandı, sonrakine geçiliyor");
+        await supabaseInsertLog("✅ Anket #" + surveysCompleted + " tamamlandı! Sonrakine geçiliyor...", "success");
+        recentActions = [];
+        try {
+          await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
+          await supabaseInsertLog("Ana sayfaya dönüldü, yeni anket aranıyor", "info");
+          await humanIdle(2000, 4000);
+          await humanMove(page);
+        } catch (navErr) {
+          console.error("[NAV] Ana sayfaya dönüş hatası:", navErr.message);
+        }
+        continue;
       }
 
       try {
@@ -1076,7 +1116,7 @@ async function runGeminiEngine(url, account, settings) {
     }
 
     var finalScreenshot = await page.screenshot({ encoding: "base64", type: "jpeg", quality: 70 });
-    await supabaseInsertLog("Quiz tamamlandı - " + stepCount + " adım", "success", "data:image/jpeg;base64," + finalScreenshot);
+    await supabaseInsertLog("Quiz oturumu tamamlandı - " + stepCount + " adım, " + surveysCompleted + " anket çözüldü", "success", "data:image/jpeg;base64," + finalScreenshot);
   } catch (err) {
     console.error("[GEMINI] Hata:", err.message);
     await supabaseInsertLog("Hata: " + err.message, "error");
@@ -1417,20 +1457,71 @@ async function executeAction(page, action) {
         var tag = (el.tagName || "").toLowerCase();
         var role = normalize(el.getAttribute("role") || "");
         var href = el.getAttribute("href");
-        return tag === "a" || tag === "button" || tag === "label" || !!href || role === "button" || el.hasAttribute("onclick") || el.hasAttribute("tabindex");
+        var type = (el.getAttribute("type") || "").toLowerCase();
+        return tag === "a" || tag === "button" || tag === "label" || tag === "input" || !!href || role === "button" || role === "checkbox" || role === "radio" || role === "option" || el.hasAttribute("onclick") || el.hasAttribute("tabindex") || type === "checkbox" || type === "radio";
       }
 
       function getClickableTarget(el) {
         if (!el) return null;
         if (looksClickable(el) && isVisible(el)) return el;
 
-        var closest = el.closest('a, button, label, [role="button"], [onclick], [tabindex]');
+        var closest = el.closest('a, button, label, [role="button"], [role="checkbox"], [role="radio"], [role="option"], [onclick], [tabindex], input[type="checkbox"], input[type="radio"]');
         if (closest && isVisible(closest)) return closest;
 
-        var child = el.querySelector('a, button, label, [role="button"], [onclick], [tabindex]');
+        // Checkbox/radio'nun label'ına tıklamak için parent'ı da kontrol et
+        var parent = el.parentElement;
+        if (parent) {
+          var parentTag = (parent.tagName || "").toLowerCase();
+          if (parentTag === "label" && isVisible(parent)) return parent;
+          // Container div tıklanabilir olabilir
+          if (parent.hasAttribute("onclick") || parent.hasAttribute("tabindex")) return parent;
+        }
+
+        var child = el.querySelector('a, button, label, [role="button"], [onclick], [tabindex], input[type="checkbox"], input[type="radio"]');
         if (child && isVisible(child)) return child;
 
         return isVisible(el) ? el : null;
+      }
+
+      // Checkbox/radio elemanlarını metin bazlı bul
+      function findCheckboxByText(searchText) {
+        var normalSearch = normalize(searchText);
+        // Tüm label, div, span'ları tara
+        var allEls = document.querySelectorAll('label, div, span, li, td, p');
+        var bestEl = null;
+        var bestScore = 0;
+        for (var i = 0; i < allEls.length; i++) {
+          var el = allEls[i];
+          if (!isVisible(el)) continue;
+          var text = normalize(el.textContent || "");
+          if (!text) continue;
+          
+          // Exact match veya contains
+          var score = 0;
+          if (text === normalSearch) score = 100;
+          else if (text.indexOf(normalSearch) !== -1) score = 80;
+          else if (normalSearch.indexOf(text) !== -1 && text.length > 3) score = 60;
+          
+          if (score <= bestScore) continue;
+          
+          // Yakınında checkbox/radio var mı?
+          var input = el.querySelector('input[type="checkbox"], input[type="radio"]');
+          if (!input) {
+            var prev = el.previousElementSibling;
+            if (prev && (prev.tagName || "").toLowerCase() === "input") input = prev;
+          }
+          if (!input && el.parentElement) {
+            input = el.parentElement.querySelector('input[type="checkbox"], input[type="radio"]');
+          }
+          
+          if (input) { score += 20; }
+          
+          if (score > bestScore) {
+            bestScore = score;
+            bestEl = input || el;
+          }
+        }
+        return bestEl;
       }
 
       function fireSmartClick(el) {
@@ -1542,6 +1633,16 @@ async function executeAction(page, action) {
       var threshold = isSurveyAction ? 24 : 40;
       if (best && bestScore >= threshold) {
         return { clicked: fireSmartClick(best), matchedText: bestText, score: bestScore };
+      }
+
+      // Checkbox/radio fallback: metin bazlı arama
+      if (!best || bestScore < threshold) {
+        for (var cf = 0; cf < phrases.length; cf++) {
+          var cbEl = findCheckboxByText(phrases[cf]);
+          if (cbEl) {
+            return { clicked: fireSmartClick(cbEl), matchedText: normalize(cbEl.textContent || "").slice(0, 60), score: 75, checkboxFallback: true };
+          }
+        }
       }
 
       return { clicked: false, matchedText: bestText, score: bestScore };
@@ -1904,6 +2005,11 @@ async function executeAction(page, action) {
 
     case "wait":
       await new Promise(function(resolve) { setTimeout(resolve, 2000); });
+      break;
+
+    case "next_survey":
+      // Handled in main loop — just wait
+      await new Promise(function(resolve) { setTimeout(resolve, 1000); });
       break;
   }
 }

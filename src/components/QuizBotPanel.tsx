@@ -104,6 +104,7 @@ export default function QuizBotPanel() {
   }
 
   async function startQuiz(link: QuizLink) {
+    setQuizLinks(prev => prev.map(l => l.id === link.id ? { ...l, status: "quiz_pending" } : l));
     await supabase.from("link_analyses").update({ status: "quiz_pending" }).eq("id", link.id);
     toast.success("Quiz başlatıldı: " + link.url.slice(0, 40));
   }

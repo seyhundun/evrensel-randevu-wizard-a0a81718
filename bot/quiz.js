@@ -876,7 +876,7 @@ async function runGeminiEngine(url, account, settings) {
     await humanMove(page);
     await humanScroll(page);
 
-    var maxSteps = 30;
+    var maxSteps = 50;
     var stepCount = 0;
     var recentActions = [];
 

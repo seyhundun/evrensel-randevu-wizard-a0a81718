@@ -352,6 +352,19 @@ export default function QuizSidebarContent() {
             <Badge variant="outline" className="text-[8px] h-4 border-sky-500/30 text-sky-600">Ucuz</Badge>
           </button>
           <button
+            onClick={() => switchEngine("dom_agent")}
+            className={`flex flex-col items-center gap-1 p-2 rounded-md border text-[10px] transition-all ${
+              quizEngine === "dom_agent"
+                ? "border-orange-500 bg-orange-500/10 text-orange-700 dark:text-orange-400"
+                : "border-border bg-secondary/40 text-muted-foreground hover:bg-secondary"
+            }`}
+          >
+            <Cpu className="w-4 h-4" />
+            <span className="font-semibold">DOM Agent</span>
+            <span className="text-[9px] opacity-70">DOM Analizi</span>
+            <Badge variant="outline" className="text-[8px] h-4 border-orange-500/30 text-orange-600">Hızlı</Badge>
+          </button>
+          <button
             onClick={() => switchEngine("browser_use")}
             className={`flex flex-col items-center gap-1 p-2 rounded-md border text-[10px] transition-all ${
               quizEngine === "browser_use"

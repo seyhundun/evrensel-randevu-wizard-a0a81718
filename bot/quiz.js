@@ -3443,8 +3443,28 @@ async function executeAction(page, action) {
               if (!src && (text === srcNorm || (text.includes(srcNorm) && text.length < srcNorm.length + 10))) {
                 src = allEls[i];
               }
+              // Drop zone: dashed border
+              var elCs = window.getComputedStyle(allEls[i]);
               var isDrop = allEls[i].classList.contains('drop-target') || allEls[i].classList.contains('dropzone') ||
-                allEls[i].getAttribute('data-drop') !== null || window.getComputedStyle(allEls[i]).borderStyle === 'dashed';
+                allEls[i].getAttribute('data-drop') !== null || 
+                elCs.borderStyle === 'dashed' || elCs.borderTopStyle === 'dashed' || elCs.borderBottomStyle === 'dashed';
+              // Drop zone: gri arka planlı boş kutu
+              if (!isDrop && !allEls[i].getAttribute('draggable')) {
+                var elBg = elCs.backgroundColor;
+                var elR = allEls[i].getBoundingClientRect();
+                var gm = elBg && elBg.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+                if (gm && elR.width > 60 && elR.height > 60 && elR.width < 400) {
+                  var rv2 = parseInt(gm[1]), gv2 = parseInt(gm[2]), bv2 = parseInt(gm[3]);
+                  if (rv2 > 190 && gv2 > 190 && bv2 > 190 && rv2 < 250 && Math.abs(rv2-gv2) < 15) {
+                    if ((allEls[i].textContent || '').trim().length < 5) isDrop = true;
+                  }
+                }
+                // İçinde broken img olan boş kutu
+                var imgs = allEls[i].querySelectorAll('img');
+                if (!isDrop && imgs.length >= 1 && (allEls[i].textContent || '').trim().length < 5 && elR.width > 60 && elR.height > 60) {
+                  isDrop = true;
+                }
+              }
               if (!tgt && isDrop) tgt = allEls[i];
             }
             if (!tgt) {

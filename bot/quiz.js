@@ -359,11 +359,11 @@ async function tryAutoSolveCaptcha(page, settings) {
 
   if (!captchaInfo.sitekey) {
     if (captchaInfo.type === "recaptcha_v2" && captchaInfo.hasImageGrid) {
-      await supabaseInsertLog("reCAPTCHA image-grid açık ama sitekey bulunamadı; challenge iframe yeniden taranıyor", "warning");
+      await supabaseInsertLog("reCAPTCHA image-grid açık ama sitekey bulunamadı, AI'a bırakılıyor", "warning");
     } else {
       await supabaseInsertLog("CAPTCHA sitekey bulunamadı, çözülemiyor", "warning");
-      return false;
     }
+    return false;
   }
 
   // Turnstile is handled by puppeteer-real-browser's built-in turnstile solver

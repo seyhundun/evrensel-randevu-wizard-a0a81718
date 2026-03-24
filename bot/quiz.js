@@ -783,26 +783,31 @@ async function processQuiz(url) {
 async function pollForQuizTasks() {
   var settings = await getSettings();
   var engine = settings.quiz_engine || "gemini";
-  var engineLabel = engine === "browser_use" ? "Browser Use Cloud" : "Puppeteer + Gemini Vision";
+  var engineLabels = {
+    gemini: "Puppeteer + Gemini Vision",
+    lovable_ai: "Puppeteer + Lovable AI",
+    openai: "Puppeteer + OpenAI GPT-4o-mini",
+    browser_use: "Browser Use Cloud"
+  };
+  var engineLabel = engineLabels[engine] || engine;
 
-  console.log("Quiz bot v4.0 (" + engineLabel + ") başlatıldı - görev bekleniyor...");
-  await supabaseInsertLog("Quiz bot v4.0 (" + engineLabel + ") başlatıldı", "info");
+  console.log("Quiz bot v5.0 (" + engineLabel + ") başlatıldı - görev bekleniyor...");
+  await supabaseInsertLog("Quiz bot v5.0 (" + engineLabel + ") başlatıldı", "info");
 
   // Motor kontrolü
-  if (engine === "gemini") {
-    var geminiKey = settings.gemini_api_key || process.env.GEMINI_API_KEY || "";
-    if (!geminiKey) {
-      await supabaseInsertLog("Gemini API key bulunamadı! bot_settings'e gemini_api_key ekleyin.", "error");
+  var keyChecks = {
+    gemini: { key: settings.gemini_api_key || process.env.GEMINI_API_KEY || "", name: "Gemini API key" },
+    lovable_ai: { key: settings.lovable_api_key || process.env.LOVABLE_API_KEY || "", name: "Lovable API key" },
+    openai: { key: settings.openai_api_key || process.env.OPENAI_API_KEY || "", name: "OpenAI API key" },
+    browser_use: { key: settings.browser_use_api_key || process.env.BROWSER_USE_API_KEY || "", name: "Browser Use API key" }
+  };
+  var check = keyChecks[engine];
+  if (check) {
+    if (!check.key) {
+      await supabaseInsertLog(check.name + " bulunamadı! bot_settings'e ekleyin.", "error");
       return;
     }
-    await supabaseInsertLog("Gemini API key doğrulandı ✓", "success");
-  } else {
-    var buKey = settings.browser_use_api_key || process.env.BROWSER_USE_API_KEY || "";
-    if (!buKey) {
-      await supabaseInsertLog("Browser Use API key bulunamadı!", "error");
-      return;
-    }
-    await supabaseInsertLog("Browser Use API key doğrulandı ✓", "success");
+    await supabaseInsertLog(check.name + " doğrulandı ✓", "success");
   }
 
   while (true) {

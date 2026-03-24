@@ -655,10 +655,12 @@ async function humanType(page, selector, text) {
 
     for (var i = 0; i < String(text).length; i++) {
       var ch = String(text)[i];
-      var keyDelay = Math.floor(Math.random() * 230) + 120;
+      var keyDelay = Math.floor(Math.random() * 200) + 100; // 100-300ms
       await page.keyboard.type(ch, { delay: keyDelay });
-      // Rastgele duraklamalar
-      if (Math.random() < 0.2) await quizDelay(400, 1500);
+      // Kelime arası doğal duraklama
+      if (ch === " " && Math.random() < 0.35) await quizDelay(200, 600);
+      // Rastgele düşünme duraklaması
+      if (Math.random() < 0.12) await quizDelay(300, 1200);
       // Typo simülasyonu (düşük olasılık)
       if (Math.random() < 0.03 && String(text).length > 5) {
         var wrongKey = String.fromCharCode(97 + Math.floor(Math.random() * 26));

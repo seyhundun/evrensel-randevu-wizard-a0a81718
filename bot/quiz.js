@@ -773,7 +773,7 @@ async function tryAutoSolveTextCaptcha(page, settings) {
   }
 }
 
-
+async function tryAutoSolveCaptcha(page, settings) {
   // === DRAG-DROP CAPTCHA TESPİTİ ===
   try {
     var dragCaptchaSolved = await tryAutoSolveDragDropCaptcha(page, settings);
@@ -817,7 +817,6 @@ async function tryAutoSolveTextCaptcha(page, settings) {
     return false;
   }
 
-  // Turnstile is handled by puppeteer-real-browser's built-in turnstile solver
   if (captchaInfo.type === "turnstile") {
     await supabaseInsertLog("Turnstile: puppeteer-real-browser otomatik çözer, bekleniyor...", "info");
     await new Promise(function(r) { setTimeout(r, 5000); });
@@ -872,11 +871,9 @@ async function tryAutoSolveTextCaptcha(page, settings) {
     return false;
   }
 
-  // Inject token and try to submit
   await injectCaptchaToken(page, captchaInfo.type, token);
   await new Promise(function(r) { setTimeout(r, 1500); });
 
-  // Try clicking submit after CAPTCHA solve
   try {
     await page.evaluate(function() {
       var submitBtns = document.querySelectorAll('button[type="submit"], input[type="submit"], button.submit, #submit, .btn-submit');

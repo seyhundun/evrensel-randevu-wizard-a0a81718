@@ -445,6 +445,104 @@ async function tryAutoSolveCaptcha(page, settings) {
   return true;
 }
 
+// ==================== ANTİ-DETECTİON HELPERS (VFS'den) ====================
+
+function quizDelay(min, max) {
+  if (!min) min = 2000;
+  if (!max) max = 5000;
+  return new Promise(function(r) { setTimeout(r, Math.floor(Math.random() * (max - min) + min)); });
+}
+
+// İnsan benzeri scroll
+async function humanScroll(page) {
+  try {
+    var scrollAmount = Math.floor(Math.random() * 300) + 100;
+    var direction = Math.random() > 0.3 ? 1 : -1;
+    await page.evaluate(function(amount) { window.scrollBy({ top: amount, behavior: 'smooth' }); }, scrollAmount * direction);
+    await quizDelay(800, 2000);
+  } catch (e) {}
+}
+
+// İnsan benzeri idle (okuyormuş gibi)
+async function humanIdle(min, max) {
+  if (!min) min = 2000;
+  if (!max) max = 6000;
+  var wait = Math.floor(Math.random() * (max - min) + min);
+  await new Promise(function(r) { setTimeout(r, wait); });
+}
+
+// İnsan benzeri mouse hareketi
+async function humanMove(page) {
+  try {
+    var vp = page.viewport();
+    var w = (vp && vp.width) || 1366;
+    var h = (vp && vp.height) || 768;
+    var moves = Math.floor(Math.random() * 3) + 1;
+    for (var i = 0; i < moves; i++) {
+      var x = Math.floor(Math.random() * w * 0.6 + w * 0.2);
+      var y = Math.floor(Math.random() * h * 0.6 + h * 0.2);
+      await page.mouse.move(x, y, { steps: Math.floor(Math.random() * 20 + 10) });
+      await quizDelay(300, 800);
+    }
+    if (Math.random() > 0.5) await humanScroll(page);
+  } catch (e) {}
+}
+
+// İnsan benzeri typing — typo simülasyonu ile
+async function humanType(page, selector, text) {
+  if (!text && text !== 0) return false;
+  try {
+    var element = await page.$(selector);
+    if (!element) return false;
+
+    await humanIdle(800, 2000);
+    await element.click({ clickCount: 1 });
+    await quizDelay(400, 900);
+
+    // Önce alanı temizle
+    await page.keyboard.down("Control");
+    await page.keyboard.press("a");
+    await page.keyboard.up("Control");
+    await page.keyboard.press("Backspace");
+    await quizDelay(300, 700);
+
+    for (var i = 0; i < String(text).length; i++) {
+      var ch = String(text)[i];
+      var keyDelay = Math.floor(Math.random() * 230) + 120;
+      await page.keyboard.type(ch, { delay: keyDelay });
+      // Rastgele duraklamalar
+      if (Math.random() < 0.2) await quizDelay(400, 1500);
+      // Typo simülasyonu (düşük olasılık)
+      if (Math.random() < 0.03 && String(text).length > 5) {
+        var wrongKey = String.fromCharCode(97 + Math.floor(Math.random() * 26));
+        await page.keyboard.type(wrongKey, { delay: keyDelay });
+        await quizDelay(300, 800);
+        await page.keyboard.press("Backspace");
+        await quizDelay(200, 500);
+      }
+    }
+    await quizDelay(400, 1000);
+
+    // React/Angular uyumluluğu
+    await page.evaluate(function(sel, value) {
+      var el = document.querySelector(sel);
+      if (!el) return;
+      var proto = Object.getPrototypeOf(el);
+      var descriptor = Object.getOwnPropertyDescriptor(proto, 'value')
+        || Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+        || Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+      if (descriptor && descriptor.set) descriptor.set.call(el, value);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+      el.dispatchEvent(new Event("blur", { bubbles: true }));
+    }, selector, String(text));
+
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 // ==================== MOTOR 1: PUPPETEER + GEMINI VISION ====================
 
 async function runGeminiEngine(url, account, settings) {

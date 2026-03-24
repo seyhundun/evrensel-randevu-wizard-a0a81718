@@ -1136,32 +1136,7 @@ async function askOpenAIVision(apiKey, screenshotBase64, currentUrl, account, st
     ? recentActions.map(function(a, i) { return (i + 1) + ". " + a; }).join("\n")
     : "Yok";
 
-  var systemPrompt = `Sen bir web otomasyon asistanısın. Ekran görüntüsünü analiz edip SADECE TEK BİR aksiyon belirle.
-
-GÖREV: Anket sitesine gir, giriş yap, anketleri bul ve çöz.
-
-HESAP BİLGİLERİ:
-- Email: ${account.email}
-- Şifre: ${account.password}
-
-SON DENEMELER:
-${recentText}
-
-KRİTİK KURALLAR:
-1. Aynı butona tekrar tekrar basma.
-2. Çerez popup varsa önce kapat.
-3. Email/şifre ile giriş yap. Google/Facebook KULLANMA.
-4. JSON dışında hiçbir şey yazma.
-5. ANKET TIKLAMA: Anket listesi gördüğünde İLK ankete tıkla. selector olarak kısa metin ver (örn: "15 min", "Survey #108293587").
-
-JSON formatı:
-{
-  "action": "click" | "type" | "scroll" | "wait" | "navigate",
-  "selector": "CSS selector VEYA kısa hedef metni (max 3 kelime)",
-  "value": "type/navigate için değer",
-  "description": "çok kısa açıklama",
-  "done": false
-}`;
+  var systemPrompt = buildSurveySystemPrompt(account, recentText);
 
   var body = {
     model: "gpt-4o-mini",

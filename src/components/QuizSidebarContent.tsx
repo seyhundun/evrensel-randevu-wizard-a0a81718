@@ -382,6 +382,40 @@ export default function QuizSidebarContent() {
         </div>
       </Card>
 
+      {/* Step Timeout */}
+      <Card className="p-3 space-y-2">
+        <h3 className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+          <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+          Adım Zaman Aşımı
+        </h3>
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            min={10}
+            max={120}
+            value={stepTimeout}
+            onChange={(e) => { setStepTimeout(e.target.value); setDirty(true); }}
+            className="h-7 text-[11px] w-20 font-mono"
+          />
+          <span className="text-[10px] text-muted-foreground">saniye</span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-[10px] ml-auto"
+            onClick={async () => {
+              await upsertSetting("quiz_step_timeout", stepTimeout, "Adım Zaman Aşımı (sn)");
+              toast.success("Zaman aşımı: " + stepTimeout + "s");
+            }}
+          >
+            <Save className="w-3 h-3 mr-1" />
+            Kaydet
+          </Button>
+        </div>
+        <p className="text-[9px] text-muted-foreground">
+          Her adım bu sürede tamamlanmazsa bot yeniden dener (10-120sn)
+        </p>
+      </Card>
+
       {/* Active Engine API Key */}
       <Card className="p-3 space-y-2">
         <h3 className="text-xs font-semibold text-foreground flex items-center gap-1.5">

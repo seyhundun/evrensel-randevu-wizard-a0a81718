@@ -76,6 +76,7 @@ export default function QuizSidebarContent() {
   const [quizStatus, setQuizStatus] = useState<"idle" | "running">("idle");
   const [lastLog, setLastLog] = useState<{ message: string; time: string; status: string } | null>(null);
   const [stats, setStats] = useState({ total: 0, success: 0, error: 0, successRate: 100 });
+  const [stepTimeout, setStepTimeout] = useState("30");
 
   // Evomi API data
   const [evomiCountries, setEvomiCountries] = useState<{ code: string; name: string }[]>([]);

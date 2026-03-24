@@ -194,9 +194,11 @@ async function solveRecaptchaWith2Captcha(apiKey, sitekey, pageUrl) {
   await supabaseInsertLog("2captcha: reCAPTCHA çözülüyor...", "info");
 
   // Submit task
-  var submitRes = await fetch("https://2captcha.com/in.php?key=" + apiKey +
+  var submitUrl = "https://2captcha.com/in.php?key=" + apiKey +
     "&method=userrecaptcha&googlekey=" + sitekey +
-    "&pageurl=" + encodeURIComponent(pageUrl) + "&json=1");
+    "&pageurl=" + encodeURIComponent(pageUrl) + "&json=1";
+  await supabaseInsertLog("2captcha submit: googlekey=" + sitekey + " | pageurl=" + pageUrl.slice(0,60) + " | apiKey=" + apiKey.slice(0,6) + "...", "info");
+  var submitRes = await fetch(submitUrl);
   var submitData = await submitRes.json();
 
   if (submitData.status !== 1) {

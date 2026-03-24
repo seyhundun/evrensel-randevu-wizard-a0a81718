@@ -83,6 +83,9 @@ export default function QuizSidebarContent() {
   const [loadingRegions, setLoadingRegions] = useState(false);
   const [countryPopoverOpen, setCountryPopoverOpen] = useState(false);
   const [regionPopoverOpen, setRegionPopoverOpen] = useState(false);
+  const [evomiApiKey, setEvomiApiKey] = useState("");
+  const [evomiKeyVisible, setEvomiKeyVisible] = useState(false);
+  const [savingEvomiKey, setSavingEvomiKey] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -105,6 +108,7 @@ export default function QuizSidebarContent() {
       setBrowserUseKeyValue(map.browser_use_api_key || "");
       setOpenaiApiKey(map.openai_api_key || "");
       setLovableApiKey(map.lovable_api_key || "");
+      setEvomiApiKey(map.evomi_api_key || "");
     }
   }, []);
 
@@ -443,6 +447,49 @@ export default function QuizSidebarContent() {
               <p className="text-[10px] font-mono font-semibold text-foreground truncate">
                 {proxyHost}
               </p>
+            </div>
+
+            {/* Evomi API Key */}
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
+                <Key className="w-3 h-3" />
+                Evomi API Key
+              </Label>
+              <div className="flex gap-1">
+                <div className="relative flex-1">
+                  <Input
+                    type={evomiKeyVisible ? "text" : "password"}
+                    value={evomiApiKey}
+                    onChange={(e) => setEvomiApiKey(e.target.value)}
+                    placeholder="Evomi API key girin..."
+                    className="h-7 text-[11px] pr-7 font-mono"
+                  />
+                  <Button variant="ghost" size="sm" className="absolute right-0 top-0 h-7 w-7 p-0" onClick={() => setEvomiKeyVisible(!evomiKeyVisible)}>
+                    {evomiKeyVisible ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                  </Button>
+                </div>
+                <Button
+                  size="sm" className="h-7 px-2 text-[10px]" disabled={savingEvomiKey}
+                  onClick={async () => {
+                    setSavingEvomiKey(true);
+                    try {
+                      await upsertSetting("evomi_api_key", evomiApiKey, "Evomi API Key");
+                      toast.success("Evomi API key kaydedildi");
+                      // Key kaydedilince ülkeleri otomatik çek
+                      fetchEvomiRegions(proxyCountry);
+                    } catch (err: any) { toast.error("Hata: " + err.message); }
+                    setSavingEvomiKey(false);
+                  }}
+                >
+                  {savingEvomiKey ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                </Button>
+              </div>
+              <div className="flex items-center justify-between bg-secondary/40 rounded px-2 py-1 text-[10px]">
+                <span className="text-muted-foreground">Durum</span>
+                <span className={`font-medium ${evomiApiKey ? "text-emerald-600" : "text-destructive"}`}>
+                  {evomiApiKey ? "✓ Tanımlı" : "✗ Eksik"}
+                </span>
+              </div>
             </div>
 
             {/* Proxy Username */}

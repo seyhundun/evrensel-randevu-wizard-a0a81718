@@ -1215,7 +1215,8 @@ KRİTİK KURALLAR:
 3. Giriş gerekiyorsa email/şifre ile giriş yap. Google/Facebook KULLANMA.
 4. Sadece ekranda gerçekten görünen öğeleri hedefle.
 5. JSON dışında hiçbir şey yazma.
-6. ANKET TIKLAMA: Anket listesi gördüğünde İLK ankete tıkla. Kısa metin ver selector olarak.
+6. ANKET TIKLAMA: Anket listesi gördüğünde EN YÜKSEK PUANLI/SB/ÖDÜLLÜ ankete tıkla. Puanları karşılaştır (örn: "50 SB", "100 points", "25 SB") ve en büyük değere sahip olanı seç. Eğer puan bilgisi yoksa, en üsttekine tıkla. Kısa metin ver selector olarak.
+7. DURMA: Anket bittiğinde ASLA durma. Hemen next_survey ile bir sonraki ankete geç. Sonsuz döngüde çalış.
 
 === ANKET SORU TİPLERİ VE CEVAPLAMA ===
 

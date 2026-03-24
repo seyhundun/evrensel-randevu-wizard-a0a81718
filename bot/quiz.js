@@ -1039,11 +1039,12 @@ KRİTİK KURALLAR:
 4. Giriş gerekiyorsa email/şifre ile giriş yap. Google/Facebook KULLANMA.
 5. Sadece ekranda gerçekten görünen öğeleri hedefle.
 6. JSON dışında hiçbir şey yazma.
+7. ANKET TIKLAMA: Anket listesi gördüğünde İLK ankete tıkla. selector olarak kısa metin ver (örn: "15 min", "Survey #108293587"). Uzun cümleler KULLANMA.
 
 JSON formatı:
 {
   "action": "click" | "type" | "scroll" | "wait" | "navigate",
-  "selector": "Kısa hedef metni veya CSS selector",
+  "selector": "CSS selector VEYA kısa hedef metni (max 3 kelime)",
   "value": "type/navigate için değer",
   "description": "çok kısa açıklama",
   "done": false

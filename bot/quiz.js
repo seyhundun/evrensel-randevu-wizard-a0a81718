@@ -655,10 +655,12 @@ async function humanType(page, selector, text) {
 
     for (var i = 0; i < String(text).length; i++) {
       var ch = String(text)[i];
-      var keyDelay = Math.floor(Math.random() * 230) + 120;
+      var keyDelay = Math.floor(Math.random() * 200) + 100; // 100-300ms
       await page.keyboard.type(ch, { delay: keyDelay });
-      // Rastgele duraklamalar
-      if (Math.random() < 0.2) await quizDelay(400, 1500);
+      // Kelime arası doğal duraklama
+      if (ch === " " && Math.random() < 0.35) await quizDelay(200, 600);
+      // Rastgele düşünme duraklaması
+      if (Math.random() < 0.12) await quizDelay(300, 1200);
       // Typo simülasyonu (düşük olasılık)
       if (Math.random() < 0.03 && String(text).length > 5) {
         var wrongKey = String.fromCharCode(97 + Math.floor(Math.random() * 26));
@@ -747,9 +749,10 @@ CHECKBOX LİSTESİ (☐ kare kutucuklar):
 
 AÇIK UÇLU (Textarea/Input):
 - action: "type", selector: input veya textarea CSS selectörü
-- value: EN AZ 10 kelimelik anlamlı İngilizce cevap
-- Kişisel deneyim anlatır gibi yaz: "I recently purchased..." veya "In my experience..."
-- ASLA boş bırakma, kısa ve anlamlı yaz
+- value: KISA ve doğal İngilizce cevap ver (5-8 kelime yeterli, max 12 kelime)
+- Gerçek bir insan gibi kısa yaz: "I like it a lot" veya "Pretty good overall"
+- Uzun paragraflar YAZMA, kısa ve samimi tut
+- ASLA boş bırakma
 
 SAYISAL GİRİŞ (Zip Code, Yaş, Gelir vb.):
 - ZIP Code sorusu: value: "90210" (Los Angeles CA)
@@ -1745,7 +1748,7 @@ async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKe
   taskText += "Adım: " + step + "\nSon aksiyonlar:\n" + recentText;
 
   var contextText = "PERSONA: Alex Johnson, 29, Male, Los Angeles CA 90210, Marketing Coordinator, $55k-$75k gelir, Single, No children, Caucasian/White.\n";
-  contextText += "Checkbox soruları için en az 1 seçenek işaretle. Açık uçlu sorulara en az 10 kelime İngilizce cevap ver.\n";
+  contextText += "Checkbox soruları için en az 1 seçenek işaretle. Açık uçlu sorulara KISA (5-8 kelime) doğal İngilizce cevap ver, uzun yazma.\n";
   contextText += "ZIP Code=90210, Yaş=29. Anket bittiyse 'none' action döndür message='next_survey'.\n";
   contextText += "Aynı elemente tekrar tıklama! Son aksiyonlardan farklı bir şey yap.";
 
@@ -1925,8 +1928,26 @@ async function executeAction(page, action) {
       await page.keyboard.press("a");
       await page.keyboard.up("Control");
       await page.keyboard.press("Backspace");
-      for (var ci = 0; ci < (action.value || "").length; ci++) {
-        await page.keyboard.type((action.value || "")[ci], { delay: 30 + Math.random() * 50 });
+      var typeText = action.value || "";
+      for (var ci = 0; ci < typeText.length; ci++) {
+        var charDelay = 80 + Math.floor(Math.random() * 180); // 80-260ms arası insan hızı
+        await page.keyboard.type(typeText[ci], { delay: charDelay });
+        // Kelime arası doğal duraklamalar
+        if (typeText[ci] === " " && Math.random() < 0.35) {
+          await new Promise(function(r) { setTimeout(r, 200 + Math.random() * 600); });
+        }
+        // Rastgele düşünme duraklaması
+        if (Math.random() < 0.08) {
+          await new Promise(function(r) { setTimeout(r, 300 + Math.random() * 800); });
+        }
+        // Typo simülasyonu
+        if (Math.random() < 0.025 && typeText.length > 5) {
+          var wrongKey = String.fromCharCode(97 + Math.floor(Math.random() * 26));
+          await page.keyboard.type(wrongKey, { delay: charDelay });
+          await new Promise(function(r) { setTimeout(r, 250 + Math.random() * 400); });
+          await page.keyboard.press("Backspace");
+          await new Promise(function(r) { setTimeout(r, 150 + Math.random() * 300); });
+        }
       }
       console.log("[DOM-AGENT] Koordinat type: (" + action._domTarget.x + ", " + action._domTarget.y + ") = " + (action.value || "").slice(0, 30));
       return;

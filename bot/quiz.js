@@ -1714,8 +1714,8 @@ async function runGeminiEngine(url, account, settings) {
     var isLoginPage = /\/login|\/p\/login|signin|sign-in/i.test(currentUrl);
     var isAlreadyLoggedIn = await page.evaluate(function() {
       var body = document.body ? document.body.innerText : '';
-      // Swagbucks dashboard göstergeleri
-      var dashboardIndicators = ['My SB', 'Earn SB', 'Daily Goal', 'Survey', 'Discover', 'Your Surveys', 'Answer', 'Gold Surveys'];
+      // Genel dashboard göstergeleri (platform bağımsız)
+      var dashboardIndicators = ['My SB', 'Earn SB', 'Daily Goal', 'Survey', 'Discover', 'Your Surveys', 'Answer', 'Gold Surveys', 'Dashboard', 'My Account', 'Welcome back', 'Profile', 'Earnings', 'Available Surveys'];
       for (var i = 0; i < dashboardIndicators.length; i++) {
         if (body.includes(dashboardIndicators[i])) return true;
       }
@@ -1727,8 +1727,8 @@ async function runGeminiEngine(url, account, settings) {
     if (!isLoginPage && isAlreadyLoggedIn) {
       console.log('[QUIZ] ✅ Zaten giriş yapılmış! Login atlanıyor, direkt anketlere geçiliyor.');
       await supabaseInsertLog('✅ Otomatik giriş algılandı — login atlanıyor, direkt anketlere başlanıyor', 'success');
-      // Anket sayfasına yönlendir (Swagbucks answer sayfası)
-      var surveyUrl = 'https://www.swagbucks.com/surveys';
+      // Anket sayfasına yönlendir (orijinal görev URL'si)
+      var surveyUrl = url;
       try {
         await page.goto(surveyUrl, { waitUntil: 'networkidle2', timeout: 20000 });
         await supabaseInsertLog('Anket sayfasına yönlendirildi: ' + surveyUrl, 'info');
@@ -1837,7 +1837,7 @@ async function runGeminiEngine(url, account, settings) {
           }
           // Ana anket sayfasına git
           try {
-            await page.goto("https://www.swagbucks.com/surveys", { waitUntil: "networkidle2", timeout: 20000 });
+            await page.goto(url, { waitUntil: "networkidle2", timeout: 20000 });
             await humanIdle(1500, 3000);
           } catch (e) {}
           recentActions = [];

@@ -3847,13 +3847,14 @@ function buildTaskPrompt(url, account) {
   var host = "";
   try { host = new URL(url).hostname; } catch (e) {}
 
-  return `Sen bir anket çözücü botsun. Adımlar:
+  return `Sen bir anket çözücü botsun. Hedef site: ${host} (${url})
+Adımlar:
 1. Çerez popup varsa "Accept All" tıkla
-2. Giriş: Email=${account.email} Şifre=${account.password} (Google/Facebook KULLANMA!)
-3. Anket sayfasını bul (Surveys/Answer/Earn)
+2. Giriş gerekiyorsa: Email=${account.email} Şifre=${account.password}
+3. Verilen URL'deki sayfada kal, başka siteye gitme!
 4. Soruları mantıklı cevapla, Next/Continue ile ilerle
 5. Max 5 anket çöz
-KURALLAR: Sayfadan ayrılma, her cookie popup'ı kapat.`;
+KURALLAR: Verilen URL'den ASLA ayrılma! Başka sitelere yönlendirme YAPMA! Her cookie popup'ı kapat.`;
 }
 
 // ==================== ANA İŞLEM ====================

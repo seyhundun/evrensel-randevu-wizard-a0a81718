@@ -634,7 +634,7 @@ async function tryAutoSolveDragDropCaptcha(page, settings) {
     return false;
   }
 
-  // Sürükle-bırak yap (fiziksel fare ile)
+  // Sürükle-bırak yap - önce DOM DragEvent, sonra fiziksel fare
   try {
     var sx = sourceCoords.x;
     var sy = sourceCoords.y;
@@ -643,25 +643,108 @@ async function tryAutoSolveDragDropCaptcha(page, settings) {
 
     console.log("[DRAG-CAPTCHA] Sürükleniyor: (" + sx + "," + sy + ") → (" + tx + "," + ty + ")");
 
-    // İnsan benzeri fare hareketi
-    await page.mouse.move(sx, sy, { steps: 5 + Math.floor(Math.random() * 5) });
-    await new Promise(function(r) { setTimeout(r, 200 + Math.floor(Math.random() * 300)); });
-    await page.mouse.down();
-    await new Promise(function(r) { setTimeout(r, 150 + Math.floor(Math.random() * 200)); });
+    // Yöntem 1: DOM DragEvent simülasyonu
+    var domDragSuccess = await page.evaluate(function(sx, sy, tx, ty) {
+      var sourceEl = document.elementFromPoint(sx, sy);
+      var targetEl = document.elementFromPoint(tx, ty);
+      if (!sourceEl || !targetEl) return false;
 
-    // Kademeli hareket (daha gerçekçi)
-    var steps = 15 + Math.floor(Math.random() * 10);
-    for (var si = 1; si <= steps; si++) {
-      var progress = si / steps;
-      var cx = sx + (tx - sx) * progress + (Math.random() - 0.5) * 3;
-      var cy = sy + (ty - sy) * progress + (Math.random() - 0.5) * 3;
-      await page.mouse.move(cx, cy);
-      await new Promise(function(r) { setTimeout(r, 10 + Math.floor(Math.random() * 20)); });
+      // DataTransfer mock
+      function MockDataTransfer() {
+        this.data = {};
+        this.dropEffect = "move";
+        this.effectAllowed = "all";
+        this.files = [];
+        this.items = [];
+        this.types = [];
+      }
+      MockDataTransfer.prototype.setData = function(k, v) { this.data[k] = v; this.types.push(k); };
+      MockDataTransfer.prototype.getData = function(k) { return this.data[k] || ""; };
+      MockDataTransfer.prototype.setDragImage = function() {};
+      MockDataTransfer.prototype.clearData = function() { this.data = {}; };
+
+      var dt = new MockDataTransfer();
+
+      function fire(el, type, x, y) {
+        var evt = new DragEvent(type, {
+          bubbles: true, cancelable: true, dataTransfer: dt,
+          clientX: x, clientY: y, screenX: x, screenY: y
+        });
+        el.dispatchEvent(evt);
+      }
+
+      // Tam drag sekansı
+      fire(sourceEl, "pointerdown", sx, sy);
+      fire(sourceEl, "mousedown", sx, sy);
+      fire(sourceEl, "dragstart", sx, sy);
+      fire(sourceEl, "drag", sx, sy);
+      fire(targetEl, "dragenter", tx, ty);
+      fire(targetEl, "dragover", tx, ty);
+      fire(targetEl, "drop", tx, ty);
+      fire(sourceEl, "dragend", tx, ty);
+      fire(targetEl, "pointerup", tx, ty);
+      fire(targetEl, "mouseup", tx, ty);
+      
+      return true;
+    }, sx, sy, tx, ty).catch(function() { return false; });
+
+    console.log("[DRAG-CAPTCHA] DOM DragEvent sonucu: " + domDragSuccess);
+
+    // 500ms bekle, drop zone'a düşüp düşmediğini kontrol et
+    await new Promise(function(r) { setTimeout(r, 500); });
+
+    var dropVerified = await page.evaluate(function(tx, ty) {
+      var dropEl = document.elementFromPoint(tx, ty);
+      if (!dropEl) return false;
+      // Drop zone artık dolu mu (içinde yeni bir child img veya değişmiş stil)?
+      var cs = window.getComputedStyle(dropEl);
+      var imgs = dropEl.querySelectorAll("img");
+      // Eğer drop zone'daki img sayısı artmışsa veya arka plan değiştiyse başarılı
+      return imgs.length > 1 || cs.backgroundColor !== "rgba(0, 0, 0, 0)";
+    }, tx, ty).catch(function() { return false; });
+
+    if (!dropVerified) {
+      console.log("[DRAG-CAPTCHA] DOM drop doğrulanamadı, fiziksel fare ile deneniyor...");
+
+      // Yöntem 2: Fiziksel fare hareketi
+      await page.mouse.move(sx, sy, { steps: 5 + Math.floor(Math.random() * 5) });
+      await new Promise(function(r) { setTimeout(r, 200 + Math.floor(Math.random() * 300)); });
+      await page.mouse.down();
+      await new Promise(function(r) { setTimeout(r, 150 + Math.floor(Math.random() * 200)); });
+
+      // Kademeli hareket (daha gerçekçi)
+      var steps = 15 + Math.floor(Math.random() * 10);
+      for (var si = 1; si <= steps; si++) {
+        var progress = si / steps;
+        // Bezier eğrisi ile doğal yol
+        var ease = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+        var cx = sx + (tx - sx) * ease + (Math.random() - 0.5) * 3;
+        var cy = sy + (ty - sy) * ease + (Math.random() - 0.5) * 3;
+        await page.mouse.move(cx, cy);
+        await new Promise(function(r) { setTimeout(r, 10 + Math.floor(Math.random() * 20)); });
+      }
+
+      await page.mouse.move(tx, ty);
+      await new Promise(function(r) { setTimeout(r, 100 + Math.floor(Math.random() * 150)); });
+      await page.mouse.up();
+      
+      // Fiziksel fare sonrası da DOM DragEvent tetikle (bazı siteler ikisini birden bekler)
+      await page.evaluate(function(sx, sy, tx, ty) {
+        var sourceEl = document.elementFromPoint(sx, sy) || document.elementFromPoint(sx - 5, sy - 5);
+        var targetEl = document.elementFromPoint(tx, ty);
+        if (sourceEl && targetEl) {
+          function fire2(el, type, x, y) {
+            try {
+              var evt = new DragEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y });
+              el.dispatchEvent(evt);
+            } catch(e) {}
+          }
+          fire2(targetEl, "dragover", tx, ty);
+          fire2(targetEl, "drop", tx, ty);
+          fire2(sourceEl, "dragend", tx, ty);
+        }
+      }, sx, sy, tx, ty).catch(function() {});
     }
-
-    await page.mouse.move(tx, ty);
-    await new Promise(function(r) { setTimeout(r, 100 + Math.floor(Math.random() * 150)); });
-    await page.mouse.up();
 
     console.log("[DRAG-CAPTCHA] ✅ Sürükle-bırak tamamlandı!");
     await supabaseInsertLog("✅ Drag-drop CAPTCHA çözüldü: " + targetValue, "success");

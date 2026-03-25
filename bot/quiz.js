@@ -1714,8 +1714,8 @@ async function runGeminiEngine(url, account, settings) {
     var isLoginPage = /\/login|\/p\/login|signin|sign-in/i.test(currentUrl);
     var isAlreadyLoggedIn = await page.evaluate(function() {
       var body = document.body ? document.body.innerText : '';
-      // Swagbucks dashboard göstergeleri
-      var dashboardIndicators = ['My SB', 'Earn SB', 'Daily Goal', 'Survey', 'Discover', 'Your Surveys', 'Answer', 'Gold Surveys'];
+      // Genel dashboard göstergeleri (platform bağımsız)
+      var dashboardIndicators = ['My SB', 'Earn SB', 'Daily Goal', 'Survey', 'Discover', 'Your Surveys', 'Answer', 'Gold Surveys', 'Dashboard', 'My Account', 'Welcome back', 'Profile', 'Earnings', 'Available Surveys'];
       for (var i = 0; i < dashboardIndicators.length; i++) {
         if (body.includes(dashboardIndicators[i])) return true;
       }

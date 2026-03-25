@@ -1466,7 +1466,7 @@ ${recentText}
 KRİTİK KURALLAR:
 1. Aynı butona tekrar tekrar basma. Son 2-3 adım aynıysa FARKLI bir aksiyon seç.
 2. Çerez popup varsa önce onu kapat.
-3. Giriş gerekiyorsa email/şifre ile giriş yap. Google/Facebook KULLANMA.
+3. Giriş gerekiyorsa email/şifre ile giriş yap. Eğer email/şifre form alanı YOKSA ve sadece Google/Facebook gibi sosyal login butonları varsa, "Sign Up With Email" veya "Sign In with Email" butonuna tıkla. Eğer o da yoksa Google ile giriş yap.
 4. Sadece ekranda gerçekten görünen öğeleri hedefle.
 5. JSON dışında hiçbir şey yazma.
 6. ANKET TIKLAMA: Anket listesi gördüğünde EN YÜKSEK PUANLI/SB/ÖDÜLLÜ ankete tıkla. Puanları karşılaştır (örn: "50 SB", "100 points", "25 SB") ve en büyük değere sahip olanı seç. Eğer puan bilgisi yoksa, en üsttekine tıkla. Kısa metin ver selector olarak.

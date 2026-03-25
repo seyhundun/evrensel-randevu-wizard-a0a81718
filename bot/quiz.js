@@ -1808,20 +1808,18 @@ async function runGeminiEngine(url, account, settings) {
 
         if (errorPageCheck.isError) {
           console.log("[ERROR-PAGE] Hata sayfası algılandı: " + errorPageCheck.reason);
-          await supabaseInsertLog("🚫 Hata/dead-end sayfası algılandı (" + errorPageCheck.reason + ") — sekme kapatılıp yeni ankete geçiliyor", "warning");
+          await supabaseInsertLog("🚫 Hata/dead-end sayfası algılandı (" + errorPageCheck.reason + ") — sekme kapatılıp mevcut akışta devam ediliyor", "warning");
           
-          // Mevcut sekmeyi kapat ve ana sayfaya dön
+          // Mevcut sekmeyi kapat ve bir önceki aktif sekmede kal
           var allPages = await browser.pages();
           if (allPages.length > 1) {
             await page.close().catch(function() {});
             page = allPages[allPages.length - 2] || allPages[0];
             await page.bringToFront();
-          }
-          // Ana anket sayfasına git
-          try {
-            await page.goto(url, { waitUntil: "networkidle2", timeout: 20000 });
             await humanIdle(1500, 3000);
-          } catch (e) {}
+          }
+          recentActions = [];
+          sameActionStreak = 0;
           recentActions = [];
           sameActionStreak = 0;
           consecutiveFailures = 0;

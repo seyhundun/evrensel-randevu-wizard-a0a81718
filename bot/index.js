@@ -869,8 +869,8 @@ async function tryImapOtp(accountId) {
     const fetch = (await import("node-fetch")).default;
 
     const res = await fetch(
-      `${CONFIG.API_URL.replace("/bot-api", "/rest/v1")}/vfs_accounts?id=eq.${accountId}&select=email,imap_host,imap_password,otp_requested_at`,
-      { headers: { apikey: CONFIG.API_KEY, Authorization: `Bearer ${CONFIG.API_KEY}` } }
+      `${SUPABASE_REST_URL}/vfs_accounts?id=eq.${accountId}&select=email,imap_host,imap_password,otp_requested_at`,
+      { headers: restHeaders }
     );
     const accounts = await res.json();
     if (!accounts?.length || !accounts[0].imap_password) return null;
@@ -879,8 +879,18 @@ async function tryImapOtp(accountId) {
     const host = account.imap_host || "imap.gmail.com";
     const otpRequestedAt = account.otp_requested_at ? new Date(account.otp_requested_at) : null;
     const otpRequestedTs = otpRequestedAt && !Number.isNaN(otpRequestedAt.getTime()) ? otpRequestedAt.getTime() : null;
+    const allowedFrom = (process.env.VFS_OTP_FROM || "donotreply@vfshelpline.com,donotreply@vfsglobal.com,no-reply@vfsglobal.com")
+      .split(",")
+      .map((x) => x.trim().toLowerCase())
+      .filter(Boolean);
 
     console.log(`  [IMAP] ${account.email} → ${host} bağlanıyor...`);
+    if (allowedFrom.length) {
+      console.log(`  [IMAP] Gönderen filtresi: ${allowedFrom.join(", ")}`);
+    }
+    if (otpRequestedTs) {
+      console.log(`  [IMAP] OTP istek zamanı: ${new Date(otpRequestedTs).toISOString()}`);
+    }
 
     const decodeQuotedPrintable = (text = "") =>
       text.replace(/=\r?\n/g, "").replace(/=([0-9A-F]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
@@ -900,21 +910,35 @@ async function tryImapOtp(accountId) {
 
     try {
       const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
-      const sinceTs = otpRequestedTs ? Math.max(oneDayAgo, otpRequestedTs - 5 * 60 * 1000) : oneDayAgo;
+      const sinceTs = otpRequestedTs ? Math.max(oneDayAgo, otpRequestedTs - 10 * 60 * 1000) : oneDayAgo;
       const messages = await client.search({ since: new Date(sinceTs) }, { uid: true });
-      if (!messages.length) { await lock.release(); await client.logout(); return null; }
+      if (!messages.length) {
+        console.log("  [IMAP] Uygun zaman aralığında mail yok");
+        await lock.release();
+        await client.logout();
+        return null;
+      }
 
-      const lastUids = messages.slice(-20).reverse();
+      const lastUids = messages.slice(-30).reverse();
       for (const uid of lastUids) {
         const msg = await client.fetchOne(uid, { source: true, envelope: true, internalDate: true }, { uid: true });
         const msgTs = msg?.internalDate ? new Date(msg.internalDate).getTime() : null;
         if (otpRequestedTs && msgTs && msgTs < otpRequestedTs - 15000) continue;
 
+        const fromText = (msg?.envelope?.from || []).map((x) => (x?.address || "").toLowerCase()).join(", ");
+        if (allowedFrom.length && fromText) {
+          const senderMatched = allowedFrom.some((sender) => fromText.includes(sender));
+          if (!senderMatched) {
+            console.log(`  [IMAP] UID ${uid} atlandı (from: ${fromText || "?"})`);
+            continue;
+          }
+        }
+
+        const subject = msg?.envelope?.subject || "";
         const rawText = (msg?.source ? msg.source.toString("utf8") : "").replace(/\r/g, "");
         const mainBlock = rawText.split(/\n(?:On .+ wrote:|-----Original Message-----)/i)[0].slice(0, 12000);
-        const normalizedText = htmlToText(decodeQuotedPrintable(mainBlock));
+        const normalizedText = `${subject}\n${htmlToText(decodeQuotedPrintable(mainBlock))}`;
 
-        // VFS OTP genellikle 6 haneli
         const patterns = [
           /(?:doğrulama kodu|verification code|one.?time password|otp)[^\d]{0,60}(\d{4,8})/i,
           /(?:tek seferlik|tek kullanımlık)[^\d]{0,60}(\d{4,8})/i,
@@ -924,25 +948,34 @@ async function tryImapOtp(accountId) {
         let otp = null;
         for (const pattern of patterns) {
           const match = normalizedText.match(pattern);
-          if (match?.[1] && match[1] !== "0000" && match[1] !== "000000") { otp = match[1]; break; }
+          if (match?.[1] && match[1] !== "0000" && match[1] !== "000000") {
+            otp = match[1];
+            break;
+          }
         }
 
         if (!otp) {
-          const lineCodes = [...normalizedText.matchAll(/^\s*(\d{4,8})\s*$/gm)].map((m) => m[1]).filter((x) => x !== "0000" && x !== "000000");
+          const lineCodes = [...normalizedText.matchAll(/^\s*(\d{4,8})\s*$/gm)]
+            .map((m) => m[1])
+            .filter((x) => x !== "0000" && x !== "000000");
           if (lineCodes.length > 0) otp = lineCodes[lineCodes.length - 1];
         }
 
         if (otp) {
-          const fromText = (msg?.envelope?.from || []).map((x) => x?.address || "").join(", ");
-          console.log(`  [IMAP] ✅ VFS OTP bulundu: ${otp} | from: ${fromText}`);
-          await lock.release(); await client.logout();
+          console.log(`  [IMAP] ✅ VFS OTP bulundu: ${otp} | from: ${fromText || "?"} | subject: ${subject}`);
+          await lock.release();
+          await client.logout();
           return otp;
         }
       }
-      await lock.release(); await client.logout();
+
+      console.log("  [IMAP] Uygun VFS OTP maili bulunamadı");
+      await lock.release();
+      await client.logout();
       return null;
     } catch (e) {
-      try { await lock.release(); } catch {} try { await client.logout(); } catch {}
+      try { await lock.release(); } catch {}
+      try { await client.logout(); } catch {}
       throw e;
     }
   } catch (err) {

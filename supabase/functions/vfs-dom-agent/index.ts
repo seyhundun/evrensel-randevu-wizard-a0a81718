@@ -53,8 +53,8 @@ ${applicants.map((a: any, i: number) => `### ${i + 1}. Başvuru Sahibi
 - Soyad: ${a.last_name || ""}
 - Pasaport No: ${a.passport || ""}
 - Doğum Tarihi: ${a.birth_date || ""}
-- Telefon: ${a.phone || ""}
-- E-posta: ${a.email || ""}`).join("\n")}
+- Uyruk: ${a.nationality || "Turkey"}
+- Pasaport Son Kullanma: ${a.passport_expiry || ""}`).join("\n")}
 ` : ""}
 
 ## ELEMENTLER
@@ -86,11 +86,10 @@ Her element: { index, tag, type, text, id, name, value, checked, role, rect:{x,y
 ### BAŞVURU FORMU DOLDURMA (ÇOK ÖNEMLİ!)
 - Ad, soyad alanlarını bul → başvuru sahibi bilgilerinden yaz
 - Pasaport numarası alanını bul → yaz
-- Uyruk/Nationality dropdown'u varsa → "Turkey" veya "Turkish" seç
+- Uyruk/Nationality dropdown'u varsa → başvuru sahibinin uyruk bilgisini seç (varsayılan "Turkey")
 - Doğum tarihi alanını bul → DD/MM/YYYY formatında yaz
+- Pasaport son kullanma tarihi alanını bul → DD/MM/YYYY formatında yaz
 - Cinsiyet dropdown'u varsa → uygun değeri seç
-- Telefon alanını bul → yaz
-- E-posta alanını bul → yaz
 - TÜM alanlar doldurulduğunda "Continue/Devam/Save" tıkla
 
 ### ÇOKLU BAŞVURU SAHİBİ

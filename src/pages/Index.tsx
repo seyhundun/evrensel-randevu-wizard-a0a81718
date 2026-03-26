@@ -130,14 +130,36 @@ function IdataRightSidebarContent() {
 
 const Index = () => {
   const t = useTracking();
-  const { signOut } = useAuth();
+  const { session, signOut } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
   const [mobileRightSheetOpen, setMobileRightSheetOpen] = useState(false);
   const isMobile = useIsMobile();
+  const [allowedTabs, setAllowedTabs] = useState<string[]>(["vfs", "idata", "quiz"]);
   const [activeTab, setActiveTab] = useState("vfs");
+
+  // Fetch user's allowed tabs
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    const loadTabs = async () => {
+      const { data } = await supabase.from("user_roles").select("allowed_tabs, role").eq("user_id", session.user.id).maybeSingle();
+      if (data) {
+        const tabs = (data as any).allowed_tabs || ["vfs", "idata", "quiz"];
+        // Admin gets all tabs
+        if ((data as any).role === "admin") {
+          setAllowedTabs(["vfs", "idata", "quiz"]);
+        } else {
+          setAllowedTabs(tabs);
+          if (!tabs.includes(activeTab)) {
+            setActiveTab(tabs[0] || "vfs");
+          }
+        }
+      }
+    };
+    loadTabs();
+  }, [session?.user?.id]);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">

@@ -1799,7 +1799,7 @@ async function rotateProxyAndGoto(page, url, options = {}) {
     await page.authenticate({ username: EVOMI_PROXY_USER, password: pass });
     console.log(`  [PROXY-ROTATE] 🔄 Yeni IP: session=${newSessionId}, şehir=${city || 'rastgele'}`);
   }
-  const gotoOptions = { waitUntil: "domcontentloaded", timeout: 90000, ...options };
+  const gotoOptions = { waitUntil: "domcontentloaded", timeout: 45000, ...options };
   return await page.goto(url, gotoOptions);
 }
 
@@ -1905,20 +1905,28 @@ async function askVFSDomAgent(page, config, account, step, recentActions) {
   var maxRetries = 3;
   for (var attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      var res = await fetch2(CONFIG.API_URL.replace("/bot-api", "/vfs-dom-agent"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer " + CONFIG.API_KEY,
-        },
-        body: JSON.stringify({
-          elements: elements,
-          pageText: pageText,
-          pageUrl: currentUrl,
-          step: step,
-          context: context,
-        }),
-      });
+      var abortCtrl = new AbortController();
+      var fetchTimeout = setTimeout(function() { abortCtrl.abort(); }, 25000); // 25s timeout
+      var res;
+      try {
+        res = await fetch2(CONFIG.API_URL.replace("/bot-api", "/vfs-dom-agent"), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + CONFIG.API_KEY,
+          },
+          body: JSON.stringify({
+            elements: elements,
+            pageText: pageText,
+            pageUrl: currentUrl,
+            step: step,
+            context: context,
+          }),
+          signal: abortCtrl.signal,
+        });
+      } finally {
+        clearTimeout(fetchTimeout);
+      }
 
       if (res.status === 429) {
         var waitSec = (attempt + 1) * 10;

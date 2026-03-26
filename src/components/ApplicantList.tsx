@@ -44,6 +44,13 @@ export default function ApplicantList({
         return;
       }
 
+      // If DB has more applicants than current form, increase person count
+      if (data.length > applicants.length) {
+        setPersonCount(data.length);
+        // Wait for React to add new applicant slots
+        await new Promise(r => setTimeout(r, 100));
+      }
+
       // Batch all updates at once using onBatchUpdate
       const count = Math.min(data.length, applicants.length);
       for (let i = 0; i < count; i++) {

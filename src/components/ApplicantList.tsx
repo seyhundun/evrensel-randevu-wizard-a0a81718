@@ -19,6 +19,7 @@ interface ApplicantListProps {
 export default function ApplicantList({
   applicants,
   onUpdate,
+  onBatchUpdate,
   personCount,
   setPersonCount,
   configId,

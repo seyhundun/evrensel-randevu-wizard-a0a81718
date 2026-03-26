@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { LogOut, Clock, PanelLeftClose, PanelLeft, PanelRightClose, PanelRight, Network, Globe, Settings, BookOpen, Menu, Hand } from "lucide-react";
@@ -130,14 +131,36 @@ function IdataRightSidebarContent() {
 
 const Index = () => {
   const t = useTracking();
-  const { signOut } = useAuth();
+  const { session, signOut } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
   const [mobileRightSheetOpen, setMobileRightSheetOpen] = useState(false);
   const isMobile = useIsMobile();
+  const [allowedTabs, setAllowedTabs] = useState<string[]>(["vfs", "idata", "quiz"]);
   const [activeTab, setActiveTab] = useState("vfs");
+
+  // Fetch user's allowed tabs
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    const loadTabs = async () => {
+      const { data } = await supabase.from("user_roles").select("allowed_tabs, role").eq("user_id", session.user.id).maybeSingle();
+      if (data) {
+        const tabs = (data as any).allowed_tabs || ["vfs", "idata", "quiz"];
+        // Admin gets all tabs
+        if ((data as any).role === "admin") {
+          setAllowedTabs(["vfs", "idata", "quiz"]);
+        } else {
+          setAllowedTabs(tabs);
+          if (!tabs.includes(activeTab)) {
+            setActiveTab(tabs[0] || "vfs");
+          }
+        }
+      }
+    };
+    loadTabs();
+  }, [session?.user?.id]);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -200,15 +223,21 @@ const Index = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
         <div className="border-b border-border bg-card px-3 md:px-4 shrink-0">
           <TabsList className="h-10 bg-transparent p-0 gap-2 md:gap-4">
-            <TabsTrigger value="vfs" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-1 pb-2 text-xs md:text-sm">
-              🌍 VFS
-            </TabsTrigger>
-            <TabsTrigger value="idata" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-1 pb-2 text-xs md:text-sm">
-              🇮🇹 iDATA
-            </TabsTrigger>
-            <TabsTrigger value="quiz" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-1 pb-2 text-xs md:text-sm">
-              🧩 Quiz Bot
-            </TabsTrigger>
+            {allowedTabs.includes("vfs") && (
+              <TabsTrigger value="vfs" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-1 pb-2 text-xs md:text-sm">
+                🌍 VFS
+              </TabsTrigger>
+            )}
+            {allowedTabs.includes("idata") && (
+              <TabsTrigger value="idata" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-1 pb-2 text-xs md:text-sm">
+                🇮🇹 iDATA
+              </TabsTrigger>
+            )}
+            {allowedTabs.includes("quiz") && (
+              <TabsTrigger value="quiz" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-1 pb-2 text-xs md:text-sm">
+                🧩 Quiz Bot
+              </TabsTrigger>
+            )}
           </TabsList>
         </div>
 

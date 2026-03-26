@@ -220,7 +220,7 @@ ${JSON.stringify(elements, null, 2)}`;
       }))
       .filter((action: any) => action.type === "wait" || action.type === "none" || action.type === "scroll" || action.elementIndex >= 0);
 
-    const validStatuses = ["continue", "appointment_found", "no_appointment", "otp_required", "account_banned", "session_expired", "ip_blocked", "captcha_needed", "booking_confirmed"];
+    const validStatuses = ["continue", "appointment_found", "no_appointment", "otp_required", "account_banned", "session_expired", "ip_blocked", "captcha_needed", "booking_confirmed", "wait_manual"];
     if (!validStatuses.includes(result.status)) {
       result.status = result.actions.length > 0 ? "continue" : "no_appointment";
     }

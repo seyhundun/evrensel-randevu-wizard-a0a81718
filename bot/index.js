@@ -2185,6 +2185,202 @@ async function checkAppointments(config, account) {
         }
       } catch {}
 
+      // ====== FORM DOLDURMA İSTEĞİ KONTROLÜ ======
+      try {
+        const fillRes = await fetch(
+          `${SUPABASE_REST_URL}/bot_settings?key=eq.fill_applicants_request&select=value`,
+          { method: "GET", headers: restHeaders }
+        ).then(r => r.json());
+        
+        if (fillRes && fillRes.length > 0 && fillRes[0].value) {
+          const fillData = JSON.parse(fillRes[0].value);
+          if (fillData && fillData.timestamp && (Date.now() - fillData.timestamp) < 120000) {
+            console.log(`\n  📝 [FILL] Dashboard'dan form doldurma isteği alındı!`);
+            await logStep(id, "info", `📝 Dashboard'dan form doldurma isteği alındı — ${fillData.action}`);
+            
+            const applicantsToFill = fillData.action === "fill_all" 
+              ? fillData.applicants 
+              : [fillData.applicant];
+            const startIndex = fillData.action === "fill_single" ? fillData.index : 0;
+            
+            const fillResult = await page.evaluate((applicants, startIdx) => {
+              const results = [];
+              
+              // VFS form alanlarını bul
+              const allInputs = Array.from(document.querySelectorAll("input, select, textarea"));
+              const visibleInputs = allInputs.filter(el => {
+                const rect = el.getBoundingClientRect();
+                const style = window.getComputedStyle(el);
+                return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+              });
+              
+              // Angular uyumlu değer yazma
+              function setInputValue(input, value) {
+                const nativeSetter = Object.getOwnPropertyDescriptor(
+                  window.HTMLInputElement.prototype, "value"
+                )?.set || Object.getOwnPropertyDescriptor(
+                  window.HTMLTextAreaElement.prototype, "value"
+                )?.set;
+                
+                if (nativeSetter) {
+                  nativeSetter.call(input, value);
+                } else {
+                  input.value = value;
+                }
+                input.dispatchEvent(new Event("input", { bubbles: true }));
+                input.dispatchEvent(new Event("change", { bubbles: true }));
+                input.dispatchEvent(new Event("blur", { bubbles: true }));
+              }
+              
+              // Select alanı için değer seçme
+              function setSelectValue(select, value) {
+                const options = Array.from(select.querySelectorAll("option"));
+                const match = options.find(o => 
+                  o.value.toLowerCase().includes(value.toLowerCase()) || 
+                  o.textContent.toLowerCase().includes(value.toLowerCase())
+                );
+                if (match) {
+                  select.value = match.value;
+                  select.dispatchEvent(new Event("change", { bubbles: true }));
+                  return true;
+                }
+                return false;
+              }
+              
+              // Alan eşleştirme — label veya placeholder'a göre
+              function findField(keyword, type) {
+                for (const input of visibleInputs) {
+                  const label = input.getAttribute("aria-label") || "";
+                  const placeholder = input.getAttribute("placeholder") || "";
+                  const name = input.getAttribute("name") || "";
+                  const id = input.getAttribute("id") || "";
+                  const formControl = input.getAttribute("formcontrolname") || "";
+                  const combined = `${label} ${placeholder} ${name} ${id} ${formControl}`.toLowerCase();
+                  
+                  // Label elementi kontrolü
+                  let labelText = "";
+                  if (input.id) {
+                    const labelEl = document.querySelector(`label[for="${input.id}"]`);
+                    if (labelEl) labelText = labelEl.textContent.toLowerCase();
+                  }
+                  
+                  if (combined.includes(keyword) || labelText.includes(keyword)) {
+                    if (!type || input.tagName.toLowerCase() === type) {
+                      return input;
+                    }
+                  }
+                }
+                return null;
+              }
+              
+              for (let i = 0; i < applicants.length; i++) {
+                const app = applicants[i];
+                const idx = startIdx + i;
+                const filled = {};
+                
+                // İsim alanları
+                const nameKeywords = ["first", "ad", "name", "isim", "given"];
+                const lastNameKeywords = ["last", "soyad", "surname", "family"];
+                const passportKeywords = ["passport", "pasaport"];
+                const birthKeywords = ["birth", "doğum", "dob"];
+                const nationalityKeywords = ["national", "uyruk", "vatandaş"];
+                
+                // İsim
+                for (const kw of nameKeywords) {
+                  const field = findField(kw);
+                  if (field && !lastNameKeywords.some(lk => (field.getAttribute("formcontrolname") || field.getAttribute("name") || "").toLowerCase().includes(lk))) {
+                    setInputValue(field, app.firstName);
+                    filled.firstName = true;
+                    break;
+                  }
+                }
+                
+                // Soyisim
+                for (const kw of lastNameKeywords) {
+                  const field = findField(kw);
+                  if (field) {
+                    setInputValue(field, app.lastName);
+                    filled.lastName = true;
+                    break;
+                  }
+                }
+                
+                // Pasaport
+                for (const kw of passportKeywords) {
+                  const field = findField(kw);
+                  if (field) {
+                    setInputValue(field, app.passport);
+                    filled.passport = true;
+                    break;
+                  }
+                }
+                
+                // Doğum tarihi
+                for (const kw of birthKeywords) {
+                  const field = findField(kw);
+                  if (field) {
+                    setInputValue(field, app.birthDate);
+                    filled.birthDate = true;
+                    break;
+                  }
+                }
+                
+                // Uyruk
+                for (const kw of nationalityKeywords) {
+                  const field = findField(kw);
+                  if (field) {
+                    if (field.tagName.toLowerCase() === "select") {
+                      setSelectValue(field, app.nationality);
+                    } else {
+                      setInputValue(field, app.nationality);
+                    }
+                    filled.nationality = true;
+                    break;
+                  }
+                }
+                
+                // Cinsiyet
+                const genderField = findField("gender") || findField("cinsiyet");
+                if (genderField) {
+                  if (genderField.tagName.toLowerCase() === "select") {
+                    setSelectValue(genderField, app.gender);
+                  } else {
+                    setInputValue(genderField, app.gender);
+                  }
+                  filled.gender = true;
+                }
+                
+                results.push({
+                  index: idx,
+                  name: `${app.firstName} ${app.lastName}`,
+                  filledFields: Object.keys(filled),
+                  totalInputs: visibleInputs.length,
+                });
+              }
+              
+              return results;
+            }, applicantsToFill, startIndex);
+            
+            console.log(`  📝 [FILL] Sonuç:`, JSON.stringify(fillResult));
+            const filledNames = (fillResult || []).map(r => `${r.name} (${r.filledFields.length} alan)`).join(", ");
+            await logStep(id, "info", `📝 Form doldurma tamamlandı: ${filledNames || "sonuç yok"}`);
+            
+            // İsteği temizle
+            await fetch(`${SUPABASE_REST_URL}/bot_settings?key=eq.fill_applicants_request`, {
+              method: "PATCH",
+              headers: { ...restHeaders, Prefer: "return=minimal" },
+              body: JSON.stringify({ value: "" }),
+            });
+            
+            // Screenshot al
+            const fillSs = await takeScreenshotBase64(page);
+            await reportResult(id, "info", `📝 Form doldurma sonucu | ${filledNames}`, 0, fillSs);
+          }
+        }
+      } catch (fillErr) {
+        console.warn(`  [FILL] Hata: ${fillErr.message}`);
+      }
+
       console.log(`\n  [Adım ${step}/${MAX_STEPS}]`);
       await logStep(id, "info", `Adım ${step}: Sayfa analiz ediliyor...`);
 

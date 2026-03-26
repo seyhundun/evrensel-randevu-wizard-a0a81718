@@ -2163,7 +2163,8 @@ async function checkAppointments(config, account) {
     await logStep(id, "search_start", "🤖 VFS DOM Agent tam otonom mod başladı");
 
     const MAX_STEPS = 80;
-    const STEP_TIMEOUT_MS = 30000; // 30s per step max
+    const STEP_TIMEOUT_MS = 45000; // 45s per step max
+    var stepTimeoutCount = 0; // Ardışık timeout sayacı
     var recentActions = [];
     var appointmentResult = null;
 

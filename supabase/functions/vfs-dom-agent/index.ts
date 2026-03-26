@@ -77,8 +77,8 @@ Her element: { index, tag, type, text, id, name, value, checked, role, rect:{x,y
 - Google/Facebook/Apple butonlarından KAÇIN
 
 ### OTP SAYFASI
-- "Doğrulama kodu", "OTP", "tek kullanımlık", "verification code" görürsen → SADECE `status: "otp_required"` dön
-- OTP ekranında `actions` dizisi HER ZAMAN boş olmalı; type/click/select döndürme, "Oturum Aç" dahil hiçbir şeye basma
+- "Doğrulama kodu", "OTP", "tek kullanımlık", "verification code" görürsen → SADECE status: "otp_required" dön
+- OTP ekranında actions dizisi HER ZAMAN boş olmalı; type/click/select döndürme, "Oturum Aç" dahil hiçbir şeye basma
 
 ### DASHBOARD SAYFASI (OTP SONRASI)
 - "Aktif Başvuru(lar)" sekmesi ve "Yeni Rezervasyon Başlat" butonu görünür

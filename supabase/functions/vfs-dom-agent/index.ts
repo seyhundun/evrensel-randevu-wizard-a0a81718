@@ -53,7 +53,7 @@ serve(async (req) => {
 - Vize alt kategorisi: ${visaSubcategory || "belirtilmemiş"}
 ${applicants.length > 0 ? `
 ## BAŞVURU SAHİPLERİ BİLGİLERİ (FORM DOLDURMA İÇİN)
-Toplam ${applicants.length} kişi — sırayla doldur, her biri için ayrı form doldur.
+Toplam ${applicants.length} kişi — TEK TEK doldur. Önce 1. kişiyi doldur ve "Kaydet" tıkla. Sonra "Başvuru Sahibi Ekle" tıkla ve 2. kişiyi doldur.
 ${applicants.map((a: any, i: number) => `### ${i + 1}. Başvuru Sahibi
 - İsim: ${a.first_name || ""}
 - Soyisim: ${a.last_name || ""}
@@ -61,9 +61,7 @@ ${applicants.map((a: any, i: number) => `### ${i + 1}. Başvuru Sahibi
 - Doğum Tarihi: ${a.birth_date || ""} (GG/AA/YYYY formatında gir)
 - Uyruk: ${a.nationality || "Turkey"}
 - Pasaport Numarası: ${a.passport || ""}
-- Pasaport Son Kullanma Tarihi: ${a.passport_expiry || ""} (GG/AA/YYYY formatında gir)
-- İletişim Numarası: 90 ${a.phone_number || ""}
-- E-Posta: ${a.applicant_email || ""}`).join("\n")}
+- Pasaport Son Kullanma Tarihi: ${a.passport_expiry || ""} (GG/AA/YYYY formatında gir)`).join("\n")}
 ` : ""}
 
 ## ELEMENTLER
@@ -111,15 +109,18 @@ Alanları şu sırayla doldur:
 5. **Uyruk** → dropdown'dan seç (varsayılan "Turkey")
 6. **Pasaport Numarası** → pasaport nosunu yaz
 7. **Pasaport Son Kullanma Tarihi** → GG/AA/YYYY formatında yaz
-8. **İletişim Numarası** → ilk kutu "90" (zaten dolu), ikinci kutuya telefon numarasını yaz
-9. **E Posta** → e-posta adresini yaz
-- TÜM alanlar doldurulduğunda **"Kaydet"** butonunu tıkla (turuncu buton)
+8. **İletişim Numarası** → ATLA, dokunma (zaten dolu veya sistem otomatik dolduruyor)
+9. **E Posta** → ATLA, dokunma (zaten dolu veya sistem otomatik dolduruyor)
+- TÜM gerekli alanlar doldurulduğunda **"Kaydet"** butonunu tıkla (turuncu buton)
 - "İptal Et" butonuna ASLA tıklama
 
-### ÇOKLU BAŞVURU SAHİBİ
-- 1. kişinin formu kaydedildikten sonra "Başvuru Sahibi Ekle" / "Add Applicant" butonunu tıkla
-- 2. kişinin bilgilerini aynı şekilde doldur
-- Her kişi için ayrı ayrı doldur, toplam ${applicants.length} kişi var
+### ÇOKLU BAŞVURU SAHİBİ (TEK TEK EKLENİR!)
+- ÖNEMLİ: Aynı anda 2 kişi eklenemez! Sırayla çalışır:
+  1. Önce 1. kişinin bilgilerini doldur → "Kaydet" tıkla
+  2. Kaydet sonrası sayfa yenilenecek → "Başvuru Sahibi Ekle" / "Add Applicant" butonunu bul ve tıkla
+  3. 2. kişinin bilgilerini doldur → tekrar "Kaydet" tıkla
+- Her kişi için ayrı kaydet, toplam ${applicants.length} kişi var
+- currentApplicantIndex ile hangi kişiyi doldurduğunu takip et
 
 ### HESAP SORUNLARI
 - "Hesabınız engellenmiş", "account blocked/banned/suspended" → status: "account_banned"

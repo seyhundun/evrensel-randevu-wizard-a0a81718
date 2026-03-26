@@ -4,7 +4,6 @@ export const COUNTRIES = [
   { value: "denmark", label: "Danimarka", flag: "🇩🇰", code: "dnk" },
 ] as const;
 
-// Country code'a göre VFS URL üret
 export function getVfsLoginUrl(countryCode: string): string {
   const country = COUNTRIES.find(c => c.value === countryCode);
   const code = country?.code || "fra";
@@ -56,8 +55,6 @@ export interface Applicant {
   nationality: string;
   passport: string;
   passportExpiry: string;
-  phoneNumber: string;
-  applicantEmail: string;
 }
 
 export const createEmptyApplicant = (id: string): Applicant => ({
@@ -69,6 +66,4 @@ export const createEmptyApplicant = (id: string): Applicant => ({
   nationality: "Turkey",
   passport: "",
   passportExpiry: "",
-  phoneNumber: "",
-  applicantEmail: "",
 });

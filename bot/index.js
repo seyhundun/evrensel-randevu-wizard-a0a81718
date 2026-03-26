@@ -3352,7 +3352,7 @@ async function registerVfsAccount(account) {
 
     const regUrl = getVfsRegisterUrl(regCountry);
     console.log(`  [REG 1/7] Kayıt sayfası: ${regUrl} (${regCountryLabel})`);
-    await page.goto(regUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
+    await rotateProxyAndGoto(page, regUrl);
     await humanIdle(5000, 10000); // Sayfayı okuyormuş gibi bekle
     await humanMove(page);
     await humanScroll(page);
@@ -4110,7 +4110,7 @@ async function openManualBrowser() {
     const browserProcess = typeof browser.process === "function" ? browser.process() : null;
     
     console.log(`  [MANUAL] VFS giriş sayfası açılıyor: ${loginUrl}`);
-    await page.goto(loginUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
+    await rotateProxyAndGoto(page, loginUrl);
     
     // Cloudflare challenge varsa bekle
     let pageContent = await page.evaluate(() => document.body?.innerText || "").catch(() => "");
@@ -4291,7 +4291,7 @@ async function main() {
           console.log(`\n📸 Screenshot talebi algılandı (${config.id.substring(0, 8)}...)`);
           try {
             const { browser: ssBrowser, page: ssPage } = await launchBrowser();
-            await ssPage.goto(getVfsLoginUrl(config.country), { waitUntil: "domcontentloaded", timeout: 60000 });
+            await rotateProxyAndGoto(ssPage, getVfsLoginUrl(config.country), { timeout: 60000 });
             await delay(3000, 5000);
             const ss = await takeScreenshotBase64(ssPage);
             if (ss) {

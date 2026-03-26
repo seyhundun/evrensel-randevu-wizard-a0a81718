@@ -2562,10 +2562,95 @@ async function checkAppointments(config, account) {
         }
 
         if (!otpValue) {
-          console.log("  ❌ OTP zaman aşımı (5 dakika) — sayfa kapanmayacak");
-          await logStep(id, "login_otp", `OTP zaman aşımı — sayfa açık bırakıldı | ${account.email}`);
-          await reportResult(id, "otp_waiting", `OTP bekleniyor, sayfa açık bırakıldı | ${account.email}`, 0, ss);
-          return { found: false, accountBanned: false, hadError: false, otpRequired: true, otpTimeout: true };
+          console.log("  ❌ OTP zaman aşımı (5 dakika) — sayfa açık kalacak, manuel beklemeye geçiliyor");
+          await logStep(id, "login_otp", `OTP zaman aşımı — manuel beklemeye geçildi | ${account.email}`);
+          await reportResult(id, "otp_waiting", `OTP zaman aşımı — sayfa açık, manuel müdahale bekleniyor | ${account.email}`, 0, ss);
+          
+          // Manuel bekleme moduna geç — 10 dakika daha bekle, sayfa AÇIK KALSIN
+          var otpManualWaitStart = Date.now();
+          var OTP_MANUAL_WAIT_TIMEOUT = 10 * 60 * 1000;
+          while (Date.now() - otpManualWaitStart < OTP_MANUAL_WAIT_TIMEOUT) {
+            await delay(10000, 12000);
+            
+            // Manuel OTP girildi mi kontrol et
+            try {
+              const lateOtp = await readManualOtp(account.id);
+              if (lateOtp) {
+                console.log("  ✅ Geç OTP alındı (manuel bekleme): " + lateOtp);
+                otpValue = lateOtp;
+                break;
+              }
+            } catch {}
+            
+            // Ekran görüntüsü (her dakika)
+            var otpManualElapsed = Math.round((Date.now() - otpManualWaitStart) / 1000);
+            if (otpManualElapsed % 60 === 0) {
+              try {
+                var mss = await takeScreenshotBase64(page);
+                await logStep(id, "wait_manual", `⏸ OTP manuel bekleniyor... (${otpManualElapsed}s) | ${account.email}`);
+                if (mss) await reportResult(id, "otp_waiting", `OTP bekleniyor (${Math.round(otpManualElapsed/60)}dk) | ${account.email}`, 0, mss);
+              } catch {}
+            }
+            
+            // Sayfa hala açık mı?
+            try { await page.evaluate(() => true); } catch { break; }
+          }
+          
+          // Geç OTP geldiyse doldur ve devam et
+          if (otpValue) {
+            try {
+              var lateOtpFilled = await page.evaluate(function(code) {
+                var inputs = Array.from(document.querySelectorAll("input, textarea"));
+                var isVisible = function(el) {
+                  if (!el) return false;
+                  var rect = el.getBoundingClientRect();
+                  var style = window.getComputedStyle(el);
+                  return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+                };
+                var setValue = function(el, value) {
+                  if (!el) return;
+                  var proto = Object.getPrototypeOf(el);
+                  var descriptor = Object.getOwnPropertyDescriptor(proto, "value")
+                    || Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")
+                    || Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value");
+                  if (descriptor && descriptor.set) descriptor.set.call(el, value);
+                  else el.value = value;
+                  el.dispatchEvent(new Event("input", { bubbles: true }));
+                  el.dispatchEvent(new Event("change", { bubbles: true }));
+                  el.dispatchEvent(new Event("blur", { bubbles: true }));
+                };
+                var otpHints = ["otp", "code", "doğrulama", "verification", "tek kullanımlık"];
+                var candidates = inputs.filter(function(inp) {
+                  if (!isVisible(inp)) return false;
+                  var type = (inp.getAttribute("type") || "text").toLowerCase();
+                  if (["password", "email", "hidden"].includes(type)) return false;
+                  var parentText = (inp.closest("mat-form-field, .form-group, .otp-container, label, div")?.textContent || "").toLowerCase();
+                  var haystack = [inp.name || "", inp.id || "", inp.placeholder || "", parentText].join(" ").toLowerCase();
+                  return otpHints.some(function(k) { return haystack.includes(k); }) || inp.inputMode === "numeric" || inp.maxLength === 6;
+                });
+                var singleInput = candidates[0];
+                if (!singleInput) return false;
+                singleInput.focus();
+                setValue(singleInput, code);
+                return true;
+              }, otpValue);
+              
+              if (lateOtpFilled) {
+                await delay(500, 1000);
+                var lateVerify = await clickOtpVerification(page);
+                if (lateVerify.clicked) console.log("  ✅ Geç OTP doğrula tıklandı");
+                else await page.keyboard.press("Enter").catch(() => {});
+                await logStep(id, "login_otp", `Geç OTP girildi ve doğrulandı | ${account.email}`);
+                recentActions.push("Geç OTP girildi ve doğrulandı");
+                await delay(2000, 3000);
+                continue;
+              }
+            } catch (lateErr) {
+              console.log("  [OTP] Geç OTP yazma hatası:", lateErr.message);
+            }
+          }
+          
+          return { found: false, accountBanned: false, hadError: false, otpRequired: true, otpTimeout: true, manualWait: true };
         }
 
         try {

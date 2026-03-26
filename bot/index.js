@@ -2393,14 +2393,41 @@ async function checkAppointments(config, account) {
       console.log(`\n  [Adım ${step}/${MAX_STEPS}]`);
       await logStep(id, "info", `Adım ${step}: Sayfa analiz ediliyor...`);
 
-      // DOM Agent'a sor
-      var agentResult = await askVFSDomAgent(page, config, account, step, recentActions);
+      // DOM Agent'a sor — adım bazlı timeout koruması
+      var agentResult;
+      try {
+        agentResult = await Promise.race([
+          askVFSDomAgent(page, config, account, step, recentActions),
+          new Promise(function(_, reject) { setTimeout(function() { reject(new Error("step_timeout")); }, STEP_TIMEOUT_MS); }),
+        ]);
+      } catch (stepErr) {
+        if (stepErr.message === "step_timeout") {
+          stepTimeoutCount++;
+          console.log(`  [DOM] ⏰ Adım ${step} zaman aşımı (${STEP_TIMEOUT_MS / 1000}s) — ardışık: ${stepTimeoutCount}`);
+          await logStep(id, "warning", `Adım ${step} zaman aşımı (${STEP_TIMEOUT_MS / 1000}s) | ardışık: ${stepTimeoutCount} | ${account.email}`);
+          if (stepTimeoutCount >= 3) {
+            console.log("  [DOM] 3 ardışık timeout — tarayıcı kapatılıp yeniden başlanacak");
+            await logStep(id, "error", `3 ardışık timeout — yeniden başlanıyor | ${account.email}`);
+            return { found: false, accountBanned: false, hadError: true, pageError: true };
+          }
+          await delay(3000, 5000);
+          continue;
+        }
+        throw stepErr;
+      }
+
       if (!agentResult) {
         console.log("  [DOM] Agent cevap vermedi, scroll deneniyor...");
+        stepTimeoutCount++;
         await humanScroll(page);
         await delay(2000, 4000);
+        if (stepTimeoutCount >= 3) {
+          console.log("  [DOM] 3 ardışık boş cevap — tarayıcı kapatılıp yeniden başlanacak");
+          return { found: false, accountBanned: false, hadError: true, pageError: true };
+        }
         continue;
       }
+      stepTimeoutCount = 0; // Başarılı adımda sıfırla
 
       // Status'a göre karar ver
       var status = agentResult.status;

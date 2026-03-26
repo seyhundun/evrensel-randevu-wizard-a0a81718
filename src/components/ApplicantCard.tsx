@@ -67,6 +67,25 @@ export default function ApplicantCard({
     onUpdate(applicant.id, field, formatted);
   };
 
+  const handleDateBlur = (field: keyof Applicant, value: string) => () => {
+    const formatted = formatDateSlash(value);
+    if (formatted !== value) {
+      onUpdate(applicant.id, field, formatted);
+    }
+  };
+
+  // DB'den gelen tarihleri otomatik düzelt
+  const displayBirthDate = formatDateSlash(applicant.birthDate);
+  const displayPassportExpiry = formatDateSlash(applicant.passportExpiry);
+  
+  // Eğer display farklıysa otomatik güncelle
+  if (displayBirthDate !== applicant.birthDate && applicant.birthDate) {
+    setTimeout(() => onUpdate(applicant.id, "birthDate", displayBirthDate), 0);
+  }
+  if (displayPassportExpiry !== applicant.passportExpiry && applicant.passportExpiry) {
+    setTimeout(() => onUpdate(applicant.id, "passportExpiry", displayPassportExpiry), 0);
+  }
+
   const handleFillSingle = async () => {
     if (!configId) {
       toast.error("Önce takip başlatın veya kaydedin");

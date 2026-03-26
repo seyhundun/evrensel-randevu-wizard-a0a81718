@@ -109,15 +109,18 @@ Alanları şu sırayla doldur:
 5. **Uyruk** → dropdown'dan seç (varsayılan "Turkey")
 6. **Pasaport Numarası** → pasaport nosunu yaz
 7. **Pasaport Son Kullanma Tarihi** → GG/AA/YYYY formatında yaz
-8. **İletişim Numarası** → ilk kutu "90" (zaten dolu), ikinci kutuya telefon numarasını yaz
-9. **E Posta** → e-posta adresini yaz
-- TÜM alanlar doldurulduğunda **"Kaydet"** butonunu tıkla (turuncu buton)
+8. **İletişim Numarası** → ATLA, dokunma (zaten dolu veya sistem otomatik dolduruyor)
+9. **E Posta** → ATLA, dokunma (zaten dolu veya sistem otomatik dolduruyor)
+- TÜM gerekli alanlar doldurulduğunda **"Kaydet"** butonunu tıkla (turuncu buton)
 - "İptal Et" butonuna ASLA tıklama
 
-### ÇOKLU BAŞVURU SAHİBİ
-- 1. kişinin formu kaydedildikten sonra "Başvuru Sahibi Ekle" / "Add Applicant" butonunu tıkla
-- 2. kişinin bilgilerini aynı şekilde doldur
-- Her kişi için ayrı ayrı doldur, toplam ${applicants.length} kişi var
+### ÇOKLU BAŞVURU SAHİBİ (TEK TEK EKLENİR!)
+- ÖNEMLİ: Aynı anda 2 kişi eklenemez! Sırayla çalışır:
+  1. Önce 1. kişinin bilgilerini doldur → "Kaydet" tıkla
+  2. Kaydet sonrası sayfa yenilenecek → "Başvuru Sahibi Ekle" / "Add Applicant" butonunu bul ve tıkla
+  3. 2. kişinin bilgilerini doldur → tekrar "Kaydet" tıkla
+- Her kişi için ayrı kaydet, toplam ${applicants.length} kişi var
+- currentApplicantIndex ile hangi kişiyi doldurduğunu takip et
 
 ### HESAP SORUNLARI
 - "Hesabınız engellenmiş", "account blocked/banned/suspended" → status: "account_banned"

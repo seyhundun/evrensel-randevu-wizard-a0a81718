@@ -88,13 +88,12 @@ export default function VfsAccounts() {
   const [smsOtpInputs, setSmsOtpInputs] = useState<Record<string, string>>({});
   const [regOtpInputs, setRegOtpInputs] = useState<Record<string, string>>({});
   const [addMode, setAddMode] = useState<"existing" | "register" | "bulk">("existing");
-  const [editingImap, setEditingImap] = useState<Record<string, { host: string; password: string }>>({});
+  
   const [manualBrowserLoading, setManualBrowserLoading] = useState(false);
   // Bulk Gmail alias state
   const [bulkBaseEmail, setBulkBaseEmail] = useState("");
   const [bulkPhone, setBulkPhone] = useState("");
   const [bulkCount, setBulkCount] = useState(5);
-  const [bulkImapPassword, setBulkImapPassword] = useState("");
   const [bulkCreating, setBulkCreating] = useState(false);
 
   useEffect(() => {
@@ -207,8 +206,6 @@ export default function VfsAccounts() {
         phone: bulkPhone,
         registration_status: "pending",
         status: "active",
-        imap_host: "imap.gmail.com",
-        imap_password: bulkImapPassword || null,
       } as any);
       if (!error) created++;
     }
@@ -428,16 +425,6 @@ export default function VfsAccounts() {
                   onChange={(e) => setBulkCount(parseInt(e.target.value) || 1)}
                 />
               </div>
-              <div>
-                <Label className="text-xs">Gmail Uygulama Şifresi (IMAP)</Label>
-                <Input
-                  type="password"
-                  placeholder="xxxx xxxx xxxx xxxx"
-                  value={bulkImapPassword}
-                  onChange={(e) => setBulkImapPassword(e.target.value)}
-                />
-                <p className="text-[10px] text-muted-foreground mt-0.5">OTP otomatik okuma için gerekli</p>
-              </div>
             </div>
             <Button onClick={bulkCreateAliasAccounts} disabled={bulkCreating} size="sm" className="gap-1.5">
               {bulkCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
@@ -540,9 +527,6 @@ export default function VfsAccounts() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-sm truncate">{acc.email}</span>
                     {statusBadge(acc)}
-                    {acc.imap_password && (
-                      <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/20 text-[10px]">📧 IMAP</Badge>
-                    )}
                   </div>
                   <div className="flex items-center gap-2 mt-1">
                     <span className="text-xs text-muted-foreground font-mono">

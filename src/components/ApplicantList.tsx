@@ -46,29 +46,27 @@ export default function ApplicantList({
         return;
       }
 
-      // If DB has more applicants than current form, increase person count
-      if (data.length > applicants.length) {
+      // Update person count if needed
+      if (data.length !== personCount) {
         setPersonCount(data.length);
-        // Wait for React to add new applicant slots
-        await new Promise(r => setTimeout(r, 100));
       }
 
-      // Batch all updates at once using onBatchUpdate
-      const count = Math.min(data.length, applicants.length);
-      for (let i = 0; i < count; i++) {
-        const db = data[i];
-        const local = applicants[i];
-        // Use setTimeout to ensure React processes each update
-        onUpdate(local.id, "firstName", db.first_name || "");
-        onUpdate(local.id, "lastName", db.last_name || "");
-        onUpdate(local.id, "gender", db.gender || "");
-        onUpdate(local.id, "birthDate", db.birth_date || "");
-        onUpdate(local.id, "nationality", db.nationality || "Turkey");
-        onUpdate(local.id, "passport", db.passport || "");
-        onUpdate(local.id, "passportExpiry", db.passport_expiry || "");
-      }
+      // Build complete applicant array from DB data in one shot
+      const newApplicants: Applicant[] = data.map((db, i) => ({
+        id: applicants[i]?.id || String(i + 1),
+        firstName: db.first_name || "",
+        lastName: db.last_name || "",
+        gender: db.gender || "",
+        birthDate: db.birth_date || "",
+        nationality: db.nationality || "Turkey",
+        passport: db.passport || "",
+        passportExpiry: db.passport_expiry || "",
+      }));
 
-      toast.success(`${count} başvuru sahibinin bilgileri dolduruldu!`);
+      // Single atomic state update
+      onBatchUpdate(newApplicants);
+
+      toast.success(`${data.length} başvuru sahibinin bilgileri dolduruldu!`);
     } catch (err: any) {
       toast.error("Bilgiler yüklenemedi: " + (err.message || "Bilinmeyen hata"));
     } finally {

@@ -62,8 +62,6 @@ interface VfsAccount {
   last_used_at: string | null;
   fail_count: number;
   notes: string | null;
-  imap_host: string | null;
-  imap_password: string | null;
   manual_otp: string | null;
   otp_requested_at: string | null;
   registration_status: string | null;
@@ -72,10 +70,6 @@ interface VfsAccount {
   captcha_waiting_at: string | null;
   captcha_manual_approved: boolean;
   booking_enabled: boolean;
-  imap_last_status: string | null;
-  imap_last_message: string | null;
-  imap_last_checked_at: string | null;
-  otp_mode: string;
 }
 
 export default function VfsAccounts() {
@@ -277,19 +271,6 @@ export default function VfsAccounts() {
     else toast.success(enabled ? "Hesap aktif edildi" : "Hesap pasif edildi");
   };
 
-  const saveImapSettings = async (id: string) => {
-    const imap = editingImap[id];
-    if (!imap) return;
-    const { error } = await supabase
-      .from("vfs_accounts")
-      .update({ imap_host: imap.host || null, imap_password: imap.password || null } as any)
-      .eq("id", id);
-    if (error) toast.error("IMAP kayıt hatası: " + error.message);
-    else {
-      toast.success("IMAP ayarları kaydedildi");
-      setEditingImap((prev) => { const n = { ...prev }; delete n[id]; return n; });
-    }
-  };
 
   const togglePassword = (id: string) => {
     setShowPasswords((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -641,96 +622,6 @@ export default function VfsAccounts() {
                 </div>
               )}
 
-              {/* OTP Modu + IMAP Ayarları */}
-              <div className="border-t pt-2 mt-1 space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-muted-foreground">OTP Modu:</span>
-                  {(["auto", "manual"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      onClick={async () => {
-                        await supabase.from("vfs_accounts").update({ otp_mode: mode } as any).eq("id", acc.id);
-                        toast.success(mode === "auto" ? "Otomatik IMAP modu seçildi" : "Manuel OTP modu seçildi");
-                      }}
-                      className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
-                        acc.otp_mode === mode
-                          ? mode === "auto"
-                            ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-700 dark:text-emerald-400 font-medium"
-                            : "bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-400 font-medium"
-                          : "border-border text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {mode === "auto" ? "📧 Otomatik (IMAP)" : "✋ Manuel"}
-                    </button>
-                  ))}
-                </div>
-                {editingImap[acc.id] ? (
-                  <div className="flex flex-wrap items-end gap-2">
-                    <div>
-                      <Label className="text-[10px]">IMAP Host</Label>
-                      <Input
-                        className="h-7 w-40 text-xs"
-                        placeholder="imap.gmail.com"
-                        value={editingImap[acc.id].host}
-                        onChange={(e) => setEditingImap((prev) => ({ ...prev, [acc.id]: { ...prev[acc.id], host: e.target.value } }))}
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-[10px]">IMAP Şifre (App Password)</Label>
-                      <Input
-                        className="h-7 w-40 text-xs"
-                        type="password"
-                        placeholder="uygulama şifresi"
-                        value={editingImap[acc.id].password}
-                        onChange={(e) => setEditingImap((prev) => ({ ...prev, [acc.id]: { ...prev[acc.id], password: e.target.value } }))}
-                      />
-                    </div>
-                    <Button size="sm" className="h-7 gap-1" onClick={() => saveImapSettings(acc.id)}>
-                      <CheckCircle2 className="w-3 h-3" /> Kaydet
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-7" onClick={() => setEditingImap((prev) => { const n = { ...prev }; delete n[acc.id]; return n; })}>
-                      İptal
-                    </Button>
-                  </div>
-                ) : (
-                  <button
-                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-                    onClick={() => setEditingImap((prev) => ({
-                      ...prev,
-                      [acc.id]: { host: acc.imap_host || "imap.gmail.com", password: acc.imap_password || "" }
-                    }))}
-                  >
-                    <Mail className="w-3 h-3" />
-                    {acc.imap_password ? "📧 IMAP ayarlandı — düzenle" : "📧 IMAP OTP ekle (otomatik kod okuma)"}
-                  </button>
-                )}
-
-                {/* IMAP Son Deneme Sonucu */}
-                {acc.imap_last_checked_at && (
-                  <div className={`mt-1.5 rounded px-2 py-1.5 text-[11px] flex items-start gap-1.5 ${
-                    acc.imap_last_status === "success"
-                      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                      : acc.imap_last_status === "error"
-                      ? "bg-destructive/10 text-destructive"
-                      : "bg-muted text-muted-foreground"
-                  }`}>
-                    <span className="shrink-0 mt-0.5">
-                      {acc.imap_last_status === "success" ? "✅" : acc.imap_last_status === "error" ? "❌" : "📭"}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <span className="font-medium">
-                        {acc.imap_last_status === "success" ? "OTP Bulundu" : acc.imap_last_status === "error" ? "IMAP Hatası" : "OTP Bulunamadı"}
-                      </span>
-                      {acc.imap_last_message && (
-                        <p className="truncate opacity-80 mt-0.5">{acc.imap_last_message}</p>
-                      )}
-                      <span className="opacity-60">
-                        {new Date(acc.imap_last_checked_at).toLocaleString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
 
               {acc.fail_count > 0 && (
                 <span className="text-xs text-destructive">Başarısız giriş: {acc.fail_count}</span>

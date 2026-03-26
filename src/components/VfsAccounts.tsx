@@ -81,6 +81,7 @@ export default function VfsAccounts() {
   const [loading, setLoading] = useState(false);
   const [smsOtpInputs, setSmsOtpInputs] = useState<Record<string, string>>({});
   const [regOtpInputs, setRegOtpInputs] = useState<Record<string, string>>({});
+  const [sendingOtpFor, setSendingOtpFor] = useState<string | null>(null);
   const [addMode, setAddMode] = useState<"existing" | "register" | "bulk">("existing");
   
   const [manualBrowserLoading, setManualBrowserLoading] = useState(false);
@@ -215,15 +216,24 @@ export default function VfsAccounts() {
   const submitManualOtp = async (id: string) => {
     const code = smsOtpInputs[id]?.replace(/\s+/g, "").trim();
     if (!code) { toast.error("OTP kodu girin"); return; }
-    const { error } = await supabase.functions.invoke("bot-api", {
-      body: { action: "set_account_otp", account_id: id, code },
-    });
-    if (error) {
-      toast.error("OTP gönderilemedi: " + error.message);
-    } else {
+    setSendingOtpFor(id);
+    try {
+      const { data, error } = await supabase.functions.invoke("bot-api", {
+        body: { action: "set_account_otp", account_id: id, code },
+      });
+
+      if (error) throw error;
+      if (!data?.ok) {
+        throw new Error(data?.error || "Sunucu OTP kabul etmedi");
+      }
+
       toast.success("OTP kodu gönderildi, bot kullanacak");
       setSmsOtpInputs((prev) => ({ ...prev, [id]: "" }));
-      loadAccounts();
+      await loadAccounts();
+    } catch (err: any) {
+      toast.error("OTP gönderilemedi: " + (err?.message || "Bilinmeyen hata"));
+    } finally {
+      setSendingOtpFor(null);
     }
   };
 
@@ -608,10 +618,23 @@ export default function VfsAccounts() {
                     className="h-7 w-24 text-xs font-mono"
                     value={smsOtpInputs[acc.id] || ""}
                     onChange={(e) => setSmsOtpInputs((prev) => ({ ...prev, [acc.id]: e.target.value }))}
-                    onKeyDown={(e) => e.key === "Enter" && submitManualOtp(acc.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        submitManualOtp(acc.id);
+                      }
+                    }}
                   />
-                  <Button size="sm" variant="default" className="h-7 px-2 gap-1" onClick={() => submitManualOtp(acc.id)}>
-                    <Send className="w-3 h-3" /> Gönder
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="default"
+                    className="h-7 px-2 gap-1"
+                    disabled={sendingOtpFor === acc.id}
+                    onClick={() => submitManualOtp(acc.id)}
+                  >
+                    {sendingOtpFor === acc.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                    Gönder
                   </Button>
                 </div>
               )}

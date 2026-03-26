@@ -2185,8 +2185,8 @@ async function checkAppointments(config, account) {
       if (status === "continue" || !status) {
         var currentText = await page.evaluate(() => document.body?.innerText || "").catch(() => "");
         var currentUrl = await page.url().catch ? page.url() : "";
-        if (currentText.includes("429002") || currentText.toLowerCase().includes("yetkisiz etkinlik") || currentText.toLowerCase().includes("unauthorized activity")) {
-          console.log("  ⛔ 429002 yetkisiz etkinlik hatası algılandı!");
+        if (currentText.includes("429002") || currentText.includes("429001") || currentText.toLowerCase().includes("yetkisiz etkinlik") || currentText.toLowerCase().includes("unauthorized activity") || currentText.toLowerCase().includes("erişim kısıtlandı") || currentText.toLowerCase().includes("erişimi geçici olarak kısıtladık")) {
+          console.log("  ⛔ Hesap kısıtlama hatası (429001/429002) algılandı!");
           status = "account_banned";
         }
         // Beklenmeyen hata (500) veya page-not-found → tarayıcı kapat, yeni IP ile tekrar başla

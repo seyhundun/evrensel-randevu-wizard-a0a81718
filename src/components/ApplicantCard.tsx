@@ -209,8 +209,8 @@ export default function ApplicantCard({
         </motion.div>
 
         <motion.div variants={{ hidden: { opacity: 0, y: 5 }, visible: { opacity: 1, y: 0 } }} className="flex flex-col gap-1.5">
-          <Label className="helper-text font-medium flex items-center">Doğum Tarihi (GG/AA/YYYY) <CopyTick value={applicant.birthDate} /></Label>
-          <Input placeholder="21/12/2016" value={applicant.birthDate} onChange={handleDateChange("birthDate")} className="bg-background shadow-card" />
+          <Label className="helper-text font-medium flex items-center">Doğum Tarihi (GG/AA/YYYY) <CopyTick value={displayBirthDate} /></Label>
+          <Input placeholder="21/12/2016" value={displayBirthDate} onChange={handleDateChange("birthDate")} className="bg-background shadow-card" />
         </motion.div>
 
         <motion.div variants={{ hidden: { opacity: 0, y: 5 }, visible: { opacity: 1, y: 0 } }} className="flex flex-col gap-1.5">
@@ -224,8 +224,8 @@ export default function ApplicantCard({
         </motion.div>
 
         <motion.div variants={{ hidden: { opacity: 0, y: 5 }, visible: { opacity: 1, y: 0 } }} className="flex flex-col gap-1.5 sm:col-span-2">
-          <Label className="helper-text font-medium flex items-center">Pasaport Son Kullanma Tarihi <CopyTick value={applicant.passportExpiry} /></Label>
-          <Input placeholder="15/08/2030" value={applicant.passportExpiry} onChange={handleDateChange("passportExpiry")} className="bg-background shadow-card" />
+          <Label className="helper-text font-medium flex items-center">Pasaport Son Kullanma Tarihi <CopyTick value={displayPassportExpiry} /></Label>
+          <Input placeholder="15/08/2030" value={displayPassportExpiry} onChange={handleDateChange("passportExpiry")} className="bg-background shadow-card" />
         </motion.div>
       </motion.div>
     </motion.div>

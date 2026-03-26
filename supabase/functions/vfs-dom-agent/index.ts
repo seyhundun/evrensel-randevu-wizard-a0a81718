@@ -125,7 +125,7 @@ Alanları şu sırayla doldur:
 
 ### HESAP SORUNLARI
 - "Hesabınız engellenmiş", "account blocked/banned/suspended" → status: "account_banned"
-- "429002", "yetkisiz etkinlik", "unauthorized activity" → status: "account_banned"
+- "429001", "429002", "erişim kısıtlandı", "yetkisiz etkinlik", "unauthorized activity" → status: "account_banned"
 - "Oturum süresi doldu", "session expired" → status: "session_expired"
 
 ### CLOUDFLARE / CAPTCHA

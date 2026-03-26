@@ -2346,17 +2346,109 @@ async function checkAppointments(config, account) {
       }
 
       if (status === "otp_required") {
-        console.log("  📩 OTP gerekiyor");
-        await logStep(id, "login_otp", `OTP doğrulama gerekli | ${account.email}`);
-        // Mevcut OTP handling mantığını kullan
-        const otpResult = await handleOtpVerification(page, account);
-        if (!otpResult.ok) {
-          await reportResult(id, "error", `OTP doğrulama gerekli | ${account.email}`, 0, otpResult.screenshot);
-          await updateAccountStatus(account.id, "cooldown", (account.fail_count || 0) + 1);
+        console.log("  📩 OTP gerekiyor — manuel kontrole bırakılıyor");
+        const ss = await takeScreenshotBase64(page);
+        await logStep(id, "login_otp", `⏸ OTP ekranı — manuel giriş bekleniyor | ${account.email}`);
+        await reportResult(id, "otp_waiting", `OTP ekranı geldi, manuel giriş bekleniyor | ${account.email}`, 0, ss);
+        
+        // DB'de otp_requested_at güncelle
+        await updateAccountOtpRequested(account.id);
+        
+        // Manuel OTP girilene kadar bekle (max 5 dakika)
+        var otpWaitStart = Date.now();
+        var OTP_WAIT_TIMEOUT = 5 * 60 * 1000; // 5 dakika
+        var manualOtp = null;
+        
+        while (Date.now() - otpWaitStart < OTP_WAIT_TIMEOUT) {
+          await delay(5000, 6000); // Her 5 saniyede bir kontrol et
+          
+          // DB'den manuel_otp alanını kontrol et
+          try {
+            var otpData = await apiPost({ action: "get_account_otp", account_id: account.id }, "get_account_otp");
+            if (otpData.ok && otpData.otp) {
+              manualOtp = otpData.otp;
+              console.log("  ✅ Manuel OTP alındı: " + manualOtp);
+              break;
+            }
+          } catch (e) {
+            console.log("  [OTP] DB kontrol hatası:", e.message);
+          }
+          
+          var elapsed = Math.round((Date.now() - otpWaitStart) / 1000);
+          if (elapsed % 30 === 0) {
+            console.log("  ⏳ OTP bekleniyor... (" + elapsed + "s)");
+          }
+        }
+        
+        if (!manualOtp) {
+          console.log("  ❌ OTP zaman aşımı (5 dakika)");
+          await logStep(id, "login_otp", `OTP zaman aşımı — 5 dakika içinde girilmedi | ${account.email}`);
+          await reportResult(id, "error", `OTP zaman aşımı | ${account.email}`, 0, ss);
           return { found: false, accountBanned: false, otpRequired: true, hadError: true };
         }
-        recentActions.push("OTP doğrulandı");
-        continue; // OTP başarılı, devam et
+        
+        // OTP'yi sayfaya yaz
+        try {
+          var otpInputs = await page.$$("input[type='text'], input[type='number'], input[type='password'], input[type='tel']");
+          var otpFilled = false;
+          for (var oi = 0; oi < otpInputs.length; oi++) {
+            var attrs = await page.evaluate(function(el) {
+              var p = el.closest("mat-form-field, .form-group, .otp-container, label, div");
+              var pText = p ? p.innerText.toLowerCase() : "";
+              return {
+                placeholder: (el.placeholder || "").toLowerCase(),
+                name: (el.name || "").toLowerCase(),
+                id: (el.id || "").toLowerCase(),
+                parentText: pText
+              };
+            }, otpInputs[oi]);
+            
+            var isOtpField = ["otp", "code", "doğrulama", "verification", "tek kullanımlık", "one-time", "seferlik"].some(function(k) {
+              return attrs.placeholder.includes(k) || attrs.name.includes(k) || attrs.id.includes(k) || attrs.parentText.includes(k);
+            });
+            
+            if (isOtpField || otpInputs.length <= 3) {
+              await otpInputs[oi].click();
+              await delay(200, 300);
+              await page.evaluate(function(el, val) {
+                var desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value") || Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value");
+                if (desc && desc.set) desc.set.call(el, val);
+                el.value = val;
+                el.dispatchEvent(new Event("input", { bubbles: true }));
+                el.dispatchEvent(new Event("change", { bubbles: true }));
+                el.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true }));
+              }, otpInputs[oi], manualOtp);
+              otpFilled = true;
+              console.log("  ✅ OTP alana yazıldı");
+              break;
+            }
+          }
+          
+          if (otpFilled) {
+            await delay(500, 1000);
+            // Submit/Doğrula butonuna tıkla
+            var buttons = await page.$$("button, input[type='submit']");
+            for (var bi = 0; bi < buttons.length; bi++) {
+              var btnText = await page.evaluate(function(el) { return (el.innerText || el.value || "").toLowerCase(); }, buttons[bi]);
+              if (["doğrula", "verify", "onayla", "confirm", "gönder", "submit", "devam", "continue"].some(function(k) { return btnText.includes(k); })) {
+                await buttons[bi].click();
+                console.log("  ✅ Doğrula butonuna tıklandı");
+                break;
+              }
+            }
+          }
+          
+          // Manuel OTP'yi DB'den temizle
+          await apiPost({ action: "clear_account_otp", account_id: account.id }, "clear_account_otp");
+          
+        } catch (otpErr) {
+          console.error("  [OTP] Yazma hatası:", otpErr.message);
+        }
+        
+        await logStep(id, "login_otp", `OTP girildi ve doğrulandı | ${account.email}`);
+        recentActions.push("Manuel OTP girildi ve doğrulandı");
+        await delay(2000, 3000);
+        continue;
       }
 
       if (status === "captcha_needed") {

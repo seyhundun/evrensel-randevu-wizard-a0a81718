@@ -1542,7 +1542,7 @@ async function tryImapOtp(accountId) {
             if (allCodes.length > 0) otp = allCodes[allCodes.length - 1];
           }
 
-          if (otp) {
+          if (otp && (senderMatched || /idata|verify|verification|doğrulama|codice/i.test(`${fromText} ${subject} ${normalizedText.slice(0, 500)}`))) {
             console.log(`  [IMAP] ✅ OTP bulundu (${folder}): ${otp} | from: ${fromText || "?"} | subject: ${subject}`);
             await lock.release();
             await client.logout();

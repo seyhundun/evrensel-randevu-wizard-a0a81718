@@ -53,8 +53,8 @@ ${applicants.map((a: any, i: number) => `### ${i + 1}. Başvuru Sahibi
 - Soyad: ${a.last_name || ""}
 - Pasaport No: ${a.passport || ""}
 - Doğum Tarihi: ${a.birth_date || ""}
-- Telefon: ${a.phone || ""}
-- E-posta: ${a.email || ""}`).join("\n")}
+- Uyruk: ${a.nationality || "Turkey"}
+- Pasaport Son Kullanma: ${a.passport_expiry || ""}`).join("\n")}
 ` : ""}
 
 ## ELEMENTLER

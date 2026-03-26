@@ -72,6 +72,9 @@ interface VfsAccount {
   captcha_waiting_at: string | null;
   captcha_manual_approved: boolean;
   booking_enabled: boolean;
+  imap_last_status: string | null;
+  imap_last_message: string | null;
+  imap_last_checked_at: string | null;
 }
 
 export default function VfsAccounts() {

@@ -11,7 +11,7 @@ import ControlPanel from "@/components/ControlPanel";
 import ModuleStatus from "@/components/ModuleStatus";
 import BotActions from "@/components/BotActions";
 import ProxySettings from "@/components/ProxySettings";
-import StatusPanel from "@/components/StatusPanel";
+
 import ApplicantList from "@/components/ApplicantList";
 import TrackingLogs from "@/components/TrackingLogs";
 import VfsAccounts from "@/components/VfsAccounts";
@@ -271,15 +271,6 @@ const Index = () => {
                     />
                   </div>
                   <TrackingLogs configId={t.configId} />
-                  <StatusPanel
-                    status={t.status}
-                    country={t.country}
-                    city={t.city}
-                    elapsedSeconds={t.elapsedSeconds}
-                    checksCount={t.checksCount}
-                    onSimulateFound={t.simulateFound}
-                    configId={t.configId}
-                  />
                   <ServerCommandPanel />
                 </div>
               </ScrollArea>

@@ -52,6 +52,7 @@ Deno.serve(async (req) => {
       created_at: u.created_at,
       last_sign_in_at: u.last_sign_in_at,
       role: role ? role.role : "user",
+      allowed_tabs: role?.allowed_tabs || ["vfs", "idata", "quiz"],
     };
   });
 

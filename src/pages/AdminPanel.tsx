@@ -26,7 +26,14 @@ interface UserWithRole {
   created_at: string;
   last_sign_in_at: string | null;
   role: string | null;
+  allowed_tabs: string[];
 }
+
+const TAB_OPTIONS = [
+  { value: "vfs", label: "🌍 VFS" },
+  { value: "idata", label: "🇮🇹 iDATA" },
+  { value: "quiz", label: "🧩 Quiz Bot" },
+];
 
 const AdminPanel = () => {
   const { session, loading } = useAuth();
@@ -297,6 +304,7 @@ const AdminPanel = () => {
                     <TableRow>
                       <TableHead className="text-xs">E-posta</TableHead>
                       <TableHead className="text-xs">Rol</TableHead>
+                      <TableHead className="text-xs">Sekme Yetkileri</TableHead>
                       <TableHead className="text-xs">Son Giriş</TableHead>
                       <TableHead className="text-xs text-right">İşlem</TableHead>
                     </TableRow>
@@ -313,6 +321,23 @@ const AdminPanel = () => {
                           >
                             {user.role === "admin" ? "👑 Admin" : "👤 Kullanıcı"}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1 flex-wrap">
+                            {TAB_OPTIONS.map((tab) => {
+                              const hasAccess = user.allowed_tabs?.includes(tab.value);
+                              return (
+                                <Badge
+                                  key={tab.value}
+                                  variant={hasAccess ? "default" : "outline"}
+                                  className={`text-[10px] cursor-pointer transition-colors ${hasAccess ? "" : "opacity-40"}`}
+                                  onClick={() => user.id && handleToggleTab(user.id, tab.value, user.allowed_tabs || [])}
+                                >
+                                  {tab.label}
+                                </Badge>
+                              );
+                            })}
+                          </div>
                         </TableCell>
                         <TableCell className="text-xs font-mono">
                           {user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleString("tr-TR") : "Henüz giriş yok"}

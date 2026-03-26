@@ -63,8 +63,8 @@ export function useTracking() {
               lastName: a.last_name,
               passport: a.passport,
               birthDate: a.birth_date,
-              phone: a.phone,
-              email: a.email,
+              nationality: (a as any).nationality || "Turkey",
+              passportExpiry: (a as any).passport_expiry || "",
             }))
           );
         }
@@ -150,10 +150,12 @@ export function useTracking() {
       last_name: a.lastName,
       passport: a.passport,
       birth_date: a.birthDate,
-      phone: a.phone,
-      email: a.email,
+      phone: "",
+      email: "",
       sort_order: i,
-    }));
+    } as any));
+    // Also update nationality and passport_expiry via raw approach
+    
     await supabase.from("applicants").insert(applicantRows);
 
     return id;

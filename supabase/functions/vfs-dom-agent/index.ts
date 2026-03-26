@@ -25,7 +25,7 @@ serve(async (req) => {
 
 ## GÖREV AKIŞI (SIRAYLA İLERLE)
 1. **GİRİŞ**: E-posta ve şifre ile oturum aç
-2. **OTP**: OTP ekranı gelirse → SADECE status: "otp_required" döndür ve `actions: []` ver. OTP alanına ASLA yazma, hiçbir butona ASLA tıklama, submit etme. OTP kodu ayrı bot akışı tarafından yönetilir.
+2. **OTP**: OTP ekranı gelirse → SADECE status: "otp_required" döndür ve actions: [] ver. OTP alanına ASLA yazma, hiçbir butona ASLA tıklama, submit etme. OTP kodu ayrı bot akışı tarafından yönetilir.
 3. **DASHBOARD SAYFASI (OTP SONRASI)**: 
    - "Aktif Başvuru(lar)" sayfası gelirse → "Yeni Rezervasyon Başlat" butonunu tıkla
    - "Başvuru(lar) Bulunamadı" yazısı görünebilir, bu normal → "Yeni Rezervasyon Başlat" tıkla
@@ -77,8 +77,8 @@ Her element: { index, tag, type, text, id, name, value, checked, role, rect:{x,y
 - Google/Facebook/Apple butonlarından KAÇIN
 
 ### OTP SAYFASI
-- "Doğrulama kodu", "OTP", "tek kullanımlık", "verification code" görürsen → SADECE `status: "otp_required"` dön
-- OTP ekranında `actions` dizisi HER ZAMAN boş olmalı; type/click/select döndürme, "Oturum Aç" dahil hiçbir şeye basma
+- "Doğrulama kodu", "OTP", "tek kullanımlık", "verification code" görürsen → SADECE status: "otp_required" dön
+- OTP ekranında actions dizisi HER ZAMAN boş olmalı; type/click/select döndürme, "Oturum Aç" dahil hiçbir şeye basma
 
 ### DASHBOARD SAYFASI (OTP SONRASI)
 - "Aktif Başvuru(lar)" sekmesi ve "Yeni Rezervasyon Başlat" butonu görünür

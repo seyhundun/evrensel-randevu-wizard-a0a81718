@@ -152,10 +152,10 @@ export function useTracking() {
       birth_date: a.birthDate,
       phone: "",
       email: "",
+      nationality: a.nationality || "Turkey",
+      passport_expiry: a.passportExpiry || "",
       sort_order: i,
     } as any));
-    // Also update nationality and passport_expiry via raw approach
-    
     await supabase.from("applicants").insert(applicantRows);
 
     return id;

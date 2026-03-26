@@ -3,12 +3,14 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Session } from "@supabase/supabase-js";
 
 function logAuthEvent(email: string, userId: string | undefined, eventType: string) {
-  supabase.from("auth_logs").insert({
-    user_email: email,
-    user_id: userId || null,
-    event_type: eventType,
-    user_agent: navigator.userAgent,
-  } as any).then(() => {}).catch(() => {});
+  Promise.resolve(
+    supabase.from("auth_logs").insert({
+      user_email: email,
+      user_id: userId || null,
+      event_type: eventType,
+      user_agent: navigator.userAgent,
+    } as any)
+  ).catch(() => {});
 }
 
 export function useAuth() {

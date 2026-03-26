@@ -2051,45 +2051,71 @@ async function executeVfsDomAction(page, action, elements) {
   if (action.type === "type" && targetElement) {
     var tx = targetElement.rect.x + Math.round(targetElement.rect.w / 2);
     var ty = targetElement.rect.y + Math.round(targetElement.rect.h / 2);
+    var typeValue = action.value || "";
     try {
+      // 1) Elemente tıkla ve focus ver
       await page.mouse.click(tx, ty);
       await delay(300, 600);
-      // Alanı temizle
+
+      // 2) Alanı temizle
       await page.keyboard.down("Control");
       await page.keyboard.press("a");
       await page.keyboard.up("Control");
       await delay(100, 200);
-      // İnsan benzeri yaz
-      await humanType(page, null, action.value || "", {
-        clearFirst: false, // Zaten temizledik
-        minDelay: 40,
-        maxDelay: 140,
-      });
-      // Angular event tetikle
+      await page.keyboard.press("Backspace");
+      await delay(200, 400);
+
+      // 3) Karakter karakter yaz (insan benzeri)
+      for (var ci = 0; ci < typeValue.length; ci++) {
+        var chDelay = 40 + Math.floor(Math.random() * 100);
+        await page.keyboard.type(typeValue[ci], { delay: chDelay });
+        if (Math.random() < 0.15) await delay(200, 600);
+      }
+      await delay(300, 600);
+
+      // 4) Angular/React uyumluluğu: nativeInputValueSetter ile değeri zorla ayarla
       await page.evaluate(function(val, idx) {
         var els = document.querySelectorAll('a, button, input, select, textarea, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="option"], [role="tab"], [role="menuitem"], [role="switch"], [tabindex], label, [onclick], mat-select, mat-option, .mat-mdc-option');
         var visible = [];
-        for (var i = 0; i < els.length && visible.length <= idx; i++) {
+        for (var i = 0; i < els.length; i++) {
           var rect = els[i].getBoundingClientRect();
           if (rect.width >= 5 && rect.height >= 5) visible.push(els[i]);
+          if (visible.length > idx) break;
         }
         var el = visible[idx];
-        if (el) {
-          el.dispatchEvent(new Event("input", { bubbles: true }));
-          el.dispatchEvent(new Event("change", { bubbles: true }));
-          el.dispatchEvent(new Event("blur", { bubbles: true }));
+        if (!el) return;
+
+        // nativeInputValueSetter ile Angular/React formlarına değer enjekte et
+        var descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+          || Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+        if (descriptor && descriptor.set) {
+          descriptor.set.call(el, val);
+        } else {
+          el.value = val;
         }
-      }, action.value || "", action.elementIndex);
-      console.log("[VFS-DOM] Yazma: " + (action.value || "").slice(0, 30));
+
+        // Tüm framework event'lerini tetikle
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+        el.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: "a" }));
+        el.dispatchEvent(new Event("blur", { bubbles: true }));
+
+        // Angular ngModel için ek: compositionend
+        el.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: val }));
+      }, typeValue, action.elementIndex);
+
+      console.log("[VFS-DOM] Yazma OK: " + typeValue.slice(0, 30) + " (idx=" + action.elementIndex + ")");
     } catch (typeErr) {
       console.log("[VFS-DOM] Yazma hatası:", typeErr.message);
-      // Fallback: selector ile humanType
+      // Fallback: CSS selector ile humanType
       try {
         var selector = targetElement.id ? "#" + targetElement.id : (targetElement.name ? "input[name='" + targetElement.name + "']" : null);
         if (selector) {
-          await humanType(page, selector, action.value || "", { clearFirst: true, minDelay: 40, maxDelay: 140 });
+          await humanType(page, selector, typeValue, { clearFirst: true, minDelay: 40, maxDelay: 140 });
         }
-      } catch {}
+      } catch (fallbackErr) {
+        console.log("[VFS-DOM] Fallback yazma da başarısız:", fallbackErr.message);
+      }
     }
     return;
   }

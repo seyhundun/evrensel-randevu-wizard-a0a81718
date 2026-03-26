@@ -677,7 +677,10 @@ async function waitForLoginFormAfterQueue(page, loginUrl) {
       pageState.title.includes("bir şeyler ters gitti") ||
       pageState.title.includes("üzgünüm") ||
       pageState.body.includes("bir şeyler ters gitti") ||
-      pageState.body.includes("sorry, something went wrong");
+      pageState.body.includes("sorry, something went wrong") ||
+      pageState.body.includes("beklenmeyen hata") ||
+      pageState.body.includes("Beklenmeyen hata") ||
+      (pageState.body.includes("(500)") && pageState.body.includes("hata"));
 
     const sessionExpiredLike =
       pageState.body.includes("oturum süresi doldu") ||

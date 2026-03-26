@@ -84,8 +84,16 @@ Her element: { index, tag, type, text, id, name, value, checked, role, rect:{x,y
 - Ülke, şehir, kategori seçimi gerekiyorsa uygun değerleri seç
 - Devam/Continue/Next/İleri butonlarını tıkla
 - Sayfa boşsa veya yükleniyorsa → scroll veya wait
+### BAŞVURU FORMU DOLDURMA
+- Giriş yaptıktan sonra başvuru/randevu formu geldiğinde, yukarıdaki başvuru sahipleri bilgilerini kullanarak formu doldur
+- Ad, soyad, pasaport numarası, doğum tarihi, telefon, e-posta gibi alanları bul ve ilgili değerleri "type" aksiyonu ile yaz
+- Tarih alanları için sitenin beklediği formatı kullan (genellikle DD/MM/YYYY veya DD.MM.YYYY)
+- Dropdown/select alanları varsa (cinsiyet, milliyet vb.) uygun değeri "select" aksiyonu ile seç
+- Birden fazla başvuru sahibi varsa sırayla doldur
+- Form alanlarını doldurduktan sonra "Continue/Devam/Submit/Gönder" butonuna tıkla
+- Eğer "Add Applicant" / "Başvuru Sahibi Ekle" butonu varsa ve birden fazla başvuru sahibi varsa, her biri için ekle ve doldur
 
-## SON YAPILAN AKSİYONLAR (tekrar etme!)
+
 ${recentActions.slice(-5).join("\n")}
 
 ## KRİTİK KURALLAR

@@ -1486,14 +1486,15 @@ async function tryImapOtp(accountId) {
             continue;
           }
 
+          let senderMatched = true;
           if (allowedFrom.length > 0) {
-            const senderMatched = fromList.some((addr) =>
-              allowedFrom.some((allowed) => addr.includes(allowed))
+            senderMatched = fromList.some((addr) =>
+              allowedFrom.some((allowed) => addr.includes(allowed) || allowed.includes(addr))
             );
-            if (!senderMatched) {
-              console.log(`  [IMAP] ${folder} UID ${uid} atlandı (from: ${fromText || "?"})`);
-              continue;
-            }
+          }
+
+          if (!senderMatched) {
+            console.log(`  [IMAP] ${folder} UID ${uid} gönderen eşleşmedi | from: ${fromText || "?"} | subject: ${subject}`);
           }
 
           const rawText = (msg?.source ? msg.source.toString("utf8") : "").replace(/\r/g, "");
@@ -1541,7 +1542,7 @@ async function tryImapOtp(accountId) {
             if (allCodes.length > 0) otp = allCodes[allCodes.length - 1];
           }
 
-          if (otp) {
+          if (otp && (senderMatched || /idata|verify|verification|doğrulama|codice/i.test(`${fromText} ${subject} ${normalizedText.slice(0, 500)}`))) {
             console.log(`  [IMAP] ✅ OTP bulundu (${folder}): ${otp} | from: ${fromText || "?"} | subject: ${subject}`);
             await lock.release();
             await client.logout();

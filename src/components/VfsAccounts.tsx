@@ -75,6 +75,7 @@ interface VfsAccount {
   imap_last_status: string | null;
   imap_last_message: string | null;
   imap_last_checked_at: string | null;
+  otp_mode: string;
 }
 
 export default function VfsAccounts() {

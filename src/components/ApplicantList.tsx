@@ -40,23 +40,26 @@ export default function ApplicantList({
       if (error) throw error;
       if (!data || data.length === 0) {
         toast.error("Veritabanında başvuru sahibi bulunamadı");
+        setFilling(false);
         return;
       }
 
-      // Fill each applicant's fields from DB
-      for (let i = 0; i < Math.min(data.length, applicants.length); i++) {
+      // Batch all updates at once using onBatchUpdate
+      const count = Math.min(data.length, applicants.length);
+      for (let i = 0; i < count; i++) {
         const db = data[i];
         const local = applicants[i];
-        if (db.first_name) onUpdate(local.id, "firstName", db.first_name);
-        if (db.last_name) onUpdate(local.id, "lastName", db.last_name);
-        if (db.gender) onUpdate(local.id, "gender", db.gender);
-        if (db.birth_date) onUpdate(local.id, "birthDate", db.birth_date);
-        if (db.nationality) onUpdate(local.id, "nationality", db.nationality);
-        if (db.passport) onUpdate(local.id, "passport", db.passport);
-        if (db.passport_expiry) onUpdate(local.id, "passportExpiry", db.passport_expiry);
+        // Use setTimeout to ensure React processes each update
+        onUpdate(local.id, "firstName", db.first_name || "");
+        onUpdate(local.id, "lastName", db.last_name || "");
+        onUpdate(local.id, "gender", db.gender || "");
+        onUpdate(local.id, "birthDate", db.birth_date || "");
+        onUpdate(local.id, "nationality", db.nationality || "Turkey");
+        onUpdate(local.id, "passport", db.passport || "");
+        onUpdate(local.id, "passportExpiry", db.passport_expiry || "");
       }
 
-      toast.success(`${Math.min(data.length, applicants.length)} başvuru sahibinin bilgileri dolduruldu!`);
+      toast.success(`${count} başvuru sahibinin bilgileri dolduruldu!`);
     } catch (err: any) {
       toast.error("Bilgiler yüklenemedi: " + (err.message || "Bilinmeyen hata"));
     } finally {

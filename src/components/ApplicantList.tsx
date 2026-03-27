@@ -24,8 +24,10 @@ export default function ApplicantList({
   personCount,
   setPersonCount,
   configId,
+  onSave,
 }: ApplicantListProps) {
   const [filling, setFilling] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const handleAutoFill = async () => {
     if (!configId) {

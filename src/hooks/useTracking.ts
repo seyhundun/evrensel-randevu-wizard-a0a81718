@@ -119,40 +119,60 @@ export function useTracking() {
     []
   );
 
-  // Auto-save applicants to DB when they change (debounced)
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const applicantsRef = useRef(applicants);
-  applicantsRef.current = applicants;
-
-  useEffect(() => {
-    if (!configId) return;
-    // Skip initial load
-    if (saveTimerRef.current !== undefined) {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = setTimeout(async () => {
-        const currentApplicants = applicantsRef.current;
-        try {
-          await supabase.from("applicants").delete().eq("config_id", configId);
-          const rows = currentApplicants.map((a, i) => ({
-            config_id: configId,
-            first_name: a.firstName,
-            last_name: a.lastName,
-            passport: a.passport,
-            birth_date: a.birthDate,
-            phone: "",
-            email: "",
-            nationality: a.nationality || "Turkey",
-            passport_expiry: a.passportExpiry || "",
-            gender: a.gender || "",
-            sort_order: i,
-          } as any));
-          await supabase.from("applicants").insert(rows);
-        } catch (err) {
-          console.error("Auto-save applicants failed:", err);
-        }
-      }, 1500);
+  // Manual save applicants function
+  const saveApplicants = useCallback(async () => {
+    let id = configId;
+    
+    // If no config exists, create one first
+    if (!id) {
+      const configData = {
+        country: country || "fra",
+        city: city || "istanbul",
+        visa_category: visaCategory || null,
+        visa_subcategory: visaSubcategory || null,
+        person_count: personCount,
+        check_interval: interval,
+        keep_alive: keepAlive,
+        is_active: false,
+      };
+      const { data } = await supabase
+        .from("tracking_configs")
+        .insert(configData)
+        .select("id")
+        .single();
+      if (data) {
+        id = data.id;
+        setConfigId(data.id);
+      }
     }
-  }, [applicants, configId]);
+    
+    if (!id) {
+      toast.error("Config oluşturulamadı");
+      return;
+    }
+
+    try {
+      await supabase.from("applicants").delete().eq("config_id", id);
+      const rows = applicants.map((a, i) => ({
+        config_id: id!,
+        first_name: a.firstName,
+        last_name: a.lastName,
+        passport: a.passport,
+        birth_date: a.birthDate,
+        phone: "",
+        email: "",
+        nationality: a.nationality || "Turkey",
+        passport_expiry: a.passportExpiry || "",
+        gender: a.gender || "",
+        sort_order: i,
+      } as any));
+      await supabase.from("applicants").insert(rows);
+      toast.success("Başvuru sahipleri kaydedildi");
+    } catch (err) {
+      console.error("Save applicants failed:", err);
+      toast.error("Kaydetme başarısız");
+    }
+  }, [applicants, configId, country, city, visaCategory, visaSubcategory, personCount, interval, keepAlive]);
 
   const saveConfig = async () => {
     // Upsert tracking config

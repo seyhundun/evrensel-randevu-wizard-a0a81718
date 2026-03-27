@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { ClipboardCheck, Loader2 } from "lucide-react";
+import { ClipboardCheck, Loader2, Save } from "lucide-react";
 import ApplicantCard from "./ApplicantCard";
 import type { Applicant } from "@/lib/constants";
 import { toast } from "sonner";
@@ -14,6 +14,7 @@ interface ApplicantListProps {
   personCount: number;
   setPersonCount: (n: number) => void;
   configId?: string | null;
+  onSave?: () => Promise<void>;
 }
 
 export default function ApplicantList({

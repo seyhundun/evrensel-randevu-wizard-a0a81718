@@ -362,5 +362,6 @@ export function useTracking() {
     elapsedSeconds,
     checksCount,
     configId,
+    saveApplicants,
   };
 }

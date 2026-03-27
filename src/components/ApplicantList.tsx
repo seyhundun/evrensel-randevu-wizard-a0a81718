@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { ClipboardCheck, Loader2 } from "lucide-react";
+import { ClipboardCheck, Loader2, Save } from "lucide-react";
 import ApplicantCard from "./ApplicantCard";
 import type { Applicant } from "@/lib/constants";
 import { toast } from "sonner";
@@ -14,6 +14,7 @@ interface ApplicantListProps {
   personCount: number;
   setPersonCount: (n: number) => void;
   configId?: string | null;
+  onSave?: () => Promise<void>;
 }
 
 export default function ApplicantList({
@@ -23,8 +24,10 @@ export default function ApplicantList({
   personCount,
   setPersonCount,
   configId,
+  onSave,
 }: ApplicantListProps) {
   const [filling, setFilling] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const handleAutoFill = async () => {
     if (!configId) {
@@ -98,15 +101,30 @@ export default function ApplicantList({
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h2 className="section-title text-foreground">Başvuru Sahipleri</h2>
-        <Button
-          onClick={handleAutoFill}
-          variant="outline"
-          disabled={filling}
-          className="gap-2 shadow-card hover:shadow-card-hover transition-shadow"
-        >
-          {filling ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardCheck className="w-4 h-4" />}
-          {filling ? "Dolduruluyor..." : "Tümünü Doldur"}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={async () => {
+              if (!onSave) return;
+              setSaving(true);
+              try { await onSave(); } finally { setSaving(false); }
+            }}
+            variant="default"
+            disabled={saving}
+            className="gap-2 shadow-card hover:shadow-card-hover transition-shadow"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? "Kaydediliyor..." : "Kaydet"}
+          </Button>
+          <Button
+            onClick={handleAutoFill}
+            variant="outline"
+            disabled={filling}
+            className="gap-2 shadow-card hover:shadow-card-hover transition-shadow"
+          >
+            {filling ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardCheck className="w-4 h-4" />}
+            {filling ? "Dolduruluyor..." : "Tümünü Doldur"}
+          </Button>
+        </div>
       </div>
 
       <AnimatePresence mode="popLayout">

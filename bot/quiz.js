@@ -2410,6 +2410,90 @@ async function askOpenAIVision(apiKey, screenshotBase64, currentUrl, account, st
 // DOM Agent: Sayfa metnini + elementleri toplar, AI tam otonom karar verir
 // Birden fazla aksiyonu sırayla yürütür (multi-action)
 
+function domAgentNormalizeText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/["'“”‘’]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function domAgentIsIndustryQuestion(pageText) {
+  var text = domAgentNormalizeText(pageText);
+  return /(which industry|what industry|industry do you work|household.*industry|sector.*work|line of business|hangi sekt|çalıştığınız sektör|calistiginiz sektor|meslek sektörü|industry\/business|industry business)/.test(text);
+}
+
+function domAgentBuildClickAction(selectorText, reason, targetElement) {
+  var action = {
+    action: "click",
+    selector: selectorText || "",
+    value: "",
+    description: reason || "Seçenek seçiliyor",
+    done: false
+  };
+
+  if (targetElement && targetElement.rect) {
+    action._domTarget = {
+      x: targetElement.rect.x + Math.round(targetElement.rect.w / 2),
+      y: targetElement.rect.y + Math.round(targetElement.rect.h / 2),
+      index: targetElement.index
+    };
+  }
+
+  return action;
+}
+
+function domAgentFindIndustryFallback(pageText, elements) {
+  if (!domAgentIsIndustryQuestion(pageText)) return null;
+
+  var normalizedPageText = domAgentNormalizeText(pageText);
+  var preferredOptions = [
+    { label: "Computer Software", keywords: ["computer software", "software"], score: 130 },
+    { label: "Technology", keywords: ["technology/software", "technology / software", "information technology", "technology", "it services", "internet"], score: 120 },
+    { label: "Marketing/Sales", keywords: ["marketing/sales", "marketing / sales", "marketing", "sales", "advertising"], score: 110 },
+    { label: "Business Services", keywords: ["business services", "professional services", "consulting"], score: 95 }
+  ];
+
+  var best = null;
+  for (var i = 0; i < preferredOptions.length; i++) {
+    var option = preferredOptions[i];
+    for (var k = 0; k < option.keywords.length; k++) {
+      var keyword = option.keywords[k];
+      var pageHasKeyword = normalizedPageText.indexOf(keyword) !== -1;
+      for (var e = 0; e < (elements || []).length; e++) {
+        var el = elements[e];
+        if (!el || el.disabled || el.isInCookieBanner) continue;
+        var blob = domAgentNormalizeText([
+          el.text || "",
+          el.ariaLabel || "",
+          el.name || "",
+          el.className || ""
+        ].join(" "));
+        if (!blob || /(none of the above|prefer not|other\b|skip|continue|next|submit)/.test(blob)) continue;
+        if (blob.indexOf(keyword) === -1) continue;
+
+        var score = option.score;
+        if (el.role === "radio" || el.role === "checkbox" || el.role === "option") score += 18;
+        if (el.type === "radio" || el.type === "checkbox") score += 15;
+        if (el.tag === "label" || el.tag === "li" || el.tag === "button") score += 10;
+        if (pageHasKeyword) score += 12;
+
+        if (!best || score > best.score) {
+          best = { score: score, label: option.label, element: el };
+        }
+      }
+    }
+  }
+
+  if (!best || best.score < 90) return null;
+
+  return domAgentBuildClickAction(
+    best.label,
+    "Industry fallback: " + best.label + " seçiliyor",
+    best.element
+  );
+}
+
 var _domAgentPendingActions = []; // Kuyruktaki aksiyonlar
 
 async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKey) {
@@ -2526,6 +2610,13 @@ async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKe
   if (elements.length === 0 && !pageText) {
     await supabaseInsertLog("DOM'da element ve metin bulunamadı", "warning");
     return null;
+  }
+
+  var industryFallbackAction = domAgentFindIndustryFallback(pageText, elements);
+  if (industryFallbackAction) {
+    console.log("[DOM-AGENT] 🎯 Local fallback: " + industryFallbackAction.description);
+    await supabaseInsertLog("🎯 DOM Agent local fallback: " + industryFallbackAction.description, "info");
+    return industryFallbackAction;
   }
 
   // 3) Görev tanımı

@@ -2006,8 +2006,8 @@ async function runGeminiEngine(url, account, settings) {
           
           if (autoClicked && autoClicked.found && !autoClicked.disabled) {
             await quizDelay(300, 600);
-            // Fiziksel tıklama
-            var clicked = await page.evaluate(function() {
+            // Fiziksel tıklama — önce scrollIntoView sonra koordinat tabanlı mouse.click
+            var btnCoords = await page.evaluate(function() {
               function normalize(text) {
                 return String(text || '').toLowerCase().replace(/\s+/g, ' ').trim();
               }
@@ -2017,33 +2017,34 @@ async function runGeminiEngine(url, account, settings) {
               function isContinueLike(text) {
                 return /(please click to continue|click to continue|continue|next|submit|verify|devam etmek|devam et|devam|ileri|sonraki|gönder|gonder)/.test(normalize(text));
               }
-              function fireClick(el) {
-                if (!el || isDisabled(el)) return null;
-                var rect = el.getBoundingClientRect();
-                var x = rect.left + rect.width / 2;
-                var y = rect.top + rect.height / 2;
-                var events = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'];
-                for (var i = 0; i < events.length; i++) {
-                  try {
-                    el.dispatchEvent(new MouseEvent(events[i], { view: window, bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 }));
-                  } catch (e) {}
-                }
-                try { el.click(); } catch (e) {}
-                return normalize(el.textContent || el.value || el.getAttribute('aria-label') || 'continue');
-              }
 
               var btns = document.querySelectorAll('button, input[type="submit"], input[type="button"], a, [role="button"], [onclick], [tabindex]');
               for (var i = 0; i < btns.length; i++) {
                 var txt = [btns[i].textContent || '', btns[i].value || '', btns[i].getAttribute('aria-label') || '', btns[i].getAttribute('title') || ''].join(' ');
                 if ((isContinueLike(txt) || /^[→»›⟶➜➡➝⮕]+$/.test((btns[i].textContent || '').trim())) && !isDisabled(btns[i])) {
-                  return fireClick(btns[i]);
+                  btns[i].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  var rect = btns[i].getBoundingClientRect();
+                  if (rect.width > 0 && rect.height > 0) {
+                    // Dispatch events in-page as well
+                    var x = rect.left + rect.width / 2;
+                    var y = rect.top + rect.height / 2;
+                    var events = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'];
+                    for (var e = 0; e < events.length; e++) {
+                      try { btns[i].dispatchEvent(new MouseEvent(events[e], { view: window, bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 })); } catch (err) {}
+                    }
+                    try { btns[i].click(); } catch (err) {}
+                    return { clicked: true, text: normalize(btns[i].textContent || 'continue'), x: x, y: y };
+                  }
                 }
               }
-              return null;
+              return { clicked: false };
             });
-            if (clicked) {
-              console.log('[AUTO-CONTINUE] ✅ ' + clicked + ' butonuna otomatik tıklandı');
-              await supabaseInsertLog('⏩ ' + clicked + ' butonuna otomatik tıklandı', 'info');
+            
+            if (btnCoords && btnCoords.clicked) {
+              // Ek olarak Puppeteer mouse.click ile fiziksel tıklama (bazı siteler sadece bunu kabul eder)
+              try { await page.mouse.click(btnCoords.x, btnCoords.y, { delay: 50 }); } catch (e) {}
+              console.log('[AUTO-CONTINUE] ✅ ' + (btnCoords.text || 'continue') + ' butonuna otomatik tıklandı (koordinat: ' + Math.round(btnCoords.x) + ',' + Math.round(btnCoords.y) + ')');
+              await supabaseInsertLog('⏩ ' + (btnCoords.text || 'continue') + ' butonuna otomatik tıklandı', 'info');
               await quizDelay(1500, 3000);
             }
           }

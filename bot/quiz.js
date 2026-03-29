@@ -2534,7 +2534,7 @@ function domAgentFindIndustryFallback(pageText, elements) {
 
 var _domAgentPendingActions = []; // Kuyruktaki aksiyonlar
 
-async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKey) {
+async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKey, externalScreenshot) {
   // Eğer kuyrukta bekleyen aksiyon varsa, AI'ya sormadan direkt döndür
   if (_domAgentPendingActions.length > 0) {
     var queued = _domAgentPendingActions.shift();

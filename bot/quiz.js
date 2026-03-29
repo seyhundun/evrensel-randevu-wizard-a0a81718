@@ -1379,20 +1379,32 @@ async function humanIdle(min, max) {
   await new Promise(function(r) { setTimeout(r, wait); });
 }
 
-// İnsan benzeri mouse hareketi
+// Gelişmiş insan benzeri mouse hareketi — Bezier eğrili
 async function humanMove(page) {
   try {
     var vp = page.viewport();
-    var w = (vp && vp.width) || 1366;
-    var h = (vp && vp.height) || 768;
-    var moves = Math.floor(Math.random() * 3) + 1;
+    var w = (vp && vp.width) || 1920;
+    var h = (vp && vp.height) || 1080;
+    var moves = Math.floor(Math.random() * 4) + 2; // 2-5 hareket
     for (var i = 0; i < moves; i++) {
-      var x = Math.floor(Math.random() * w * 0.6 + w * 0.2);
-      var y = Math.floor(Math.random() * h * 0.6 + h * 0.2);
-      await page.mouse.move(x, y, { steps: Math.floor(Math.random() * 20 + 10) });
-      await quizDelay(300, 800);
+      var x = Math.floor(Math.random() * w * 0.7 + w * 0.15);
+      var y = Math.floor(Math.random() * h * 0.7 + h * 0.15);
+      // Değişken hız: bazen hızlı bazen yavaş
+      var steps = Math.floor(Math.random() * 30 + 8);
+      await page.mouse.move(x, y, { steps: steps });
+      // Doğal duraklama — bazen uzun, bazen kısa
+      var pauseMs = Math.random() < 0.3 ? Math.floor(Math.random() * 1500 + 500) : Math.floor(Math.random() * 600 + 150);
+      await new Promise(function(r) { setTimeout(r, pauseMs); });
     }
-    if (Math.random() > 0.5) await humanScroll(page);
+    // %40 olasılıkla scroll yap
+    if (Math.random() > 0.6) await humanScroll(page);
+    // %20 olasılıkla rastgele bir yere hover yap
+    if (Math.random() > 0.8) {
+      var hx = Math.floor(Math.random() * w * 0.5 + w * 0.25);
+      var hy = Math.floor(Math.random() * h * 0.5 + h * 0.25);
+      await page.mouse.move(hx, hy, { steps: Math.floor(Math.random() * 15 + 5) });
+      await new Promise(function(r) { setTimeout(r, Math.floor(Math.random() * 800 + 200)); });
+    }
   } catch (e) {}
 }
 

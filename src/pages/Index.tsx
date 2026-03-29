@@ -269,11 +269,11 @@ const Index = () => {
             {!isMobile && (
               <aside
                 className={`shrink-0 border-r border-border bg-card/50 overflow-hidden transition-[width] duration-300 ease-in-out ${
-                  sidebarOpen ? "w-[340px]" : "w-0 border-r-0"
+                  sidebarOpen ? "w-[420px]" : "w-0 border-r-0"
                 }`}
                 style={{ height: "calc(100vh - 105px)" }}
               >
-                <div className="w-[340px] h-full overflow-y-auto overflow-x-hidden">
+                <div className="w-[420px] h-full overflow-y-auto overflow-x-hidden">
                   <VfsSidebarContent t={t} />
                 </div>
               </aside>
@@ -331,11 +331,11 @@ const Index = () => {
             {!isMobile && (
               <aside
                 className={`shrink-0 border-r border-border bg-card/50 overflow-hidden transition-[width] duration-300 ease-in-out ${
-                  sidebarOpen ? "w-[340px]" : "w-0 border-r-0"
+                  sidebarOpen ? "w-[420px]" : "w-0 border-r-0"
                 }`}
                 style={{ height: "calc(100vh - 105px)" }}
               >
-                <div className="w-[340px] h-full overflow-y-auto overflow-x-hidden">
+                <div className="w-[420px] h-full overflow-y-auto overflow-x-hidden">
                   <IdataSidebarContent />
                 </div>
               </aside>
@@ -361,11 +361,11 @@ const Index = () => {
             {!isMobile && (
               <aside
                 className={`shrink-0 border-r border-border bg-card/50 overflow-hidden transition-[width] duration-300 ease-in-out ${
-                  sidebarOpen ? "w-[340px]" : "w-0 border-r-0"
+                  sidebarOpen ? "w-[420px]" : "w-0 border-r-0"
                 }`}
                 style={{ height: "calc(100vh - 105px)" }}
               >
-                <div className="w-[340px] h-full overflow-y-auto overflow-x-hidden">
+                <div className="w-[420px] h-full overflow-y-auto overflow-x-hidden">
                   <QuizSidebarContent />
                 </div>
               </aside>

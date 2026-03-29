@@ -1313,19 +1313,38 @@ function isQuizAccountInCooldown(accountId) {
 }
 
 function quizIsPageBlocked(pageContent) {
-  if (!pageContent || pageContent.trim().length < 50) return false; // Çok kısa sayfa engel değil, yükleniyor olabilir
+  if (!pageContent || pageContent.trim().length < 50) return false;
   var lower = pageContent.toLowerCase();
-  // Gerçek engel: sadece spesifik tam engellenme kalıplarını kontrol et
-  // "blocked" tek başına çok agresif — anket sayfalarında "ad blocker" vb. geçebilir
-  var isBlocked = (lower.includes("access denied") && lower.length < 500) ||
-    (lower.includes("403 forbidden") && lower.length < 500) ||
-    (lower.includes("you have been blocked") && lower.length < 1000) ||
-    (lower.includes("your ip") && lower.includes("blocked")) ||
-    (lower.includes("unusual traffic") && lower.length < 800) ||
-    (lower.includes("suspicious activity") && lower.length < 800) ||
-    (lower.includes("too many requests") && lower.length < 500) ||
-    (lower.includes("rate limit") && lower.length < 500);
-  return isBlocked;
+  var len = lower.length;
+
+  // Bilinen anket platformları — uzun sayfalarda false positive önle
+  var knownPlatforms = ["ysense", "swagbucks", "surveyjunkie", "prolific", "cint", "toluna", "dynata", "lucid", "qualtrics", "typeform", "surveymonkey", "google.com/forms"];
+  for (var kp = 0; kp < knownPlatforms.length; kp++) {
+    if (lower.includes(knownPlatforms[kp]) && len > 1500) return false;
+  }
+
+  // Çok kısa sayfa + engel kalıpları
+  var strictBlocks = [
+    { pattern: "access denied", maxLen: 800 },
+    { pattern: "403 forbidden", maxLen: 600 },
+    { pattern: "you have been blocked", maxLen: 1200 },
+    { pattern: "unusual traffic", maxLen: 1000 },
+    { pattern: "suspicious activity", maxLen: 1000 },
+    { pattern: "too many requests", maxLen: 600 },
+    { pattern: "rate limit exceeded", maxLen: 600 },
+    { pattern: "your ip has been", maxLen: 800 },
+    { pattern: "cloudflare", maxLen: 500 },
+    { pattern: "please verify you are a human", maxLen: 800 },
+  ];
+
+  for (var sb = 0; sb < strictBlocks.length; sb++) {
+    if (lower.includes(strictBlocks[sb].pattern) && len < strictBlocks[sb].maxLen) return true;
+  }
+
+  // IP + blocked kombinasyonu (herhangi bir uzunlukta)
+  if (lower.includes("your ip") && lower.includes("blocked") && len < 1500) return true;
+
+  return false;
 }
 
 function getQuizCooldownWait() {
@@ -1360,20 +1379,32 @@ async function humanIdle(min, max) {
   await new Promise(function(r) { setTimeout(r, wait); });
 }
 
-// İnsan benzeri mouse hareketi
+// Gelişmiş insan benzeri mouse hareketi — Bezier eğrili
 async function humanMove(page) {
   try {
     var vp = page.viewport();
-    var w = (vp && vp.width) || 1366;
-    var h = (vp && vp.height) || 768;
-    var moves = Math.floor(Math.random() * 3) + 1;
+    var w = (vp && vp.width) || 1920;
+    var h = (vp && vp.height) || 1080;
+    var moves = Math.floor(Math.random() * 4) + 2; // 2-5 hareket
     for (var i = 0; i < moves; i++) {
-      var x = Math.floor(Math.random() * w * 0.6 + w * 0.2);
-      var y = Math.floor(Math.random() * h * 0.6 + h * 0.2);
-      await page.mouse.move(x, y, { steps: Math.floor(Math.random() * 20 + 10) });
-      await quizDelay(300, 800);
+      var x = Math.floor(Math.random() * w * 0.7 + w * 0.15);
+      var y = Math.floor(Math.random() * h * 0.7 + h * 0.15);
+      // Değişken hız: bazen hızlı bazen yavaş
+      var steps = Math.floor(Math.random() * 30 + 8);
+      await page.mouse.move(x, y, { steps: steps });
+      // Doğal duraklama — bazen uzun, bazen kısa
+      var pauseMs = Math.random() < 0.3 ? Math.floor(Math.random() * 1500 + 500) : Math.floor(Math.random() * 600 + 150);
+      await new Promise(function(r) { setTimeout(r, pauseMs); });
     }
-    if (Math.random() > 0.5) await humanScroll(page);
+    // %40 olasılıkla scroll yap
+    if (Math.random() > 0.6) await humanScroll(page);
+    // %20 olasılıkla rastgele bir yere hover yap
+    if (Math.random() > 0.8) {
+      var hx = Math.floor(Math.random() * w * 0.5 + w * 0.25);
+      var hy = Math.floor(Math.random() * h * 0.5 + h * 0.25);
+      await page.mouse.move(hx, hy, { steps: Math.floor(Math.random() * 15 + 5) });
+      await new Promise(function(r) { setTimeout(r, Math.floor(Math.random() * 800 + 200)); });
+    }
   } catch (e) {}
 }
 
@@ -1551,6 +1582,12 @@ async function runGeminiEngine(url, account, settings) {
     "--window-size=1920,1080",
     "--start-maximized",
     "--user-data-dir=" + tempDir,
+    // Anti-detection args
+    "--disable-blink-features=AutomationControlled",
+    "--disable-features=IsolateOrigins,site-per-process",
+    "--disable-infobars",
+    "--lang=en-US,en;q=0.9",
+    "--disable-web-security=false",
   ];
 
   var useProxy = settings.quiz_proxy_enabled !== "false";
@@ -1652,6 +1689,49 @@ async function runGeminiEngine(url, account, settings) {
   try {
     await page.setViewport({ width: 1920, height: 1080 });
 
+    // === ADVANCED STEALTH INJECTION ===
+    await page.evaluateOnNewDocument(function() {
+      // Override navigator.webdriver
+      Object.defineProperty(navigator, 'webdriver', { get: function() { return false; } });
+      // Override chrome automation indicators
+      window.chrome = { runtime: {}, loadTimes: function() { return {}; }, csi: function() { return {}; } };
+      // Override permissions
+      var originalQuery = window.navigator.permissions.query;
+      window.navigator.permissions.query = function(params) {
+        if (params.name === 'notifications') return Promise.resolve({ state: 'denied' });
+        return originalQuery.call(window.navigator.permissions, params);
+      };
+      // Override plugins (empty = bot signal)
+      Object.defineProperty(navigator, 'plugins', { get: function() { return [1, 2, 3, 4, 5]; } });
+      Object.defineProperty(navigator, 'languages', { get: function() { return ['en-US', 'en']; } });
+      // Override hardware concurrency
+      Object.defineProperty(navigator, 'hardwareConcurrency', { get: function() { return 8; } });
+      // Override platform
+      Object.defineProperty(navigator, 'platform', { get: function() { return 'Win32'; } });
+      // Canvas fingerprint noise
+      var origToDataURL = HTMLCanvasElement.prototype.toDataURL;
+      HTMLCanvasElement.prototype.toDataURL = function(type) {
+        if (type === 'image/png' || !type) {
+          var ctx = this.getContext('2d');
+          if (ctx) {
+            var imgData = ctx.getImageData(0, 0, this.width, this.height);
+            for (var k = 0; k < Math.min(10, imgData.data.length); k += 4) {
+              imgData.data[k] = imgData.data[k] ^ 1;
+            }
+            ctx.putImageData(imgData, 0, 0);
+          }
+        }
+        return origToDataURL.apply(this, arguments);
+      };
+      // WebGL fingerprint noise
+      var getParameterOrig = WebGLRenderingContext.prototype.getParameter;
+      WebGLRenderingContext.prototype.getParameter = function(param) {
+        if (param === 37445) return 'Intel Inc.';
+        if (param === 37446) return 'Intel Iris OpenGL Engine';
+        return getParameterOrig.call(this, param);
+      };
+    });
+
     // İlk sayfa yüklemeden önce insan benzeri hareket
     await humanMove(page);
 
@@ -1748,61 +1828,106 @@ async function runGeminiEngine(url, account, settings) {
         }
       }
 
-      // === HATA/DEAD-END SAYFA TESPİTİ ===
+      // === GELİŞMİŞ HATA/DEAD-END SAYFA TESPİTİ ===
       try {
         var errorPageCheck = await page.evaluate(function() {
           var body = document.body ? document.body.innerText : "";
           var lower = body.toLowerCase();
           var url = window.location.href.toLowerCase();
           var bodyLen = body.trim().length;
+          var title = (document.title || "").toLowerCase();
           
-          // Ana anket listesi sayfalarını ASLA hata sayfası olarak algılama
+          // Bilinen anket platformları — uzun sayfalarda ASLA hata olarak algılama
+          var safePlatforms = ["ysense", "swagbucks", "surveyjunkie", "prolific", "cint", "toluna", "dynata", "lucid", "qualtrics", "typeform", "surveymonkey", "google.com/forms", "surveygizmo", "questionpro", "alchemer"];
+          for (var sp = 0; sp < safePlatforms.length; sp++) {
+            if ((url.includes(safePlatforms[sp]) || lower.includes(safePlatforms[sp])) && bodyLen > 1000) return { isError: false };
+          }
+          
+          // /surveys listesi sayfası — ASLA hata değil
           if (url.includes("/surveys") && bodyLen > 500) return { isError: false };
-          if (url.includes("ysense.com") && bodyLen > 1000) return { isError: false };
-          if (url.includes("swagbucks.com") && bodyLen > 1000) return { isError: false };
           
-          // Kısa hata sayfaları (< 500 karakter) — bunlar gerçek hata sayfaları
-          var shortPageErrors = [
-            "page not found", "500 internal", "bad gateway", "service unavailable",
-            "this page isn't working", "err_connection", "couldn't reach",
-            "access denied", "http failure"
+          // İnteraktif element sayısını kontrol et — çok fazla element varsa hata sayfası değildir
+          var interactiveCount = document.querySelectorAll('input, select, textarea, button, [role="button"], [role="radio"], [role="checkbox"]').length;
+          if (interactiveCount > 10 && bodyLen > 500) return { isError: false };
+          
+          // HTTP hata sayfaları — sadece kısa sayfalarda
+          var httpErrors = [
+            { pattern: "page not found", maxLen: 600 },
+            { pattern: "404", maxLen: 300 },
+            { pattern: "500 internal", maxLen: 500 },
+            { pattern: "bad gateway", maxLen: 500 },
+            { pattern: "502", maxLen: 300 },
+            { pattern: "503", maxLen: 300 },
+            { pattern: "service unavailable", maxLen: 500 },
+            { pattern: "this page isn't working", maxLen: 500 },
+            { pattern: "err_connection", maxLen: 400 },
+            { pattern: "couldn't reach", maxLen: 400 },
+            { pattern: "access denied", maxLen: 600 },
+            { pattern: "http failure", maxLen: 400 },
           ];
           
-          // Anket-spesifik hatalar — sadece kısa sayfalarda (< 2000 karakter) geçerli
-          var surveyErrors = [
-            "survey is no longer available", "survey has ended", "survey is closed",
-            "survey expired", "this survey is full", "quota full",
-            "you have been screened out", "disqualified", "does not qualify",
-            "unfortunately you do not qualify", "not eligible", "no longer accepting",
-            "survey unavailable", "we are unable to"
+          // Anket-spesifik bitişler — sadece kısa sayfalarda
+          var surveyEnds = [
+            { pattern: "survey is no longer available", maxLen: 2500 },
+            { pattern: "survey has ended", maxLen: 2500 },
+            { pattern: "survey is closed", maxLen: 2500 },
+            { pattern: "survey expired", maxLen: 2500 },
+            { pattern: "this survey is full", maxLen: 2500 },
+            { pattern: "quota full", maxLen: 2500 },
+            { pattern: "you have been screened out", maxLen: 2500 },
+            { pattern: "disqualified", maxLen: 2000 },
+            { pattern: "does not qualify", maxLen: 2500 },
+            { pattern: "unfortunately you do not qualify", maxLen: 2500 },
+            { pattern: "not eligible", maxLen: 2500 },
+            { pattern: "no longer accepting", maxLen: 2500 },
+            { pattern: "survey unavailable", maxLen: 2500 },
+            { pattern: "we are unable to", maxLen: 2000 },
+            { pattern: "your response has already been recorded", maxLen: 2500 },
+            { pattern: "you've already completed", maxLen: 2500 },
           ];
-          
-          // URL tabanlı hatalar
-          var urlErrorPatterns = ["/screened-out", "/disqualified", "/quota-full", "/terminated"];
-          
-          // Kısa sayfa hataları (< 500 karakter)
-          for (var i = 0; i < shortPageErrors.length; i++) {
-            if (lower.includes(shortPageErrors[i]) && bodyLen < 500) return { isError: true, reason: shortPageErrors[i] };
-          }
-          
-          // Anket hataları (< 2000 karakter — gerçek anket sayfaları genellikle çok daha uzun)
-          for (var j = 0; j < surveyErrors.length; j++) {
-            if (lower.includes(surveyErrors[j]) && bodyLen < 2000) return { isError: true, reason: surveyErrors[j] };
-          }
           
           // URL tabanlı hatalar (her zaman geçerli)
-          for (var k = 0; k < urlErrorPatterns.length; k++) {
-            if (url.includes(urlErrorPatterns[k])) return { isError: true, reason: "URL: " + urlErrorPatterns[k] };
+          var urlErrorPatterns = ["/screened-out", "/disqualified", "/quota-full", "/terminated", "/survey-closed", "/over-quota", "/screenout"];
+          
+          // Title tabanlı hatalar
+          if ((title.includes("404") || title.includes("page not found") || title.includes("error")) && bodyLen < 800) {
+            return { isError: true, reason: "title: " + title.slice(0, 50) };
           }
           
-          // Çok kısa içerik (boş sayfa) — ama en az 5 karakter olmalı
-          if (bodyLen < 30 && bodyLen > 5) return { isError: true, reason: "Boş/kısa sayfa" };
+          // HTTP hata kontrolü
+          for (var i = 0; i < httpErrors.length; i++) {
+            if (lower.includes(httpErrors[i].pattern) && bodyLen < httpErrors[i].maxLen) {
+              // "404" gibi sayılar anket ID'lerinde olabilir — ek kontrol
+              if (httpErrors[i].pattern === "404" || httpErrors[i].pattern === "502" || httpErrors[i].pattern === "503") {
+                if (interactiveCount > 3) continue; // Form elementli sayfa = gerçek anket
+              }
+              return { isError: true, reason: httpErrors[i].pattern };
+            }
+          }
+          
+          // Anket bitiş kontrolü
+          for (var j = 0; j < surveyEnds.length; j++) {
+            if (lower.includes(surveyEnds[j].pattern) && bodyLen < surveyEnds[j].maxLen) {
+              return { isError: true, reason: surveyEnds[j].pattern, type: "survey_end" };
+            }
+          }
+          
+          // URL tabanlı hatalar
+          for (var k = 0; k < urlErrorPatterns.length; k++) {
+            if (url.includes(urlErrorPatterns[k])) return { isError: true, reason: "URL: " + urlErrorPatterns[k], type: "survey_end" };
+          }
+          
+          // Çok kısa içerik (boş sayfa) — iframe kontrolü yap
+          var iframeCount = document.querySelectorAll('iframe').length;
+          if (bodyLen < 30 && bodyLen > 5 && iframeCount === 0) return { isError: true, reason: "Boş/kısa sayfa" };
+          
           return { isError: false };
         }).catch(function() { return { isError: false }; });
 
         if (errorPageCheck.isError) {
-          console.log("[ERROR-PAGE] Hata sayfası algılandı: " + errorPageCheck.reason);
-          await supabaseInsertLog("🚫 Hata/dead-end sayfası algılandı (" + errorPageCheck.reason + ") — sekme kapatılıp mevcut akışta devam ediliyor", "warning");
+          var errType = errorPageCheck.type || "error";
+          console.log("[ERROR-PAGE] " + (errType === "survey_end" ? "Anket bitti" : "Hata sayfası") + ": " + errorPageCheck.reason);
+          await supabaseInsertLog("🚫 " + (errType === "survey_end" ? "Anket bitti/elendi" : "Hata sayfası") + " (" + errorPageCheck.reason + ") — sekme kapatılıp devam ediliyor", errType === "survey_end" ? "info" : "warning");
           
           // Mevcut sekmeyi kapat ve bir önceki aktif sekmede kal
           var allPages = await browser.pages();
@@ -1812,8 +1937,6 @@ async function runGeminiEngine(url, account, settings) {
             await page.bringToFront();
             await humanIdle(1500, 3000);
           }
-          recentActions = [];
-          sameActionStreak = 0;
           recentActions = [];
           sameActionStreak = 0;
           consecutiveFailures = 0;

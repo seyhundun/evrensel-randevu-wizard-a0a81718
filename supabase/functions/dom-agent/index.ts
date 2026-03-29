@@ -119,6 +119,55 @@ interface AIRequestParams {
   max_tokens: number;
 }
 
+interface ProviderFailure {
+  name: string;
+  status: number;
+  body: string;
+}
+
+function normalizeGatewayModel(model: string): string {
+  if (!model) return "google/gemini-2.5-flash";
+  if (model.startsWith("google/") || model.startsWith("openai/")) return model;
+  if (model.startsWith("gemini")) return `google/${model}`;
+  if (model.startsWith("gpt-")) return `openai/${model}`;
+  return model;
+}
+
+function normalizeGeminiModel(model: string): string {
+  if (!model) return "gemini-2.5-flash";
+  const normalized = model.replace("google/", "");
+  return normalized.startsWith("gemini") ? normalized : "gemini-2.5-flash";
+}
+
+function normalizeOpenAIModel(model: string): string | null {
+  if (!model) return null;
+  if (model.startsWith("openai/")) return model.replace("openai/", "");
+  if (model.startsWith("gpt-")) return model;
+  return null;
+}
+
+function buildFailureResponse(failures: ProviderFailure[]): Response {
+  const prioritized =
+    failures.find((f) => f.status === 429) ||
+    failures.find((f) => f.status === 402) ||
+    failures.find((f) => f.status === 400) ||
+    failures.find((f) => f.status === 404) ||
+    failures.find((f) => f.status >= 500) ||
+    failures[failures.length - 1];
+
+  return new Response(JSON.stringify({
+    error: prioritized?.body || "All AI providers failed",
+    failures: failures.map((f) => ({
+      provider: f.name,
+      status: f.status,
+      error: f.body.slice(0, 300),
+    })),
+  }), {
+    status: prioritized?.status || 500,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 async function getApiKeysFromDB(): Promise<Record<string, string>> {
   const url = Deno.env.get("SUPABASE_URL") || "";
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_ANON_KEY") || "";
@@ -136,14 +185,16 @@ async function callLovableGateway(params: AIRequestParams, apiKey: string): Prom
   return fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify(params),
+    body: JSON.stringify({
+      ...params,
+      model: normalizeGatewayModel(params.model),
+    }),
   });
 }
 
 async function callGeminiDirect(params: AIRequestParams, apiKey: string): Promise<Response> {
   // Map model name to Gemini API model ID
-  let geminiModel = params.model.replace("google/", "");
-  if (!geminiModel.startsWith("gemini")) geminiModel = "gemini-2.5-flash";
+  const geminiModel = normalizeGeminiModel(params.model);
 
   const contents = params.messages
     .filter((m: any) => m.role !== "system")
@@ -195,9 +246,8 @@ async function callGeminiDirect(params: AIRequestParams, apiKey: string): Promis
 }
 
 async function callOpenAIDirect(params: AIRequestParams, apiKey: string): Promise<Response> {
-  const model = params.model.replace("openai/", "");
-  // Skip if this isn't an OpenAI-compatible model
-  if (model.startsWith("google/") || model.startsWith("gemini") || model.startsWith("bu-")) {
+  const model = normalizeOpenAIModel(params.model);
+  if (!model || model.startsWith("bu-")) {
     return new Response(JSON.stringify({ error: "Not an OpenAI model" }), { status: 404 });
   }
   const body: any = {
@@ -222,6 +272,7 @@ async function callOpenAIDirect(params: AIRequestParams, apiKey: string): Promis
 async function callAI(params: AIRequestParams, settings: Record<string, string>): Promise<Response> {
   const engine = settings.quiz_engine || "lovable_ai";
   const providers: { name: string; call: () => Promise<Response> }[] = [];
+  const failures: ProviderFailure[] = [];
 
   // Build provider chain based on engine preference
   const lovableKey = Deno.env.get("LOVABLE_API_KEY") || settings.lovable_api_key || "";
@@ -262,19 +313,23 @@ async function callAI(params: AIRequestParams, settings: Record<string, string>)
         return resp;
       }
       const status = resp.status;
-      console.warn(`[dom-agent] ${p.name} returned ${status}`);
+      const body = await resp.text().catch(() => "");
+      failures.push({ name: p.name, status, body: body || `Provider returned ${status}` });
+      console.warn(`[dom-agent] ${p.name} returned ${status}${body ? `: ${body.slice(0, 200)}` : ""}`);
       if (status === 400 || status === 402 || status === 404 || status === 429 || status >= 500) {
-        // Try to consume the body to avoid leaks
-        try { await resp.text(); } catch {}
         continue; // Try next provider
       }
-      return resp; // 4xx other than 402/429 = client error, don't retry
+      return new Response(body || JSON.stringify({ error: `${p.name} returned ${status}` }), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      });
     } catch (err) {
       console.error(`[dom-agent] ${p.name} error:`, err);
       if (i === providers.length - 1) throw err;
     }
   }
 
+  if (failures.length > 0) return buildFailureResponse(failures);
   throw new Error("All AI providers failed");
 }
 
@@ -348,17 +403,26 @@ ${JSON.stringify(compactElements)}`;
     if (!response.ok) {
       const errText = await response.text();
       console.error("AI error:", response.status, errText);
+      let parsedError = "";
+      try {
+        const parsed = JSON.parse(errText);
+        parsedError = parsed?.error || parsed?.message || "";
+      } catch {}
+
       if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limited" }), {
+        return new Response(JSON.stringify({ error: parsedError || "Rate limited" }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Payment required - all providers exhausted" }), {
+        return new Response(JSON.stringify({ error: parsedError || "Payment required - all providers exhausted" }), {
           status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      throw new Error("AI error: " + response.status);
+      return new Response(JSON.stringify({ error: parsedError || `AI error: ${response.status}` }), {
+        status: response.status,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const data = await response.json();

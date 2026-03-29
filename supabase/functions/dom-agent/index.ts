@@ -255,7 +255,7 @@ async function callAI(params: AIRequestParams, settings: Record<string, string>)
       }
       const status = resp.status;
       console.warn(`[dom-agent] ${p.name} returned ${status}`);
-      if (status === 400 || status === 402 || status === 429 || status >= 500) {
+      if (status === 400 || status === 402 || status === 404 || status === 429 || status >= 500) {
         // Try to consume the body to avoid leaks
         try { await resp.text(); } catch {}
         continue; // Try next provider

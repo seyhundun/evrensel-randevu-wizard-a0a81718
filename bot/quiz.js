@@ -1706,7 +1706,7 @@ async function runGeminiEngine(url, account, settings) {
     if (engineType === "dom_agent") {
       var domAgentKey = settings.lovable_api_key || process.env.LOVABLE_API_KEY || "";
       if (!domAgentKey) throw new Error("Lovable API key bulunamadı (DOM Agent için gerekli)!");
-      visionFn = function(ss, url, acc, st, ra) { return askDOMAgent(page, url, acc, st, ra, domAgentKey); };
+      visionFn = function(ss, url, acc, st, ra) { return askDOMAgent(page, url, acc, st, ra, domAgentKey, ss); };
     } else if (engineType === "lovable_ai") {
       var lovableKey = settings.lovable_api_key || process.env.LOVABLE_API_KEY || "";
       if (!lovableKey) throw new Error("Lovable API key bulunamadı! bot_settings'e lovable_api_key ekleyin.");
@@ -2662,14 +2662,18 @@ async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKe
   taskText += "Hesap: " + account.email + " / Şifre: " + account.password + "\n";
   taskText += "Son aksiyonlar:\n" + recentText;
 
-  // 4) Screenshot al (vision için)
-  var screenshotBase64 = null;
-  try {
-    var screenshotBuf = await page.screenshot({ type: "jpeg", quality: 40, encoding: "binary" });
-    screenshotBase64 = screenshotBuf.toString("base64");
-    console.log("[DOM-AGENT] 📸 Screenshot alındı (" + Math.round(screenshotBase64.length / 1024) + "KB)");
-  } catch (ssErr) {
-    console.log("[DOM-AGENT] Screenshot alınamadı: " + ssErr.message);
+  // 4) Screenshot — dışarıdan geldiyse onu kullan, yoksa al
+  var screenshotBase64 = externalScreenshot || null;
+  if (!screenshotBase64) {
+    try {
+      var screenshotBuf = await page.screenshot({ type: "jpeg", quality: 40, encoding: "binary" });
+      screenshotBase64 = screenshotBuf.toString("base64");
+      console.log("[DOM-AGENT] 📸 Screenshot alındı (" + Math.round(screenshotBase64.length / 1024) + "KB)");
+    } catch (ssErr) {
+      console.log("[DOM-AGENT] Screenshot alınamadı: " + ssErr.message);
+    }
+  } else {
+    console.log("[DOM-AGENT] 📸 Harici screenshot kullanılıyor (" + Math.round(screenshotBase64.length / 1024) + "KB)");
   }
 
   // 5) dom-agent edge function'a gönder

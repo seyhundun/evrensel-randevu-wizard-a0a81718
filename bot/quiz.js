@@ -2845,6 +2845,13 @@ async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKe
       return firstAction;
 
     } catch (err) {
+      clearTimeout(fetchTimeout);
+      if (err.name === "AbortError") {
+        console.error("[DOM-AGENT] Timeout (30s), screenshot'sız yeniden deneniyor...");
+        screenshotBase64 = null; // Screenshot'sız dene
+        await supabaseInsertLog("DOM Agent timeout, screenshot'sız yeniden deneniyor", "warning");
+        if (attempt < maxRetries - 1) { continue; }
+      }
       console.error("[DOM-AGENT] Hata:", err.message);
       await supabaseInsertLog("DOM Agent hata: " + err.message, "warning");
       if (attempt < maxRetries - 1) { await new Promise(function(r) { setTimeout(r, 5000); }); continue; }

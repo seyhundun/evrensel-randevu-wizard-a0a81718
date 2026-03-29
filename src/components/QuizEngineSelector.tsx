@@ -346,16 +346,14 @@ export default function QuizEngineSelector({ engine, onEngineChange, apiKeys, on
       .sort((a, b) => preset.mode === "accuracy" ? b.accuracy - a.accuracy : a.accuracy - b.accuracy)[0]
       || activeModel;
 
-    if (preset.mode !== "custom") {
-      setSelectedModel(bestModel.id);
-    }
+    setSelectedModel(bestModel.id);
 
     await Promise.all([
       upsertSetting("quiz_preset", preset.mode, "Quiz Preset"),
       upsertSetting("quiz_temperature", t.toString(), "Quiz Temperature"),
       upsertSetting("quiz_max_tokens", mt.toString(), "Quiz Max Tokens"),
       upsertSetting("quiz_vision", v ? "true" : "false", "Quiz Vision"),
-      ...(preset.mode !== "custom" ? [upsertSetting("quiz_model", bestModel.id, "Quiz Model")] : []),
+      upsertSetting("quiz_model", bestModel.id, "Quiz Model"),
     ]);
     toast.success(`Preset: ${preset.label} — ${bestModel.name}`);
   };

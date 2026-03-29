@@ -2673,7 +2673,7 @@ async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKe
   var screenshotBase64 = externalScreenshot || null;
   if (!screenshotBase64) {
     try {
-      var screenshotBuf = await page.screenshot({ type: "jpeg", quality: 40, encoding: "binary" });
+      var screenshotBuf = await page.screenshot({ type: "jpeg", quality: 25, encoding: "binary" });
       screenshotBase64 = screenshotBuf.toString("base64");
       console.log("[DOM-AGENT] 📸 Screenshot alındı (" + Math.round(screenshotBase64.length / 1024) + "KB)");
     } catch (ssErr) {
@@ -2683,8 +2683,9 @@ async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKe
     console.log("[DOM-AGENT] 📸 Harici screenshot kullanılıyor (" + Math.round(screenshotBase64.length / 1024) + "KB)");
   }
 
-  // 5) dom-agent edge function'a gönder
-  var maxRetries = 3;
+  // 5) dom-agent edge function'a gönder — istekler arası min 3s bekleme
+  await new Promise(function(r) { setTimeout(r, 3000); });
+  var maxRetries = 4;
   for (var attempt = 0; attempt < maxRetries; attempt++) {
     try {
       var controller = new AbortController();
@@ -2708,9 +2709,10 @@ async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKe
       clearTimeout(fetchTimeout);
 
       if (res.status === 429) {
-        var waitSec = (attempt + 1) * 10;
-        console.log("[DOM-AGENT] Rate limit, " + waitSec + "s bekleniyor...");
-        await supabaseInsertLog("DOM Agent rate limit, " + waitSec + "s bekleniyor", "warning");
+        var waitSec = (attempt + 1) * 15;
+        console.log("[DOM-AGENT] Rate limit, " + waitSec + "s bekleniyor... Screenshot kapatılıyor.");
+        await supabaseInsertLog("DOM Agent rate limit, " + waitSec + "s bekleniyor (screenshot kapatıldı)", "warning");
+        screenshotBase64 = null; // Rate limit'te screenshot'u kapat — payload küçülsün
         await new Promise(function(r) { setTimeout(r, waitSec * 1000); });
         continue;
       }

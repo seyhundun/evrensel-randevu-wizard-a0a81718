@@ -14,6 +14,7 @@ import {
   Network, Globe, Wifi, MapPin, Activity, Shield, Loader2,
   Clock, RefreshCw, Save, Eye, EyeOff, Key, Cpu, Zap
 } from "lucide-react";
+import QuizEngineSelector, { type QuizEngineType } from "@/components/QuizEngineSelector";
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();

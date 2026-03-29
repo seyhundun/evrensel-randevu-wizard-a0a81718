@@ -195,12 +195,19 @@ async function callGeminiDirect(params: AIRequestParams, apiKey: string): Promis
 }
 
 async function callOpenAIDirect(params: AIRequestParams, apiKey: string): Promise<Response> {
-  let model = params.model.replace("openai/", "");
-  const { max_tokens, ...rest } = params;
+  const model = params.model.replace("openai/", "");
+  // OpenAI newer models require max_completion_tokens, not max_tokens
+  // Also remove the original model from the spread to avoid conflicts
+  const body: any = {
+    model,
+    messages: params.messages,
+    temperature: params.temperature,
+    max_completion_tokens: params.max_tokens,
+  };
   return fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ ...rest, model, max_completion_tokens: max_tokens }),
+    body: JSON.stringify(body),
   });
 }
 
@@ -248,7 +255,7 @@ async function callAI(params: AIRequestParams, settings: Record<string, string>)
       }
       const status = resp.status;
       console.warn(`[dom-agent] ${p.name} returned ${status}`);
-      if (status === 402 || status === 429 || status >= 500) {
+      if (status === 400 || status === 402 || status === 429 || status >= 500) {
         // Try to consume the body to avoid leaks
         try { await resp.text(); } catch {}
         continue; // Try next provider

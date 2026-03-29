@@ -2708,9 +2708,10 @@ async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKe
       clearTimeout(fetchTimeout);
 
       if (res.status === 429) {
-        var waitSec = (attempt + 1) * 10;
-        console.log("[DOM-AGENT] Rate limit, " + waitSec + "s bekleniyor...");
-        await supabaseInsertLog("DOM Agent rate limit, " + waitSec + "s bekleniyor", "warning");
+        var waitSec = (attempt + 1) * 15;
+        console.log("[DOM-AGENT] Rate limit, " + waitSec + "s bekleniyor... Screenshot kapatılıyor.");
+        await supabaseInsertLog("DOM Agent rate limit, " + waitSec + "s bekleniyor (screenshot kapatıldı)", "warning");
+        screenshotBase64 = null; // Rate limit'te screenshot'u kapat — payload küçülsün
         await new Promise(function(r) { setTimeout(r, waitSec * 1000); });
         continue;
       }

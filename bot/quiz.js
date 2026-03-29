@@ -2269,36 +2269,46 @@ async function runGeminiEngine(url, account, settings) {
             errMsg.includes("detached") ||
             errMsg.includes("Target closed") ||
             errMsg.includes("Session closed")) {
-          console.log("[QUIZ] 🔄 Sayfa navigasyonu algılandı, yeni sayfa bekleniyor...");
-          await supabaseInsertLog("🔄 Sayfa navigasyonu algılandı, devam ediliyor", "info");
+          contextRetryCount = (contextRetryCount || 0) + 1;
+          var baseWait = Math.min(2000 + contextRetryCount * 1000, 10000); // 3s → 4s → 5s ... max 10s
+          console.log("[QUIZ] 🔄 Sayfa navigasyonu algılandı (" + contextRetryCount + "/10), " + (baseWait/1000) + "s bekleniyor...");
+          await supabaseInsertLog("🔄 Context destroyed (" + contextRetryCount + "/10), " + (baseWait/1000) + "s bekleniyor", contextRetryCount >= 8 ? "warning" : "info");
           
-          // Sayfanın yüklenmesini bekle
+          if (contextRetryCount >= 10) {
+            console.log("[ERROR] 🔄 10 ardışık context hatası, tam restart yapılıyor");
+            await supabaseInsertLog("🔄 10 ardışık context destroyed — tam restart", "error");
+            throw new Error("Too many context destroyed errors — restart");
+          }
+          
+          // Artan bekleme süresiyle sayfanın yüklenmesini bekle
           try {
-            await new Promise(function(r) { setTimeout(r, 3000); });
+            await new Promise(function(r) { setTimeout(r, baseWait); });
             
             // Aktif sayfayı yeniden bul
             var allPages = await browser.pages();
             if (allPages.length > 1) {
               page = allPages[allPages.length - 1];
             }
-            await page.waitForFunction("document.readyState === 'complete'", { timeout: 15000 }).catch(function() {});
+            await page.waitForFunction("document.readyState === 'complete'", { timeout: 20000 }).catch(function() {});
             
             consecutiveFailures = 0; // Navigasyon hatası sayılmaz
             sameActionStreak = 0;
           } catch (navErr) {
             console.error("[QUIZ] Navigasyon kurtarma hatası:", navErr.message);
-            consecutiveFailures++;
           }
           continue;
         }
         
-        consecutiveFailures++;
-        console.error("[GEMINI] Aksiyon hatası (" + consecutiveFailures + "/5):", errMsg);
-        await supabaseInsertLog("Aksiyon hatası (" + consecutiveFailures + "/5): " + errMsg, "warning");
+        // Context retry sayacını sıfırla (başka hata türü geldi)
+        contextRetryCount = 0;
         
-        if (consecutiveFailures >= 5) {
-          console.log("[ERROR] 🔄 5 ardışık hata, oturumu yeniden başlatıyor");
-          await supabaseInsertLog("🔄 5 ardışık hata, oturumu yeniden başlatıyor", "error");
+        consecutiveFailures++;
+        console.error("[GEMINI] Aksiyon hatası (" + consecutiveFailures + "/10):", errMsg);
+        await supabaseInsertLog("Aksiyon hatası (" + consecutiveFailures + "/10): " + errMsg, "warning");
+        
+        if (consecutiveFailures >= 10) {
+          console.log("[ERROR] 🔄 10 ardışık hata, oturumu yeniden başlatıyor");
+          await supabaseInsertLog("🔄 10 ardışık hata, oturumu yeniden başlatıyor", "error");
           throw new Error("Too many consecutive failures — restart");
         }
       }

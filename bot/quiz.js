@@ -1868,10 +1868,17 @@ async function runGeminiEngine(url, account, settings) {
       var action = await visionFn(screenshot, currentUrl, account, stepCount, recentActions);
 
       if (!action) {
-        console.log("[" + engineType.toUpperCase() + "] AI cevap vermedi, durduruluyor");
-        await supabaseInsertLog("AI cevap vermedi, durduruluyor", "warning");
-        break;
+        consecutiveFailures++;
+        console.log("[" + engineType.toUpperCase() + "] AI cevap vermedi (" + consecutiveFailures + "/5)");
+        await supabaseInsertLog("AI cevap vermedi (" + consecutiveFailures + "/5), tekrar deneniyor", "warning");
+        if (consecutiveFailures >= 5) {
+          console.log("[" + engineType.toUpperCase() + "] 5 ardışık başarısız deneme, oturum yeniden başlatılıyor");
+          throw new Error("5 ardışık AI hatası — restart session");
+        }
+        await quizDelay(2000, 4000);
+        continue;
       }
+      consecutiveFailures = 0;
 
       var actionSummary = [action.action || "?", action.selector || action.value || action.description || ""].join(": ");
       var actionText = String(actionSummary + " " + (action.description || "")).toLowerCase();

@@ -17,6 +17,88 @@ const PERSONA = {
   social: "Instagram, YouTube, Twitter (~2hr/day)", shopping: "Trendyol, Amazon - 3-4x/month online",
 };
 
+// ===== SOLUTION 1: Response Cache =====
+const responseCache = new Map<string, { result: any; timestamp: number }>();
+const CACHE_TTL_MS = 60_000; // 1 minute cache
+
+function getCacheKey(pageText: string, elements: any[]): string {
+  const textHash = (pageText || "").slice(0, 500);
+  const elCount = (elements || []).length;
+  const elSummary = (elements || []).slice(0, 5).map((e: any) => `${e.tag}:${(e.text || "").slice(0, 20)}`).join("|");
+  return `${textHash}::${elCount}::${elSummary}`;
+}
+
+function getFromCache(key: string): any | null {
+  const entry = responseCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+    responseCache.delete(key);
+    return null;
+  }
+  console.log("[dom-agent] Cache hit - skipping AI call");
+  return entry.result;
+}
+
+function setCache(key: string, result: any) {
+  // Keep cache size bounded
+  if (responseCache.size > 50) {
+    const oldest = responseCache.keys().next().value;
+    if (oldest) responseCache.delete(oldest);
+  }
+  responseCache.set(key, { result, timestamp: Date.now() });
+}
+
+// ===== SOLUTION 2: Request Throttling =====
+let lastRequestTime = 0;
+const MIN_REQUEST_INTERVAL_MS = 3000; // 3 seconds between requests
+
+async function throttle(): Promise<void> {
+  const now = Date.now();
+  const elapsed = now - lastRequestTime;
+  if (elapsed < MIN_REQUEST_INTERVAL_MS) {
+    const waitMs = MIN_REQUEST_INTERVAL_MS - elapsed;
+    console.log(`[dom-agent] Throttling: waiting ${waitMs}ms`);
+    await new Promise((r) => setTimeout(r, waitMs));
+  }
+  lastRequestTime = Date.now();
+}
+
+// ===== SOLUTION 3: Multi-Key Rotation =====
+const keyUsage = new Map<string, { count: number; blockedUntil: number }>();
+
+function getNextGeminiKey(keys: string[]): string | null {
+  const now = Date.now();
+  // Sort by usage count, skip blocked keys
+  const available = keys
+    .filter((k) => {
+      const usage = keyUsage.get(k);
+      if (!usage) return true;
+      if (usage.blockedUntil > now) return false;
+      return true;
+    })
+    .sort((a, b) => (keyUsage.get(a)?.count || 0) - (keyUsage.get(b)?.count || 0));
+
+  if (available.length === 0) {
+    // All blocked - use the one with earliest unblock time
+    return keys.sort((a, b) => 
+      (keyUsage.get(a)?.blockedUntil || 0) - (keyUsage.get(b)?.blockedUntil || 0)
+    )[0] || null;
+  }
+  return available[0];
+}
+
+function markKeyUsed(key: string) {
+  const usage = keyUsage.get(key) || { count: 0, blockedUntil: 0 };
+  usage.count++;
+  keyUsage.set(key, usage);
+}
+
+function markKeyBlocked(key: string, durationMs = 60_000) {
+  const usage = keyUsage.get(key) || { count: 0, blockedUntil: 0 };
+  usage.blockedUntil = Date.now() + durationMs;
+  keyUsage.set(key, usage);
+}
+
 function buildSystemPrompt(): string {
   return `You are a fully autonomous web survey agent. You analyze the page VISUALLY (screenshot) + STRUCTURALLY (DOM elements + page text) and decide the BEST action.
 
@@ -175,6 +257,7 @@ async function getApiKeysFromDB(): Promise<Record<string, string>> {
   const sb = createClient(url, key);
   const { data } = await sb.from("bot_settings").select("key, value").in("key", [
     "lovable_api_key", "gemini_api_key", "openai_api_key",
+    "gemini_api_key_2", "gemini_api_key_3",
     "quiz_engine", "quiz_model", "quiz_temperature", "quiz_max_tokens",
     "quiz_vision", "quiz_fallback_model",
   ]);
@@ -193,7 +276,6 @@ async function callLovableGateway(params: AIRequestParams, apiKey: string): Prom
 }
 
 async function callGeminiDirect(params: AIRequestParams, apiKey: string): Promise<Response> {
-  // Map model name to Gemini API model ID
   const geminiModel = normalizeGeminiModel(params.model);
 
   const contents = params.messages
@@ -202,7 +284,6 @@ async function callGeminiDirect(params: AIRequestParams, apiKey: string): Promis
       if (typeof m.content === "string") {
         return { role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] };
       }
-      // multimodal
       const parts = m.content.map((c: any) => {
         if (c.type === "text") return { text: c.text };
         if (c.type === "image_url") {
@@ -229,12 +310,13 @@ async function callGeminiDirect(params: AIRequestParams, apiKey: string): Promis
     body.systemInstruction = { parts: [{ text: systemInstruction.content }] };
   }
 
+  markKeyUsed(apiKey);
+
   const resp = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`,
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
   );
 
-  // Convert Gemini response to OpenAI format for unified parsing
   if (resp.ok) {
     const data = await resp.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
@@ -242,6 +324,12 @@ async function callGeminiDirect(params: AIRequestParams, apiKey: string): Promis
       choices: [{ message: { content: text } }],
     }), { status: 200, headers: { "Content-Type": "application/json" } });
   }
+
+  // Mark key as blocked on rate limit
+  if (resp.status === 429) {
+    markKeyBlocked(apiKey, 60_000);
+  }
+
   return resp;
 }
 
@@ -269,40 +357,60 @@ async function callOpenAIDirect(params: AIRequestParams, apiKey: string): Promis
   return resp;
 }
 
+// ===== SOLUTION 4: Smart Fallback Chain =====
 async function callAI(params: AIRequestParams, settings: Record<string, string>): Promise<Response> {
   const engine = settings.quiz_engine || "lovable_ai";
   const providers: { name: string; call: () => Promise<Response> }[] = [];
   const failures: ProviderFailure[] = [];
 
-  // Build provider chain based on engine preference
   const lovableKey = Deno.env.get("LOVABLE_API_KEY") || settings.lovable_api_key || "";
-  const geminiKey = settings.gemini_api_key || "";
   const openaiKey = settings.openai_api_key || "";
 
-  if (engine === "gemini" && geminiKey) {
-    providers.push({ name: "gemini_direct", call: () => callGeminiDirect(params, geminiKey) });
+  // Collect all Gemini API keys for rotation
+  const geminiKeys: string[] = [];
+  if (settings.gemini_api_key) geminiKeys.push(settings.gemini_api_key);
+  if (settings.gemini_api_key_2) geminiKeys.push(settings.gemini_api_key_2);
+  if (settings.gemini_api_key_3) geminiKeys.push(settings.gemini_api_key_3);
+
+  const bestGeminiKey = getNextGeminiKey(geminiKeys);
+
+  // Build provider chain based on engine preference
+  if (engine === "gemini" && bestGeminiKey) {
+    // Add ALL gemini keys as separate providers for rotation
+    const sortedKeys = [bestGeminiKey, ...geminiKeys.filter(k => k !== bestGeminiKey)];
+    for (let i = 0; i < sortedKeys.length; i++) {
+      const k = sortedKeys[i];
+      providers.push({
+        name: `gemini_direct_key${i + 1}`,
+        call: () => callGeminiDirect(params, k),
+      });
+    }
   } else if (engine === "openai" && openaiKey) {
     providers.push({ name: "openai_direct", call: () => callOpenAIDirect(params, openaiKey) });
   }
 
-  // Always add lovable gateway as option
+  // Lovable gateway as fallback
   if (lovableKey) {
     providers.push({ name: "lovable_gateway", call: () => callLovableGateway(params, lovableKey) });
   }
 
-  // Add remaining direct APIs as fallbacks
-  if (geminiKey && !providers.some(p => p.name === "gemini_direct")) {
-    providers.push({ name: "gemini_direct", call: () => callGeminiDirect(params, geminiKey) });
+  // Add remaining direct APIs as final fallbacks
+  if (bestGeminiKey && !providers.some(p => p.name.startsWith("gemini_direct"))) {
+    providers.push({ name: "gemini_direct", call: () => callGeminiDirect(params, bestGeminiKey) });
   }
   if (openaiKey && !providers.some(p => p.name === "openai_direct")) {
-    providers.push({ name: "openai_direct", call: () => callOpenAIDirect(params, openaiKey) });
+    // For OpenAI fallback, use a compatible model
+    const openaiParams = { ...params, model: "gpt-4o-mini" };
+    providers.push({ name: "openai_direct", call: () => callOpenAIDirect(openaiParams, openaiKey) });
   }
 
   if (providers.length === 0) {
     throw new Error("No API keys configured. Set lovable_api_key, gemini_api_key, or openai_api_key in bot_settings.");
   }
 
-  // Try each provider, fallback on 402/429/5xx
+  console.log(`[dom-agent] Provider chain: ${providers.map(p => p.name).join(" -> ")}`);
+
+  // Try each provider with throttling
   for (let i = 0; i < providers.length; i++) {
     const p = providers[i];
     console.log(`[dom-agent] Trying provider: ${p.name} (${i + 1}/${providers.length})`);
@@ -317,7 +425,11 @@ async function callAI(params: AIRequestParams, settings: Record<string, string>)
       failures.push({ name: p.name, status, body: body || `Provider returned ${status}` });
       console.warn(`[dom-agent] ${p.name} returned ${status}${body ? `: ${body.slice(0, 200)}` : ""}`);
       if (status === 400 || status === 402 || status === 404 || status === 429 || status >= 500) {
-        continue; // Try next provider
+        // Small delay before trying next provider
+        if (i < providers.length - 1) {
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+        continue;
       }
       return new Response(body || JSON.stringify({ error: `${p.name} returned ${status}` }), {
         status,
@@ -325,6 +437,7 @@ async function callAI(params: AIRequestParams, settings: Record<string, string>)
       });
     } catch (err) {
       console.error(`[dom-agent] ${p.name} error:`, err);
+      failures.push({ name: p.name, status: 500, body: String(err) });
       if (i === providers.length - 1) throw err;
     }
   }
@@ -343,6 +456,18 @@ serve(async (req) => {
 
     // Load settings from DB for multi-provider routing
     const settings = await getApiKeysFromDB();
+
+    // ===== Check cache first =====
+    const cacheKey = getCacheKey(pageText, elements);
+    const cached = getFromCache(cacheKey);
+    if (cached) {
+      return new Response(JSON.stringify(cached), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ===== Throttle requests =====
+    await throttle();
 
     const systemPrompt = buildSystemPrompt();
     const aiModel = requestedModel || settings.quiz_model || "google/gemini-2.5-flash";
@@ -464,6 +589,9 @@ ${JSON.stringify(compactElements)}`;
       result.message = result.status === "found" ? "Action found" : "No action found";
     }
     if (result.thinking) console.log("AI Thinking:", result.thinking.slice(0, 200));
+
+    // Cache successful results
+    setCache(cacheKey, result);
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -9,16 +9,16 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { elements, task, context, pageText, pageUrl, step } = await req.json();
+    const { elements, task, context, pageText, pageUrl, step, screenshot } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
-
     const systemPrompt = `Sen tam otonom bir web otomasyon ajanısın. Sayfayı TAMAMEN analiz edip, ne yapılması gerektiğini KENDİN karar ver.
 
 ## GİRDİLER
-1. Sayfadaki görünen METİN (pageText) — soruları, seçenekleri, başlıkları oku
-2. İnteraktif ELEMENTLER listesi — tıklanabilir/yazılabilir öğeler
-3. Son yapılan aksiyonlar — tekrar etme
+1. Sayfanın EKRAN GÖRÜNTÜSÜ — sayfanın gerçek görünümünü görebilirsin, butonların rengini, konumunu, popup'ları ve genel düzeni anlarsın
+2. Sayfadaki görünen METİN (pageText) — soruları, seçenekleri, başlıkları oku
+3. İnteraktif ELEMENTLER listesi — tıklanabilir/yazılabilir öğeler (index numaralarıyla)
+4. Son yapılan aksiyonlar — tekrar etme
 
 Her element: { index, tag, type, text, id, name, value, checked, role, rect:{x,y,w,h}, isInCookieBanner }
 
@@ -107,10 +107,18 @@ ${JSON.stringify(elements, null, 2)}`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
+          {
+            role: "user",
+            content: screenshot
+              ? [
+                  { type: "text", text: userPrompt },
+                  { type: "image_url", image_url: { url: `data:image/jpeg;base64,${screenshot}` } },
+                ]
+              : userPrompt,
+          },
         ],
         temperature: 0.1,
         max_tokens: 2048,

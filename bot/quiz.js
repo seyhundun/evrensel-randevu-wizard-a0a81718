@@ -2662,7 +2662,17 @@ async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKe
   taskText += "Hesap: " + account.email + " / Şifre: " + account.password + "\n";
   taskText += "Son aksiyonlar:\n" + recentText;
 
-  // 4) dom-agent edge function'a gönder
+  // 4) Screenshot al (vision için)
+  var screenshotBase64 = null;
+  try {
+    var screenshotBuf = await page.screenshot({ type: "jpeg", quality: 40, encoding: "binary" });
+    screenshotBase64 = screenshotBuf.toString("base64");
+    console.log("[DOM-AGENT] 📸 Screenshot alındı (" + Math.round(screenshotBase64.length / 1024) + "KB)");
+  } catch (ssErr) {
+    console.log("[DOM-AGENT] Screenshot alınamadı: " + ssErr.message);
+  }
+
+  // 5) dom-agent edge function'a gönder
   var maxRetries = 3;
   for (var attempt = 0; attempt < maxRetries; attempt++) {
     try {
@@ -2677,7 +2687,8 @@ async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKe
           task: taskText,
           pageText: pageText,
           pageUrl: currentUrl,
-          step: step
+          step: step,
+          screenshot: screenshotBase64
         })
       });
 

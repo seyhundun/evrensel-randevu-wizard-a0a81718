@@ -2680,6 +2680,8 @@ async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKe
   var maxRetries = 3;
   for (var attempt = 0; attempt < maxRetries; attempt++) {
     try {
+      var controller = new AbortController();
+      var fetchTimeout = setTimeout(function() { controller.abort(); }, 30000);
       var res = await fetch(SUPABASE_URL + "/functions/v1/dom-agent", {
         method: "POST",
         headers: {
@@ -2693,8 +2695,10 @@ async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKe
           pageUrl: currentUrl,
           step: step,
           screenshot: screenshotBase64
-        })
+        }),
+        signal: controller.signal
       });
+      clearTimeout(fetchTimeout);
 
       if (res.status === 429) {
         var waitSec = (attempt + 1) * 10;

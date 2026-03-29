@@ -196,19 +196,27 @@ async function callGeminiDirect(params: AIRequestParams, apiKey: string): Promis
 
 async function callOpenAIDirect(params: AIRequestParams, apiKey: string): Promise<Response> {
   const model = params.model.replace("openai/", "");
-  // OpenAI newer models require max_completion_tokens, not max_tokens
-  // Also remove the original model from the spread to avoid conflicts
+  // Skip if this isn't an OpenAI-compatible model
+  if (model.startsWith("google/") || model.startsWith("gemini") || model.startsWith("bu-")) {
+    return new Response(JSON.stringify({ error: "Not an OpenAI model" }), { status: 404 });
+  }
   const body: any = {
     model,
     messages: params.messages,
     temperature: params.temperature,
     max_completion_tokens: params.max_tokens,
   };
-  return fetch("https://api.openai.com/v1/chat/completions", {
+  const resp = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    console.error(`[dom-agent] OpenAI error ${resp.status}:`, errText.slice(0, 300));
+    return new Response(errText, { status: resp.status, headers: { "Content-Type": "application/json" } });
+  }
+  return resp;
 }
 
 async function callAI(params: AIRequestParams, settings: Record<string, string>): Promise<Response> {
@@ -255,7 +263,7 @@ async function callAI(params: AIRequestParams, settings: Record<string, string>)
       }
       const status = resp.status;
       console.warn(`[dom-agent] ${p.name} returned ${status}`);
-      if (status === 400 || status === 402 || status === 429 || status >= 500) {
+      if (status === 400 || status === 402 || status === 404 || status === 429 || status >= 500) {
         // Try to consume the body to avoid leaks
         try { await resp.text(); } catch {}
         continue; // Try next provider

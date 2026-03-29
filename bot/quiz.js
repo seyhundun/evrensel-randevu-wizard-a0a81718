@@ -1570,6 +1570,12 @@ async function runGeminiEngine(url, account, settings) {
     "--window-size=1920,1080",
     "--start-maximized",
     "--user-data-dir=" + tempDir,
+    // Anti-detection args
+    "--disable-blink-features=AutomationControlled",
+    "--disable-features=IsolateOrigins,site-per-process",
+    "--disable-infobars",
+    "--lang=en-US,en;q=0.9",
+    "--disable-web-security=false",
   ];
 
   var useProxy = settings.quiz_proxy_enabled !== "false";

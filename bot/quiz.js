@@ -2683,8 +2683,9 @@ async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKe
     console.log("[DOM-AGENT] 📸 Harici screenshot kullanılıyor (" + Math.round(screenshotBase64.length / 1024) + "KB)");
   }
 
-  // 5) dom-agent edge function'a gönder
-  var maxRetries = 3;
+  // 5) dom-agent edge function'a gönder — istekler arası min 3s bekleme
+  await new Promise(function(r) { setTimeout(r, 3000); });
+  var maxRetries = 4;
   for (var attempt = 0; attempt < maxRetries; attempt++) {
     try {
       var controller = new AbortController();

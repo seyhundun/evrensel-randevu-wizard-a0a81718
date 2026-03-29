@@ -127,11 +127,15 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { elements, task, context, pageText, pageUrl, step, screenshot } = await req.json();
+    const { elements, task, context, pageText, pageUrl, step, screenshot, model: requestedModel, temperature: requestedTemp, maxTokens: requestedMaxTokens, visionEnabled } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
     const systemPrompt = buildSystemPrompt();
+    const aiModel = requestedModel || "google/gemini-2.5-flash";
+    const aiTemp = typeof requestedTemp === "number" ? requestedTemp : 0.1;
+    const aiMaxTokens = typeof requestedMaxTokens === "number" ? requestedMaxTokens : 2048;
+    const useVision = visionEnabled !== false;
 
     // Build concise element list — strip unnecessary fields to reduce tokens
     const compactElements = (elements || []).map((el: any) => {
@@ -164,7 +168,7 @@ ${JSON.stringify(compactElements)}`;
       { role: "system", content: systemPrompt },
     ];
 
-    if (screenshot) {
+    if (screenshot && useVision) {
       messages.push({
         role: "user",
         content: [
@@ -176,6 +180,8 @@ ${JSON.stringify(compactElements)}`;
       messages.push({ role: "user", content: userPrompt });
     }
 
+    console.log(`[dom-agent] model=${aiModel} temp=${aiTemp} tokens=${aiMaxTokens} vision=${useVision && !!screenshot}`);
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -183,10 +189,10 @@ ${JSON.stringify(compactElements)}`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: aiModel,
         messages,
-        temperature: 0.1,
-        max_tokens: 2048,
+        temperature: aiTemp,
+        max_tokens: aiMaxTokens,
       }),
     });
 

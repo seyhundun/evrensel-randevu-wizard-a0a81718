@@ -9,10 +9,9 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { elements, task, context, pageText, pageUrl, step } = await req.json();
+    const { elements, task, context, pageText, pageUrl, step, screenshot } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
-
     const systemPrompt = `Sen tam otonom bir web otomasyon ajanısın. Sayfayı TAMAMEN analiz edip, ne yapılması gerektiğini KENDİN karar ver.
 
 ## GİRDİLER
@@ -107,10 +106,18 @@ ${JSON.stringify(elements, null, 2)}`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
+          {
+            role: "user",
+            content: screenshot
+              ? [
+                  { type: "text", text: userPrompt },
+                  { type: "image_url", image_url: { url: `data:image/jpeg;base64,${screenshot}` } },
+                ]
+              : userPrompt,
+          },
         ],
         temperature: 0.1,
         max_tokens: 2048,

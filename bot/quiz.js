@@ -1677,6 +1677,49 @@ async function runGeminiEngine(url, account, settings) {
   try {
     await page.setViewport({ width: 1920, height: 1080 });
 
+    // === ADVANCED STEALTH INJECTION ===
+    await page.evaluateOnNewDocument(function() {
+      // Override navigator.webdriver
+      Object.defineProperty(navigator, 'webdriver', { get: function() { return false; } });
+      // Override chrome automation indicators
+      window.chrome = { runtime: {}, loadTimes: function() { return {}; }, csi: function() { return {}; } };
+      // Override permissions
+      var originalQuery = window.navigator.permissions.query;
+      window.navigator.permissions.query = function(params) {
+        if (params.name === 'notifications') return Promise.resolve({ state: 'denied' });
+        return originalQuery.call(window.navigator.permissions, params);
+      };
+      // Override plugins (empty = bot signal)
+      Object.defineProperty(navigator, 'plugins', { get: function() { return [1, 2, 3, 4, 5]; } });
+      Object.defineProperty(navigator, 'languages', { get: function() { return ['en-US', 'en']; } });
+      // Override hardware concurrency
+      Object.defineProperty(navigator, 'hardwareConcurrency', { get: function() { return 8; } });
+      // Override platform
+      Object.defineProperty(navigator, 'platform', { get: function() { return 'Win32'; } });
+      // Canvas fingerprint noise
+      var origToDataURL = HTMLCanvasElement.prototype.toDataURL;
+      HTMLCanvasElement.prototype.toDataURL = function(type) {
+        if (type === 'image/png' || !type) {
+          var ctx = this.getContext('2d');
+          if (ctx) {
+            var imgData = ctx.getImageData(0, 0, this.width, this.height);
+            for (var k = 0; k < Math.min(10, imgData.data.length); k += 4) {
+              imgData.data[k] = imgData.data[k] ^ 1;
+            }
+            ctx.putImageData(imgData, 0, 0);
+          }
+        }
+        return origToDataURL.apply(this, arguments);
+      };
+      // WebGL fingerprint noise
+      var getParameterOrig = WebGLRenderingContext.prototype.getParameter;
+      WebGLRenderingContext.prototype.getParameter = function(param) {
+        if (param === 37445) return 'Intel Inc.';
+        if (param === 37446) return 'Intel Iris OpenGL Engine';
+        return getParameterOrig.call(this, param);
+      };
+    });
+
     // İlk sayfa yüklemeden önce insan benzeri hareket
     await humanMove(page);
 

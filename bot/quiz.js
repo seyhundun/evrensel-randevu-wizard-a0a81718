@@ -1706,7 +1706,7 @@ async function runGeminiEngine(url, account, settings) {
     if (engineType === "dom_agent") {
       var domAgentKey = settings.lovable_api_key || process.env.LOVABLE_API_KEY || "";
       if (!domAgentKey) throw new Error("Lovable API key bulunamadı (DOM Agent için gerekli)!");
-      visionFn = function(ss, url, acc, st, ra) { return askDOMAgent(page, url, acc, st, ra, domAgentKey); };
+      visionFn = function(ss, url, acc, st, ra) { return askDOMAgent(page, url, acc, st, ra, domAgentKey, ss); };
     } else if (engineType === "lovable_ai") {
       var lovableKey = settings.lovable_api_key || process.env.LOVABLE_API_KEY || "";
       if (!lovableKey) throw new Error("Lovable API key bulunamadı! bot_settings'e lovable_api_key ekleyin.");
@@ -1868,10 +1868,17 @@ async function runGeminiEngine(url, account, settings) {
       var action = await visionFn(screenshot, currentUrl, account, stepCount, recentActions);
 
       if (!action) {
-        console.log("[" + engineType.toUpperCase() + "] AI cevap vermedi, durduruluyor");
-        await supabaseInsertLog("AI cevap vermedi, durduruluyor", "warning");
-        break;
+        consecutiveFailures++;
+        console.log("[" + engineType.toUpperCase() + "] AI cevap vermedi (" + consecutiveFailures + "/5)");
+        await supabaseInsertLog("AI cevap vermedi (" + consecutiveFailures + "/5), tekrar deneniyor", "warning");
+        if (consecutiveFailures >= 5) {
+          console.log("[" + engineType.toUpperCase() + "] 5 ardışık başarısız deneme, oturum yeniden başlatılıyor");
+          throw new Error("5 ardışık AI hatası — restart session");
+        }
+        await quizDelay(2000, 4000);
+        continue;
       }
+      consecutiveFailures = 0;
 
       var actionSummary = [action.action || "?", action.selector || action.value || action.description || ""].join(": ");
       var actionText = String(actionSummary + " " + (action.description || "")).toLowerCase();
@@ -2534,7 +2541,7 @@ function domAgentFindIndustryFallback(pageText, elements) {
 
 var _domAgentPendingActions = []; // Kuyruktaki aksiyonlar
 
-async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKey) {
+async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKey, externalScreenshot) {
   // Eğer kuyrukta bekleyen aksiyon varsa, AI'ya sormadan direkt döndür
   if (_domAgentPendingActions.length > 0) {
     var queued = _domAgentPendingActions.shift();
@@ -2662,20 +2669,26 @@ async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKe
   taskText += "Hesap: " + account.email + " / Şifre: " + account.password + "\n";
   taskText += "Son aksiyonlar:\n" + recentText;
 
-  // 4) Screenshot al (vision için)
-  var screenshotBase64 = null;
-  try {
-    var screenshotBuf = await page.screenshot({ type: "jpeg", quality: 40, encoding: "binary" });
-    screenshotBase64 = screenshotBuf.toString("base64");
-    console.log("[DOM-AGENT] 📸 Screenshot alındı (" + Math.round(screenshotBase64.length / 1024) + "KB)");
-  } catch (ssErr) {
-    console.log("[DOM-AGENT] Screenshot alınamadı: " + ssErr.message);
+  // 4) Screenshot — dışarıdan geldiyse onu kullan, yoksa al
+  var screenshotBase64 = externalScreenshot || null;
+  if (!screenshotBase64) {
+    try {
+      var screenshotBuf = await page.screenshot({ type: "jpeg", quality: 40, encoding: "binary" });
+      screenshotBase64 = screenshotBuf.toString("base64");
+      console.log("[DOM-AGENT] 📸 Screenshot alındı (" + Math.round(screenshotBase64.length / 1024) + "KB)");
+    } catch (ssErr) {
+      console.log("[DOM-AGENT] Screenshot alınamadı: " + ssErr.message);
+    }
+  } else {
+    console.log("[DOM-AGENT] 📸 Harici screenshot kullanılıyor (" + Math.round(screenshotBase64.length / 1024) + "KB)");
   }
 
   // 5) dom-agent edge function'a gönder
   var maxRetries = 3;
   for (var attempt = 0; attempt < maxRetries; attempt++) {
     try {
+      var controller = new AbortController();
+      var fetchTimeout = setTimeout(function() { controller.abort(); }, 30000);
       var res = await fetch(SUPABASE_URL + "/functions/v1/dom-agent", {
         method: "POST",
         headers: {
@@ -2689,8 +2702,10 @@ async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKe
           pageUrl: currentUrl,
           step: step,
           screenshot: screenshotBase64
-        })
+        }),
+        signal: controller.signal
       });
+      clearTimeout(fetchTimeout);
 
       if (res.status === 429) {
         var waitSec = (attempt + 1) * 10;
@@ -2830,6 +2845,13 @@ async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKe
       return firstAction;
 
     } catch (err) {
+      clearTimeout(fetchTimeout);
+      if (err.name === "AbortError") {
+        console.error("[DOM-AGENT] Timeout (30s), screenshot'sız yeniden deneniyor...");
+        screenshotBase64 = null; // Screenshot'sız dene
+        await supabaseInsertLog("DOM Agent timeout, screenshot'sız yeniden deneniyor", "warning");
+        if (attempt < maxRetries - 1) { continue; }
+      }
       console.error("[DOM-AGENT] Hata:", err.message);
       await supabaseInsertLog("DOM Agent hata: " + err.message, "warning");
       if (attempt < maxRetries - 1) { await new Promise(function(r) { setTimeout(r, 5000); }); continue; }

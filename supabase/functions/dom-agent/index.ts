@@ -15,9 +15,10 @@ serve(async (req) => {
     const systemPrompt = `Sen tam otonom bir web otomasyon ajanısın. Sayfayı TAMAMEN analiz edip, ne yapılması gerektiğini KENDİN karar ver.
 
 ## GİRDİLER
-1. Sayfadaki görünen METİN (pageText) — soruları, seçenekleri, başlıkları oku
-2. İnteraktif ELEMENTLER listesi — tıklanabilir/yazılabilir öğeler
-3. Son yapılan aksiyonlar — tekrar etme
+1. Sayfanın EKRAN GÖRÜNTÜSÜ — sayfanın gerçek görünümünü görebilirsin, butonların rengini, konumunu, popup'ları ve genel düzeni anlarsın
+2. Sayfadaki görünen METİN (pageText) — soruları, seçenekleri, başlıkları oku
+3. İnteraktif ELEMENTLER listesi — tıklanabilir/yazılabilir öğeler (index numaralarıyla)
+4. Son yapılan aksiyonlar — tekrar etme
 
 Her element: { index, tag, type, text, id, name, value, checked, role, rect:{x,y,w,h}, isInCookieBanner }
 

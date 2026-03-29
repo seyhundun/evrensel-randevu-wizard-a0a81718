@@ -1313,19 +1313,38 @@ function isQuizAccountInCooldown(accountId) {
 }
 
 function quizIsPageBlocked(pageContent) {
-  if (!pageContent || pageContent.trim().length < 50) return false; // Çok kısa sayfa engel değil, yükleniyor olabilir
+  if (!pageContent || pageContent.trim().length < 50) return false;
   var lower = pageContent.toLowerCase();
-  // Gerçek engel: sadece spesifik tam engellenme kalıplarını kontrol et
-  // "blocked" tek başına çok agresif — anket sayfalarında "ad blocker" vb. geçebilir
-  var isBlocked = (lower.includes("access denied") && lower.length < 500) ||
-    (lower.includes("403 forbidden") && lower.length < 500) ||
-    (lower.includes("you have been blocked") && lower.length < 1000) ||
-    (lower.includes("your ip") && lower.includes("blocked")) ||
-    (lower.includes("unusual traffic") && lower.length < 800) ||
-    (lower.includes("suspicious activity") && lower.length < 800) ||
-    (lower.includes("too many requests") && lower.length < 500) ||
-    (lower.includes("rate limit") && lower.length < 500);
-  return isBlocked;
+  var len = lower.length;
+
+  // Bilinen anket platformları — uzun sayfalarda false positive önle
+  var knownPlatforms = ["ysense", "swagbucks", "surveyjunkie", "prolific", "cint", "toluna", "dynata", "lucid", "qualtrics", "typeform", "surveymonkey", "google.com/forms"];
+  for (var kp = 0; kp < knownPlatforms.length; kp++) {
+    if (lower.includes(knownPlatforms[kp]) && len > 1500) return false;
+  }
+
+  // Çok kısa sayfa + engel kalıpları
+  var strictBlocks = [
+    { pattern: "access denied", maxLen: 800 },
+    { pattern: "403 forbidden", maxLen: 600 },
+    { pattern: "you have been blocked", maxLen: 1200 },
+    { pattern: "unusual traffic", maxLen: 1000 },
+    { pattern: "suspicious activity", maxLen: 1000 },
+    { pattern: "too many requests", maxLen: 600 },
+    { pattern: "rate limit exceeded", maxLen: 600 },
+    { pattern: "your ip has been", maxLen: 800 },
+    { pattern: "cloudflare", maxLen: 500 },
+    { pattern: "please verify you are a human", maxLen: 800 },
+  ];
+
+  for (var sb = 0; sb < strictBlocks.length; sb++) {
+    if (lower.includes(strictBlocks[sb].pattern) && len < strictBlocks[sb].maxLen) return true;
+  }
+
+  // IP + blocked kombinasyonu (herhangi bir uzunlukta)
+  if (lower.includes("your ip") && lower.includes("blocked") && len < 1500) return true;
+
+  return false;
 }
 
 function getQuizCooldownWait() {

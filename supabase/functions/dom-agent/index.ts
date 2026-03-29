@@ -196,10 +196,11 @@ async function callGeminiDirect(params: AIRequestParams, apiKey: string): Promis
 
 async function callOpenAIDirect(params: AIRequestParams, apiKey: string): Promise<Response> {
   let model = params.model.replace("openai/", "");
+  const { max_tokens, ...rest } = params;
   return fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ ...params, model }),
+    body: JSON.stringify({ ...rest, model, max_completion_tokens: max_tokens }),
   });
 }
 

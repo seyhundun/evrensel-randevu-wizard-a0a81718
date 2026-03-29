@@ -234,17 +234,8 @@ export default function QuizSidebarContent() {
     setSaving(false);
   };
 
-  const engineLabels: Record<QuizEngineType, string> = {
-    gemini: "Gemini Vision (Kendi Key)",
-    lovable_ai: "Lovable AI (Ücretsiz)",
-    openai: "OpenAI GPT-4o-mini (Ucuz)",
-    dom_agent: "DOM Agent (Hızlı)",
-    browser_use: "Browser Use (Ücretli)",
-  };
-  const switchEngine = async (engine: QuizEngineType) => {
-    setQuizEngine(engine);
-    await upsertSetting("quiz_engine", engine, "Quiz Motor Seçimi");
-    toast.success("Motor: " + engineLabels[engine]);
+  const handleEngineSaveKey = async (settingKey: string, value: string, label: string) => {
+    await upsertSetting(settingKey, value, label);
   };
 
   const healthColor = stats.successRate >= 80 ? "text-emerald-500" : stats.successRate >= 50 ? "text-amber-500" : "text-destructive";

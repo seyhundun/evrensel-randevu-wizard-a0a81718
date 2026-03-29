@@ -2673,7 +2673,7 @@ async function askDOMAgent(page, currentUrl, account, step, recentActions, apiKe
   var screenshotBase64 = externalScreenshot || null;
   if (!screenshotBase64) {
     try {
-      var screenshotBuf = await page.screenshot({ type: "jpeg", quality: 40, encoding: "binary" });
+      var screenshotBuf = await page.screenshot({ type: "jpeg", quality: 25, encoding: "binary" });
       screenshotBase64 = screenshotBuf.toString("base64");
       console.log("[DOM-AGENT] 📸 Screenshot alındı (" + Math.round(screenshotBase64.length / 1024) + "KB)");
     } catch (ssErr) {

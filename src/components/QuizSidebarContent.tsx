@@ -54,7 +54,6 @@ export default function QuizSidebarContent() {
   const [savingCapsolverKey, setSavingCapsolverKey] = useState(false);
 
   // Engine selection
-  type QuizEngineType = "gemini" | "browser_use" | "lovable_ai" | "openai" | "dom_agent";
   const [quizEngine, setQuizEngine] = useState<QuizEngineType>("gemini");
 
   // API keys

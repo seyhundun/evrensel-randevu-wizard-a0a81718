@@ -95,7 +95,7 @@ export default function ServerCommandPanel() {
   };
 
   return (
-    <Card className="border-border/50 bg-black text-white">
+    <Card className="border-border/50">
       <CardHeader className="pb-3">
         <CardTitle className="text-sm flex items-center gap-2">
           <Terminal className="w-4 h-4 text-green-500" />
@@ -149,10 +149,10 @@ export default function ServerCommandPanel() {
         </div>
 
         {/* Command history */}
-        <ScrollArea className="h-[300px]" ref={scrollRef}>
+        <ScrollArea className="h-[300px] rounded-lg bg-black p-3 border border-neutral-800" ref={scrollRef}>
           <div className="space-y-2">
             {commands.map((cmd) => (
-              <div key={cmd.id} className="rounded-lg border border-border/50 bg-muted/30 p-2 text-xs">
+              <div key={cmd.id} className="rounded border border-neutral-800 bg-neutral-900 p-2 text-xs">
                 <div className="flex items-center justify-between gap-2 mb-1">
                   <code className="font-mono text-green-400 text-[11px] flex-1 truncate">$ {cmd.command}</code>
                   <div className="flex items-center gap-1.5 shrink-0">
@@ -163,7 +163,7 @@ export default function ServerCommandPanel() {
                   </div>
                 </div>
                 {cmd.output && (
-                  <pre className="font-mono text-[10px] text-muted-foreground whitespace-pre-wrap break-all mt-1 max-h-[200px] overflow-auto bg-background/50 rounded p-1.5">
+                  <pre className="font-mono text-[10px] text-green-400/80 whitespace-pre-wrap break-all mt-1 max-h-[200px] overflow-auto bg-black rounded p-1.5 border border-neutral-800">
                     {cmd.output}
                   </pre>
                 )}
@@ -176,7 +176,7 @@ export default function ServerCommandPanel() {
               </div>
             ))}
             {commands.length === 0 && (
-              <p className="text-center text-muted-foreground text-xs py-8">Henüz komut gönderilmedi</p>
+              <p className="text-center text-neutral-500 text-xs py-8">Henüz komut gönderilmedi</p>
             )}
           </div>
         </ScrollArea>

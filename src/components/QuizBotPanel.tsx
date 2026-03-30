@@ -314,27 +314,29 @@ export default function QuizBotPanel() {
             {accounts.map((acc) => {
               const linkedLinks = quizLinks.filter(l => l.quiz_account_id === acc.id);
               return (
-                <div key={acc.id} className="bg-secondary/30 rounded-md px-3 py-2 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 min-w-0">
+                <div key={acc.id} className="bg-secondary/30 rounded-md px-3 py-2 space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0 flex-wrap">
                       <Switch
                         checked={acc.status === "active"}
                         onCheckedChange={() => toggleAccountStatus(acc)}
-                        className="scale-75"
+                        className="scale-75 shrink-0"
                       />
-                      <span className="text-xs font-mono truncate">{acc.email}</span>
-                      <button onClick={() => setShowPasswords((p) => ({ ...p, [acc.id]: !p[acc.id] }))} className="text-muted-foreground hover:text-foreground">
+                      <span className="text-xs font-mono truncate max-w-[180px] sm:max-w-none">{acc.email}</span>
+                      <button onClick={() => setShowPasswords((p) => ({ ...p, [acc.id]: !p[acc.id] }))} className="text-muted-foreground hover:text-foreground shrink-0">
                         {showPasswords[acc.id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                       </button>
-                      {showPasswords[acc.id] && <span className="text-xs text-muted-foreground font-mono">{acc.password}</span>}
-                      <Badge variant={acc.status === "active" ? "secondary" : "destructive"} className="text-[10px]">
-                        {acc.status === "active" ? "Aktif" : "Pasif"}
-                      </Badge>
-                      {acc.fail_count > 0 && <span className="text-[10px] text-destructive">({acc.fail_count} hata)</span>}
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => deleteAccount(acc.id)} className="h-6 w-6 p-0 text-destructive">
+                    <Button variant="ghost" size="sm" onClick={() => deleteAccount(acc.id)} className="h-6 w-6 p-0 text-destructive shrink-0">
                       <Trash2 className="w-3 h-3" />
                     </Button>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap pl-1">
+                    {showPasswords[acc.id] && <span className="text-xs text-muted-foreground font-mono">{acc.password}</span>}
+                    <Badge variant={acc.status === "active" ? "secondary" : "destructive"} className="text-[10px]">
+                      {acc.status === "active" ? "Aktif" : "Pasif"}
+                    </Badge>
+                    {acc.fail_count > 0 && <span className="text-[10px] text-destructive">({acc.fail_count} hata)</span>}
                   </div>
                   {/* Bu hesaba atanmış linkler */}
                   {linkedLinks.length > 0 && (

@@ -220,38 +220,42 @@ export default function QuizBotPanel() {
                 return (
                   <div key={link.id} className="bg-secondary/30 rounded-lg overflow-hidden">
                     {/* Link satırı */}
-                    <div className="flex items-center gap-2 px-3 py-2">
-                      <Switch
-                        checked={link.status === "active" || link.status === "quiz_pending" || link.status === "quiz_running"}
-                        onCheckedChange={() => toggleLinkActive(link)}
-                        disabled={link.status === "quiz_pending" || link.status === "quiz_running"}
-                        className="scale-75"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <a href={link.url} target="_blank" rel="noopener noreferrer"
-                          className="text-xs font-mono text-foreground hover:text-primary truncate block">
-                          {link.url}
-                        </a>
+                    <div className="flex flex-col gap-2 px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={link.status === "active" || link.status === "quiz_pending" || link.status === "quiz_running"}
+                          onCheckedChange={() => toggleLinkActive(link)}
+                          disabled={link.status === "quiz_pending" || link.status === "quiz_running"}
+                          className="scale-75 shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <a href={link.url} target="_blank" rel="noopener noreferrer"
+                            className="text-xs font-mono text-foreground hover:text-primary truncate block">
+                            {link.url}
+                          </a>
+                        </div>
                       </div>
-                      {statusBadge(link.status)}
-                      {(link.status === "quiz_done" || link.status === "error") && (
-                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-amber-600 hover:text-amber-700" onClick={() => startQuiz(link)} title="Yeniden Başlat">
-                          <RotateCcw className="w-3.5 h-3.5" />
+                      <div className="flex items-center gap-1.5 flex-wrap pl-1">
+                        {statusBadge(link.status)}
+                        {(link.status === "quiz_done" || link.status === "error") && (
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-amber-600 hover:text-amber-700" onClick={() => startQuiz(link)} title="Yeniden Başlat">
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                        {(link.status === "quiz_pending" || link.status === "quiz_running") && (
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive hover:text-destructive/80" onClick={() => stopQuiz(link)} title="Durdur">
+                            <StopCircle className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                        {link.status !== "quiz_pending" && link.status !== "quiz_running" && (
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-emerald-600 hover:text-emerald-700" onClick={() => startQuiz(link)} title="Quiz Başlat">
+                            <Play className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive" onClick={() => deleteQuizLink(link.id)} disabled={link.status === "quiz_running"}>
+                          <Trash2 className="w-3 h-3" />
                         </Button>
-                      )}
-                      {(link.status === "quiz_pending" || link.status === "quiz_running") && (
-                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive hover:text-destructive/80" onClick={() => stopQuiz(link)} title="Durdur">
-                          <StopCircle className="w-3.5 h-3.5" />
-                        </Button>
-                      )}
-                      {link.status !== "quiz_pending" && link.status !== "quiz_running" && (
-                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-emerald-600 hover:text-emerald-700" onClick={() => startQuiz(link)} title="Quiz Başlat">
-                          <Play className="w-3.5 h-3.5" />
-                        </Button>
-                      )}
-                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive" onClick={() => deleteQuizLink(link.id)} disabled={link.status === "quiz_running"}>
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
+                      </div>
                     </div>
 
                     {/* Hesap atama alanı */}

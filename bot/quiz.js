@@ -1126,9 +1126,14 @@ async function tryAutoSolveCaptcha(page, settings) {
   }
 
   if (captchaInfo.type === "turnstile") {
-    await supabaseInsertLog("Turnstile: puppeteer-real-browser otomatik çözer, bekleniyor...", "info");
-    await new Promise(function(r) { setTimeout(r, 5000); });
-    return true;
+    await supabaseInsertLog("Turnstile tespit edildi, VFS mantığı ile çözülüyor...", "info");
+    var cfResolved = await waitForQuizCloudflareChallengeResolve(page, 90000);
+    if (cfResolved) {
+      await supabaseInsertLog("✅ Turnstile/Cloudflare challenge geçildi", "success");
+      return true;
+    }
+    await supabaseInsertLog("❌ Turnstile çözülemedi, IP rotasyonu gerekebilir", "error");
+    return false;
   }
 
   var token = null;

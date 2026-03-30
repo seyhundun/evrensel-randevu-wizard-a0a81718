@@ -80,6 +80,13 @@ export default function QuizBotPanel() {
     fetchAccounts();
   }
 
+  async function toggleAccountStatus(acc: QuizAccount) {
+    const newStatus = acc.status === "active" ? "inactive" : "active";
+    setAccounts(prev => prev.map(a => a.id === acc.id ? { ...a, status: newStatus } : a));
+    await supabase.from("quiz_accounts").update({ status: newStatus }).eq("id", acc.id);
+    toast.success(newStatus === "active" ? "Hesap aktif edildi" : "Hesap pasif edildi");
+  }
+
   async function addQuizLink() {
     const url = newUrl.trim();
     if (!url) { toast.error("URL girin"); return; }
@@ -290,12 +297,17 @@ export default function QuizBotPanel() {
             {accounts.map((acc) => (
               <div key={acc.id} className="flex items-center justify-between bg-secondary/30 rounded-md px-3 py-2">
                 <div className="flex items-center gap-2 min-w-0">
+                  <Switch
+                    checked={acc.status === "active"}
+                    onCheckedChange={() => toggleAccountStatus(acc)}
+                    className="scale-75"
+                  />
                   <span className="text-xs font-mono truncate">{acc.email}</span>
                   <button onClick={() => setShowPasswords((p) => ({ ...p, [acc.id]: !p[acc.id] }))} className="text-muted-foreground hover:text-foreground">
                     {showPasswords[acc.id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                   </button>
                   {showPasswords[acc.id] && <span className="text-xs text-muted-foreground font-mono">{acc.password}</span>}
-                  <Badge variant={acc.status === "active" ? "secondary" : "destructive"} className="text-[10px]">{acc.status}</Badge>
+                  <Badge variant={acc.status === "active" ? "secondary" : "destructive"} className="text-[10px]">{acc.status === "active" ? "Aktif" : "Pasif"}</Badge>
                   {acc.fail_count > 0 && <span className="text-[10px] text-destructive">({acc.fail_count} hata)</span>}
                 </div>
                 <Button variant="ghost" size="sm" onClick={() => deleteAccount(acc.id)} className="h-6 w-6 p-0 text-destructive">

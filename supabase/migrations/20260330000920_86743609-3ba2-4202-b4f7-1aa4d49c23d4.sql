@@ -1,0 +1,1 @@
+ALTER TABLE public.link_analyses ADD COLUMN quiz_account_id uuid REFERENCES public.quiz_accounts(id) ON DELETE SET NULL;

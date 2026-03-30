@@ -329,6 +329,7 @@ export type Database = {
           id: string
           page_content: string | null
           page_title: string | null
+          quiz_account_id: string | null
           status: string
           url: string
         }
@@ -338,6 +339,7 @@ export type Database = {
           id?: string
           page_content?: string | null
           page_title?: string | null
+          quiz_account_id?: string | null
           status?: string
           url: string
         }
@@ -347,10 +349,19 @@ export type Database = {
           id?: string
           page_content?: string | null
           page_title?: string | null
+          quiz_account_id?: string | null
           status?: string
           url?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "link_analyses_quiz_account_id_fkey"
+            columns: ["quiz_account_id"]
+            isOneToOne: false
+            referencedRelation: "quiz_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       quiz_accounts: {
         Row: {

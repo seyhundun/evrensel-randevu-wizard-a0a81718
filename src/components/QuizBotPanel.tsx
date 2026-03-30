@@ -8,10 +8,11 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import {
   Plus, Trash2, Play, Eye, EyeOff,
-  Link2, Loader2, CheckCircle2, AlertCircle,
-  Clock, Mail, Power, Square, Globe, RotateCcw, StopCircle
+  Loader2, CheckCircle2, AlertCircle,
+  Clock, Mail, Power, Globe, RotateCcw, StopCircle, UserCircle
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import QuizTrackingLogs from "@/components/QuizTrackingLogs";
 
 type QuizAccount = {
@@ -30,6 +31,7 @@ interface QuizLink {
   url: string;
   status: string;
   created_at: string;
+  quiz_account_id: string | null;
 }
 
 export default function QuizBotPanel() {
@@ -46,6 +48,7 @@ export default function QuizBotPanel() {
     const ch = supabase
       .channel("quiz-panel-rt")
       .on("postgres_changes", { event: "*", schema: "public", table: "link_analyses" }, () => loadQuizLinks())
+      .on("postgres_changes", { event: "*", schema: "public", table: "quiz_accounts" }, () => fetchAccounts())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, []);
@@ -58,7 +61,7 @@ export default function QuizBotPanel() {
   async function loadQuizLinks() {
     const { data } = await supabase
       .from("link_analyses")
-      .select("id, url, status, created_at")
+      .select("id, url, status, created_at, quiz_account_id")
       .order("created_at", { ascending: false })
       .limit(50);
     if (data) setQuizLinks(data as QuizLink[]);
@@ -132,6 +135,12 @@ export default function QuizBotPanel() {
     toast.success(`${activeLinks.length} link quiz kuyruğuna eklendi`);
   }
 
+  async function assignAccount(linkId: string, accountId: string | null) {
+    setQuizLinks(prev => prev.map(l => l.id === linkId ? { ...l, quiz_account_id: accountId } : l));
+    await supabase.from("link_analyses").update({ quiz_account_id: accountId } as any).eq("id", linkId);
+    toast.success(accountId ? "Hesap atandı" : "Hesap kaldırıldı");
+  }
+
   const statusBadge = (status: string) => {
     switch (status) {
       case "idle":
@@ -154,14 +163,18 @@ export default function QuizBotPanel() {
   const activeCount = quizLinks.filter(l => l.status === "active").length;
   const runningCount = quizLinks.filter(l => l.status === "quiz_pending" || l.status === "quiz_running").length;
 
+  // Group unassigned accounts (not linked to any quiz link)
+  const assignedAccountIds = new Set(quizLinks.map(l => l.quiz_account_id).filter(Boolean));
+  const unassignedAccounts = accounts.filter(a => !assignedAccountIds.has(a.id));
+
   return (
     <div className="space-y-4">
-      {/* Quiz Linkleri */}
+      {/* Quiz Linkleri + Hesap Ataması */}
       <Card className="p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold flex items-center gap-2">
             <Globe className="w-4 h-4 text-primary" />
-            Quiz Linkleri
+            Quiz Linkleri & Hesaplar
           </h2>
           <div className="flex items-center gap-2">
             {activeCount > 0 && (
@@ -200,86 +213,86 @@ export default function QuizBotPanel() {
         {quizLinks.length === 0 ? (
           <p className="text-xs text-muted-foreground py-2">Henüz link eklenmemiş</p>
         ) : (
-          <ScrollArea className="max-h-[300px]">
-            <div className="space-y-1.5">
-              {quizLinks.map((link) => (
-                <div key={link.id} className="flex items-center gap-2 bg-secondary/30 rounded-md px-3 py-2">
-                  {/* Aktif/Pasif toggle */}
-                  <Switch
-                    checked={link.status === "active" || link.status === "quiz_pending" || link.status === "quiz_running"}
-                    onCheckedChange={() => toggleLinkActive(link)}
-                    disabled={link.status === "quiz_pending" || link.status === "quiz_running"}
-                    className="scale-75"
-                  />
+          <ScrollArea className="max-h-[400px]">
+            <div className="space-y-2">
+              {quizLinks.map((link) => {
+                const assignedAccount = accounts.find(a => a.id === link.quiz_account_id);
+                return (
+                  <div key={link.id} className="bg-secondary/30 rounded-lg overflow-hidden">
+                    {/* Link satırı */}
+                    <div className="flex items-center gap-2 px-3 py-2">
+                      <Switch
+                        checked={link.status === "active" || link.status === "quiz_pending" || link.status === "quiz_running"}
+                        onCheckedChange={() => toggleLinkActive(link)}
+                        disabled={link.status === "quiz_pending" || link.status === "quiz_running"}
+                        className="scale-75"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <a href={link.url} target="_blank" rel="noopener noreferrer"
+                          className="text-xs font-mono text-foreground hover:text-primary truncate block">
+                          {link.url}
+                        </a>
+                      </div>
+                      {statusBadge(link.status)}
+                      {(link.status === "quiz_done" || link.status === "error") && (
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-amber-600 hover:text-amber-700" onClick={() => startQuiz(link)} title="Yeniden Başlat">
+                          <RotateCcw className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                      {(link.status === "quiz_pending" || link.status === "quiz_running") && (
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive hover:text-destructive/80" onClick={() => stopQuiz(link)} title="Durdur">
+                          <StopCircle className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                      {link.status !== "quiz_pending" && link.status !== "quiz_running" && (
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-emerald-600 hover:text-emerald-700" onClick={() => startQuiz(link)} title="Quiz Başlat">
+                          <Play className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive" onClick={() => deleteQuizLink(link.id)} disabled={link.status === "quiz_running"}>
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
 
-                  {/* URL */}
-                  <div className="flex-1 min-w-0">
-                    <a href={link.url} target="_blank" rel="noopener noreferrer"
-                      className="text-xs font-mono text-foreground hover:text-primary truncate block">
-                      {link.url}
-                    </a>
+                    {/* Hesap atama alanı */}
+                    <div className="px-3 pb-2 flex items-center gap-2 border-t border-border/30 pt-1.5">
+                      <UserCircle className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      <Select
+                        value={link.quiz_account_id || "none"}
+                        onValueChange={(val) => assignAccount(link.id, val === "none" ? null : val)}
+                      >
+                        <SelectTrigger className="h-7 text-xs flex-1">
+                          <SelectValue placeholder="Hesap seç..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">
+                            <span className="text-muted-foreground">Hesap atanmadı</span>
+                          </SelectItem>
+                          {accounts.map(acc => (
+                            <SelectItem key={acc.id} value={acc.id}>
+                              <span className="flex items-center gap-1.5">
+                                <span className={`inline-block w-1.5 h-1.5 rounded-full ${acc.status === "active" ? "bg-emerald-500" : "bg-muted-foreground/40"}`} />
+                                {acc.email}
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {assignedAccount && (
+                        <Badge variant={assignedAccount.status === "active" ? "secondary" : "destructive"} className="text-[10px] shrink-0">
+                          {assignedAccount.status === "active" ? "Aktif" : "Pasif"}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-
-                  {/* Status */}
-                  {statusBadge(link.status)}
-
-                  {/* Restart button */}
-                  {(link.status === "quiz_done" || link.status === "error") && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0 text-amber-600 hover:text-amber-700"
-                      onClick={() => startQuiz(link)}
-                      title="Yeniden Başlat"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                    </Button>
-                  )}
-
-                  {/* Stop button */}
-                  {(link.status === "quiz_pending" || link.status === "quiz_running") && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0 text-destructive hover:text-destructive/80"
-                      onClick={() => stopQuiz(link)}
-                      title="Durdur"
-                    >
-                      <StopCircle className="w-3.5 h-3.5" />
-                    </Button>
-                  )}
-
-                  {/* Start button */}
-                  {link.status !== "quiz_pending" && link.status !== "quiz_running" && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0 text-emerald-600 hover:text-emerald-700"
-                      onClick={() => startQuiz(link)}
-                      title="Quiz Başlat"
-                    >
-                      <Play className="w-3.5 h-3.5" />
-                    </Button>
-                  )}
-
-                  {/* Delete */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 w-6 p-0 text-destructive"
-                    onClick={() => deleteQuizLink(link.id)}
-                    disabled={link.status === "quiz_running"}
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </ScrollArea>
         )}
       </Card>
 
-      {/* Login Hesapları */}
+      {/* Hesap Yönetimi */}
       <Card className="p-4 space-y-3">
         <h2 className="text-sm font-semibold flex items-center gap-2">
           <Mail className="w-4 h-4 text-primary" />
@@ -293,28 +306,46 @@ export default function QuizBotPanel() {
         {accounts.length === 0 ? (
           <p className="text-xs text-muted-foreground">Henüz hesap eklenmemiş</p>
         ) : (
-          <div className="space-y-2">
-            {accounts.map((acc) => (
-              <div key={acc.id} className="flex items-center justify-between bg-secondary/30 rounded-md px-3 py-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Switch
-                    checked={acc.status === "active"}
-                    onCheckedChange={() => toggleAccountStatus(acc)}
-                    className="scale-75"
-                  />
-                  <span className="text-xs font-mono truncate">{acc.email}</span>
-                  <button onClick={() => setShowPasswords((p) => ({ ...p, [acc.id]: !p[acc.id] }))} className="text-muted-foreground hover:text-foreground">
-                    {showPasswords[acc.id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                  </button>
-                  {showPasswords[acc.id] && <span className="text-xs text-muted-foreground font-mono">{acc.password}</span>}
-                  <Badge variant={acc.status === "active" ? "secondary" : "destructive"} className="text-[10px]">{acc.status === "active" ? "Aktif" : "Pasif"}</Badge>
-                  {acc.fail_count > 0 && <span className="text-[10px] text-destructive">({acc.fail_count} hata)</span>}
+          <div className="space-y-1.5">
+            {accounts.map((acc) => {
+              const linkedLinks = quizLinks.filter(l => l.quiz_account_id === acc.id);
+              return (
+                <div key={acc.id} className="bg-secondary/30 rounded-md px-3 py-2 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Switch
+                        checked={acc.status === "active"}
+                        onCheckedChange={() => toggleAccountStatus(acc)}
+                        className="scale-75"
+                      />
+                      <span className="text-xs font-mono truncate">{acc.email}</span>
+                      <button onClick={() => setShowPasswords((p) => ({ ...p, [acc.id]: !p[acc.id] }))} className="text-muted-foreground hover:text-foreground">
+                        {showPasswords[acc.id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                      </button>
+                      {showPasswords[acc.id] && <span className="text-xs text-muted-foreground font-mono">{acc.password}</span>}
+                      <Badge variant={acc.status === "active" ? "secondary" : "destructive"} className="text-[10px]">
+                        {acc.status === "active" ? "Aktif" : "Pasif"}
+                      </Badge>
+                      {acc.fail_count > 0 && <span className="text-[10px] text-destructive">({acc.fail_count} hata)</span>}
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => deleteAccount(acc.id)} className="h-6 w-6 p-0 text-destructive">
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
+                  {/* Bu hesaba atanmış linkler */}
+                  {linkedLinks.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pl-7">
+                      {linkedLinks.map(l => (
+                        <Badge key={l.id} variant="outline" className="text-[10px] font-mono gap-1">
+                          <Globe className="w-2.5 h-2.5" />
+                          {new URL(l.url).hostname.replace("www.", "")}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => deleteAccount(acc.id)} className="h-6 w-6 p-0 text-destructive">
-                  <Trash2 className="w-3 h-3" />
-                </Button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>

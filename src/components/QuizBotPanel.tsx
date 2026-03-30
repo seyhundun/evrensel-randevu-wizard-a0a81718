@@ -302,10 +302,10 @@ export default function QuizBotPanel() {
           <Mail className="w-4 h-4 text-primary" />
           Giriş Hesapları
         </h2>
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <Input placeholder="Email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="flex-1" />
           <Input placeholder="Şifre" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="flex-1" />
-          <Button onClick={addAccount} size="sm" variant="outline"><Plus className="w-4 h-4" /></Button>
+          <Button onClick={addAccount} size="sm" variant="outline" className="shrink-0"><Plus className="w-4 h-4" /></Button>
         </div>
         {accounts.length === 0 ? (
           <p className="text-xs text-muted-foreground">Henüz hesap eklenmemiş</p>

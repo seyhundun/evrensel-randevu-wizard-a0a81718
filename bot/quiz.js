@@ -2027,34 +2027,60 @@ async function runGeminiEngine(url, account, settings) {
 
       if (sameActionStreak >= 6) {
         if (isPureScrollAction) {
-          console.log("[ACTION-LOOP] Scroll döngüsü algılandı, restart yerine sayfa sonuna inilip yeniden değerlendirilecek");
-          await supabaseInsertLog("⚠️ Scroll döngüsü algılandı, sayfa sonuna inilerek yeniden deneniyor", "warning");
+          // Scroll döngüsü — sessizce en alta in ve buton ara
           await page.evaluate(function() { window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }); }).catch(function() {});
-          await quizDelay(1200, 2200);
+          await quizDelay(800, 1500);
+          // En alttaki butonu bul ve tıkla
+          var bottomClicked = await page.evaluate(function() {
+            var btns = Array.from(document.querySelectorAll('button, input[type="submit"], a'));
+            var candidates = btns.filter(function(el) {
+              var t = (el.textContent || el.value || '').toLowerCase().trim();
+              return /(continue|next|submit|verify|devam|ileri|sonraki|gönder|gonder|start|begin)/.test(t) && !el.disabled && el.offsetParent !== null;
+            });
+            if (candidates.length > 0) {
+              candidates[candidates.length - 1].click();
+              return true;
+            }
+            return false;
+          }).catch(function() { return false; });
+          if (bottomClicked) {
+            console.log("[SCROLL-FIX] En alttaki buton tıklandı");
+          }
           sameActionStreak = 0;
           repeatedStuckRecoveries = 0;
-          recentActions.push("scroll: loop_break_bottom");
-          if (recentActions.length > 5) recentActions.shift();
           continue;
         }
-        console.log("[ACTION-LOOP] Aynı aksiyon çok tekrar etti, oturum yeniden başlatılıyor:", actionSummary);
-        await supabaseInsertLog("🔄 Aynı adım sürekli tekrar ediyor, tarayıcı tamamen kapatılıp yeni oturum başlatılıyor", "warning");
-        throw new Error("Repeated action loop detected — restart session");
+        // Scroll değilse aynı aksiyon tekrarı — en alta in + buton ara, 10'a kadar tolere et
+        if (sameActionStreak >= 10) {
+          console.log("[ACTION-LOOP] Aynı aksiyon 10 kez tekrar etti, oturum yeniden başlatılıyor:", actionSummary);
+          await supabaseInsertLog("🔄 Aynı adım 10 kez tekrar etti, yeni oturum başlatılıyor", "warning");
+          throw new Error("Repeated action loop detected — restart session");
+        }
+        // 6-9 arası: sessizce en alta scroll + buton ara
+        await page.evaluate(function() { window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }); }).catch(function() {});
+        await quizDelay(500, 1000);
       }
 
-      // Stuck detection: son 3 aksiyon aynıysa zorla scroll yap
+      // Stuck detection: son 3 aksiyon aynıysa en alta in + buton tıkla
       if (recentActions.length >= 3) {
         var last3 = recentActions.slice(-3);
         if (last3[0] === last3[1] && last3[1] === last3[2]) {
           repeatedStuckRecoveries++;
-          console.log("[STUCK] Son 3 aksiyon aynı, zorla scroll yapılıyor");
-          await supabaseInsertLog("⚠️ Takılma algılandı, sayfayı kaydırıyor", "warning");
-          await page.evaluate(function() { window.scrollBy({ top: 600, behavior: 'smooth' }); });
-          await quizDelay(1000, 2000);
+          // Sessizce en alta scroll ve buton ara
+          await page.evaluate(function() { window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }); }).catch(function() {});
+          await quizDelay(800, 1500);
+          await page.evaluate(function() {
+            var btns = Array.from(document.querySelectorAll('button, input[type="submit"], a'));
+            var candidates = btns.filter(function(el) {
+              var t = (el.textContent || el.value || '').toLowerCase().trim();
+              return /(continue|next|submit|verify|devam|ileri|sonraki|gönder|gonder)/.test(t) && !el.disabled && el.offsetParent !== null;
+            });
+            if (candidates.length > 0) candidates[candidates.length - 1].click();
+          }).catch(function() {});
 
-          if (repeatedStuckRecoveries >= 2 || (isPopupCloseAction && sameActionStreak >= 3)) {
-            console.log("[STUCK] Scroll ile açılamadı, oturum tamamen yeniden başlatılıyor");
-            await supabaseInsertLog("🔄 Takılma tekrarladı, mevcut tarayıcı kapatılıp yeni oturum başlatılıyor", "warning");
+          if (repeatedStuckRecoveries >= 4 || (isPopupCloseAction && sameActionStreak >= 3)) {
+            console.log("[STUCK] En alta inildi ama çözülemedi, oturum yeniden başlatılıyor");
+            await supabaseInsertLog("🔄 Takılma devam ediyor, yeni oturum başlatılıyor", "warning");
             throw new Error("Stuck loop detected — restart session");
           }
 

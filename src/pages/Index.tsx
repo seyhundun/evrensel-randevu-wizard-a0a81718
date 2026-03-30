@@ -340,14 +340,12 @@ const Index = () => {
             )}
 
             {/* MAIN CONTENT */}
-            <main className="flex-1 min-w-0">
-              <ScrollArea className="h-full">
-                <div className="p-3 md:p-6 space-y-4 md:space-y-6">
-                  <VncViewer title="🇮🇹 iDATA Bot Ekranı" pathPrefix="/idata" />
-                  <IdataAccounts />
-                  <IdataTrackingLogs />
-                </div>
-              </ScrollArea>
+            <main className="flex-1 min-w-0 overflow-auto">
+              <div className="p-3 md:p-6 space-y-4 md:space-y-6 max-w-full">
+                <VncViewer title="🇮🇹 iDATA Bot Ekranı" pathPrefix="/idata" />
+                <IdataAccounts />
+                <IdataTrackingLogs />
+              </div>
             </main>
           </div>
         </TabsContent>
@@ -370,12 +368,10 @@ const Index = () => {
             )}
 
             {/* MAIN CONTENT */}
-            <main className="flex-1 min-w-0">
-              <ScrollArea className="h-full">
-                <div className="p-3 md:p-6">
-                  <QuizBotPanel />
-                </div>
-              </ScrollArea>
+            <main className="flex-1 min-w-0 overflow-auto">
+              <div className="p-3 md:p-6 max-w-full">
+                <QuizBotPanel />
+              </div>
             </main>
           </div>
         </TabsContent>

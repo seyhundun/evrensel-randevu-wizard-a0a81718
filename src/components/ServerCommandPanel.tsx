@@ -95,7 +95,7 @@ export default function ServerCommandPanel() {
   };
 
   return (
-    <Card className="border-border/50">
+    <Card className="border-border/50 bg-black text-white">
       <CardHeader className="pb-3">
         <CardTitle className="text-sm flex items-center gap-2">
           <Terminal className="w-4 h-4 text-green-500" />

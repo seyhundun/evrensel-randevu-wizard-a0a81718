@@ -95,7 +95,7 @@ export default function ServerCommandPanel() {
   };
 
   return (
-    <Card className="border-border/50 bg-black text-white">
+    <Card className="border-border/50">
       <CardHeader className="pb-3">
         <CardTitle className="text-sm flex items-center gap-2">
           <Terminal className="w-4 h-4 text-green-500" />
@@ -149,7 +149,7 @@ export default function ServerCommandPanel() {
         </div>
 
         {/* Command history */}
-        <ScrollArea className="h-[300px]" ref={scrollRef}>
+        <ScrollArea className="h-[300px] rounded-lg bg-black p-3 border border-neutral-800" ref={scrollRef}>
           <div className="space-y-2">
             {commands.map((cmd) => (
               <div key={cmd.id} className="rounded-lg border border-border/50 bg-muted/30 p-2 text-xs">

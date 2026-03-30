@@ -28,7 +28,7 @@ import VncViewer from "@/components/VncViewer";
 import { useTracking } from "@/hooks/useTracking";
 import VfsManualTakeover from "@/components/VfsManualTakeover";
 import ServerCommandPanel from "@/components/ServerCommandPanel";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 
 function LiveClock() {
   const [time, setTime] = useState(new Date());

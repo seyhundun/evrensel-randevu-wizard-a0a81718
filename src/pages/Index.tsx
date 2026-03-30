@@ -265,7 +265,7 @@ const Index = () => {
         {/* ========== VFS TAB ========== */}
         <TabsContent value="vfs" className="mt-0 flex-1 min-h-0">
           <div className="flex h-[calc(100vh-105px)]">
-            {/* LEFT SIDEBAR */}
+            {/* LEFT SIDEBAR - desktop only */}
             {!isMobile && (
               <aside
                 className={`shrink-0 border-r border-border bg-card/50 overflow-hidden transition-[width] duration-300 ease-in-out ${
@@ -280,37 +280,35 @@ const Index = () => {
             )}
 
             {/* MAIN CONTENT */}
-            <main className="flex-1 min-w-0">
-              <ScrollArea className="h-full">
-                <div className="p-3 md:p-6 space-y-4 md:space-y-5">
-                  <AccountHealthPanel configId={t.configId} />
-                  <VncViewer title="🌍 VFS Bot Ekranı" pathPrefix="/vfs" />
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-                    <ModuleStatus
-                      status={t.status}
-                      configId={t.configId}
-                      onStart={t.startTracking}
-                      onStop={t.stopTracking}
-                      canStart={!!t.country && !!t.city}
-                    />
-                    <BotActions
-                      status={t.status}
-                      configId={t.configId}
-                      onStart={t.startTracking}
-                      onStop={t.stopTracking}
-                      onSimulateFound={t.simulateFound}
-                      canStart={!!t.country && !!t.city}
-                    />
-                  </div>
-                  <TrackingLogs configId={t.configId} />
-                  <ServerCommandPanel />
+            <main className="flex-1 min-w-0 overflow-auto">
+              <div className="p-3 md:p-6 space-y-4 md:space-y-5 max-w-full">
+                <AccountHealthPanel configId={t.configId} />
+                <VncViewer title="🌍 VFS Bot Ekranı" pathPrefix="/vfs" />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+                  <ModuleStatus
+                    status={t.status}
+                    configId={t.configId}
+                    onStart={t.startTracking}
+                    onStop={t.stopTracking}
+                    canStart={!!t.country && !!t.city}
+                  />
+                  <BotActions
+                    status={t.status}
+                    configId={t.configId}
+                    onStart={t.startTracking}
+                    onStop={t.stopTracking}
+                    onSimulateFound={t.simulateFound}
+                    canStart={!!t.country && !!t.city}
+                  />
                 </div>
-              </ScrollArea>
+                <TrackingLogs configId={t.configId} />
+                <ServerCommandPanel />
+              </div>
             </main>
 
-            {/* RIGHT SIDEBAR */}
+            {/* RIGHT SIDEBAR - desktop only */}
             {!isMobile && (
-               <aside
+              <aside
                 className={`shrink-0 border-l border-border bg-card/50 overflow-hidden transition-[width] duration-300 ease-in-out ${
                   rightSidebarOpen ? "w-[500px]" : "w-0 border-l-0"
                 }`}

@@ -4237,7 +4237,9 @@ async function pollForQuizTasks() {
 
         try {
           await processQuiz(task.url);
-          await supabaseUpdate("link_analyses", task.id, { status: "quiz_done" });
+          // Bitmesine rağmen tekrar active yap — sonsuz döngü
+          await supabaseUpdate("link_analyses", task.id, { status: "active" });
+          await supabaseInsertLog("✅ Anket tamamlandı, tekrar kuyruğa alındı (sonsuz döngü)", "success");
         } catch (taskErr) {
           console.error("Görev hatası:", taskErr.message);
           await supabaseUpdate("link_analyses", task.id, { status: "active" });

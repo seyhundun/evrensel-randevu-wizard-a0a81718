@@ -80,6 +80,13 @@ export default function QuizBotPanel() {
     fetchAccounts();
   }
 
+  async function toggleAccountStatus(acc: QuizAccount) {
+    const newStatus = acc.status === "active" ? "inactive" : "active";
+    setAccounts(prev => prev.map(a => a.id === acc.id ? { ...a, status: newStatus } : a));
+    await supabase.from("quiz_accounts").update({ status: newStatus }).eq("id", acc.id);
+    toast.success(newStatus === "active" ? "Hesap aktif edildi" : "Hesap pasif edildi");
+  }
+
   async function addQuizLink() {
     const url = newUrl.trim();
     if (!url) { toast.error("URL girin"); return; }

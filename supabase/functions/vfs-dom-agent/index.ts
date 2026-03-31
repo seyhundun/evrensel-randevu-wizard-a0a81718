@@ -42,9 +42,9 @@ serve(async (req) => {
 8. **GÖZDEN GEÇİRME VE ÖDEME (ADIM 5)**: status: "wait_manual" döndür — kullanıcı manuel ilerleyecek
 9. **ÇOKLU BAŞVURU**: 1. kişi bittikten sonra "Add Applicant" / "Başvuru Sahibi Ekle" tıkla ve 2. kişiyi doldur
 
-## HESAP BİLGİLERİ
+## HESAP BİLGİLERİ (GERÇEK BİLGİLER — OLDUĞU GİBİ KULLAN!)
 - E-posta: ${account.email || ""}
-- Şifre: ${account.password || ""}
+- Şifre (BU GERÇEK ŞİFREDİR, MASKELİ DEĞİLDİR, * karakterleri dahil tamamını OLDUĞU GİBİ yaz): ${account.password || ""}
 
 ## RANDEVU BİLGİLERİ  
 - Ülke: ${country}

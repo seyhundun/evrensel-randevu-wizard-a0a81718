@@ -142,9 +142,10 @@ ${recentActions.slice(-5).join("\n")}
 
 ## KRİTİK KURALLAR
 1. E-posta ve şifre alanlarını MUTLAKA doldur — boş bırakma!
-2. Alanlara yazarken "type" aksiyonu kullan, value olarak tam değeri ver
-3. Önce email yaz, sonra password yaz, sonra login tıkla — 3 ayrı aksiyon
-4. Aynı aksiyonu tekrarlama
+2. Alanlara yazarken "type" aksiyonu kullan, value olarak TAM değeri ver — şifredeki *, !, @, # gibi özel karakterler dahil HEPSİNİ yaz!
+3. ŞİFRE ALANI İÇİN: Şifre value'su yukarıdaki HESAP BİLGİLERİ'ndeki şifrenin BİREBİR AYNISI olmalı. *** veya özel karakterler maskeleme DEĞİLDİR, şifrenin parçasıdır!
+4. Önce email yaz, sonra password yaz, sonra login tıkla — 3 ayrı aksiyon
+5. Aynı aksiyonu tekrarlama
 5. Sayfa yükleniyorsa "wait" döndür
 6. Element index numarasını doğru kullan
 7. SAYFAYI ASLA KAPATMA — emin olmadığında "wait_manual" döndür

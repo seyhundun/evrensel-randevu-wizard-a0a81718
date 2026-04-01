@@ -5001,17 +5001,25 @@ async function main() {
   console.log("✅ OTP false-positive düzeltmesi aktif");
   console.log("✅ Otomatik kayıt aktif");
   console.log("✅ Manuel tarayıcı açma desteği aktif");
+  console.log("✅ Manuel proxy'siz tarayıcı desteği aktif");
 
   while (true) {
     try {
       // DB'den güncel proxy ayarlarını yükle
       await loadProxySettingsFromDB();
 
-      // Manuel tarayıcı isteği kontrol et
+      // Manuel tarayıcı isteği kontrol et (proxy'li)
       const manualRequested = await checkManualBrowserRequest();
       if (manualRequested) {
         await openManualBrowser();
-        continue; // Manuel tarayıcı kapatıldıktan sonra normal döngüye dön
+        continue;
+      }
+
+      // Manuel proxy'siz tarayıcı isteği kontrol et
+      const noProxyRequested = await checkManualNoProxyRequest();
+      if (noProxyRequested) {
+        await openManualBrowserNoProxy();
+        continue;
       }
 
       // Bekleyen kayıtları kontrol et — başarısız olanları IP değiştirerek tekrar dene

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, CheckCircle2, Clock, AlertCircle, Camera, Loader2, ShieldAlert, RotateCcw } from "lucide-react";
-import { COUNTRIES, CITIES, TrackingStatus } from "@/lib/constants";
+import { CITIES, TrackingStatus } from "@/lib/constants";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -36,8 +36,20 @@ export default function StatusPanel({
   const [cfBlockedIp, setCfBlockedIp] = useState<string | null>(null);
   const [cfBlockedSince, setCfBlockedSince] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const [dynCountries, setDynCountries] = useState<{ value: string; label: string; flag: string }[]>([]);
 
-  const countryLabel = COUNTRIES.find((c) => c.value === country);
+  useEffect(() => {
+    const load = async () => {
+      const { data } = await supabase
+        .from("vfs_countries")
+        .select("value, label, flag")
+        .eq("is_active", true);
+      if (data) setDynCountries(data);
+    };
+    load();
+  }, []);
+
+  const countryLabel = dynCountries.find((c) => c.value === country);
   const cityLabel = CITIES.find((c) => c.value === city);
 
   useEffect(() => {

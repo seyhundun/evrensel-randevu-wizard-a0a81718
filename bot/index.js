@@ -4879,6 +4879,110 @@ async function openManualBrowser() {
   }
 }
 
+// ==================== MANUAL NO-PROXY BROWSER ====================
+async function checkManualNoProxyRequest() {
+  try {
+    const data = await apiPost({ action: "check_manual_noproxy" }, "check_manual_noproxy");
+    return data.ok && data.requested;
+  } catch (err) {
+    return false;
+  }
+}
+
+async function openManualBrowserNoProxy() {
+  console.log("\n🖥 MANUEL TARAYICI AÇILIYOR (PROXY'SİZ)...");
+  
+  try {
+    // Aktif config'den ülkeyi al
+    let manualCountry = "france";
+    try {
+      const { configs } = await fetchActiveConfigs();
+      if (configs && configs.length > 0) manualCountry = configs[0].country || "france";
+    } catch (e) { console.warn("  [MANUAL-NP] Config okunamadı, france kullanılıyor"); }
+    const loginUrl = getVfsLoginUrl(manualCountry);
+    console.log(`  [MANUAL-NP] Ülke: ${manualCountry} → URL: ${loginUrl}`);
+    
+    // Proxy OLMADAN tarayıcı başlat
+    const { connect } = require("puppeteer-real-browser");
+    const args = [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--window-size=1920,1080",
+      "--start-maximized",
+    ];
+    
+    const { browser, page } = await connect({
+      headless: false,
+      args,
+      turnstile: true,
+      disableXvfb: true,
+    });
+    await page.setViewport({ width: 1920, height: 1080 });
+    console.log(`  [MANUAL-NP] ✅ Tarayıcı başlatıldı (proxy yok, sunucu IP'si)`);
+    
+    console.log(`  [MANUAL-NP] VFS giriş sayfası açılıyor: ${loginUrl}`);
+    await page.goto(loginUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+    
+    // Cloudflare challenge varsa bekle
+    let pageContent = await page.evaluate(() => document.body?.innerText || "").catch(() => "");
+    if (isCloudflareChallenge(pageContent)) {
+      console.log("  [MANUAL-NP] ⏳ Cloudflare challenge bekleniyor...");
+      await waitForCloudflareChallengeResolve(page, 60000);
+    }
+    
+    console.log("  [MANUAL-NP] ✅ Sayfa yüklendi. Tarayıcı açık bırakılıyor.");
+    console.log("  [MANUAL-NP] ✅ TAM KONTROL SİZDE! Bot yeni komut göndermeyecek.");
+
+    // Log to dashboard
+    let logConfigId = null;
+    try {
+      const { configs } = await fetchActiveConfigs();
+      if (configs.length > 0) logConfigId = configs[0].id;
+    } catch {}
+    if (logConfigId) {
+      await logStep(logConfigId, "manual_browser", `Manuel tarayıcı açıldı (proxy'siz, sunucu IP) | Ülke: ${manualCountry}`);
+    }
+
+    // Chrome'u kullanıcı kapatana kadar bekle
+    const browserProcess = typeof browser.process === "function" ? browser.process() : null;
+    await new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        resolve();
+      };
+
+      try {
+        browser.once("disconnected", finish);
+      } catch {}
+
+      if (browserProcess) {
+        if (browserProcess.exitCode !== null) return finish();
+        browserProcess.once("close", finish);
+        browserProcess.once("exit", finish);
+      }
+
+      const checkInterval = setInterval(async () => {
+        try {
+          if (!browser.isConnected()) {
+            clearInterval(checkInterval);
+            finish();
+          }
+        } catch {
+          clearInterval(checkInterval);
+          finish();
+        }
+      }, 5000);
+    });
+
+    console.log("  [MANUAL-NP] 🔚 Tarayıcı kapatıldı, bot normal çalışmaya dönüyor.\n");
+  } catch (err) {
+    console.error("  [MANUAL-NP] Hata:", err.message);
+  }
+}
+
 async function main() {
   console.log("═══════════════════════════════════════════");
   console.log("  VFS Randevu Takip Botu v8.0");

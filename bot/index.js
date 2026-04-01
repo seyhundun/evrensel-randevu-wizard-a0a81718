@@ -4802,7 +4802,14 @@ async function openManualBrowser() {
   console.log(`  [MANUAL] Proxy: ${proxyLabel}`);
   
   try {
-    const loginUrl = "https://visa.vfsglobal.com/tur/tr/fra/login";
+    // Aktif config'den ülkeyi al
+    let manualCountry = "france";
+    try {
+      const { configs } = await fetchActiveConfigs();
+      if (configs && configs.length > 0) manualCountry = configs[0].country || "france";
+    } catch (e) { console.warn("  [MANUAL] Config okunamadı, france kullanılıyor"); }
+    const loginUrl = getVfsLoginUrl(manualCountry);
+    console.log(`  [MANUAL] Ülke: ${manualCountry} → URL: ${loginUrl}`);
     
     // Proxy/auth akışını geçmek için tarayıcıyı bot açar, sonra tamamen idle kalır.
     const { browser, page } = await launchBrowser(activeIp);

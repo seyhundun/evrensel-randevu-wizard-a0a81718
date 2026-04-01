@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, CheckCircle2, Clock, AlertCircle, Camera, Loader2, ShieldAlert, RotateCcw } from "lucide-react";
-import { COUNTRIES, CITIES, TrackingStatus } from "@/lib/constants";
+import { CITIES, TrackingStatus } from "@/lib/constants";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
